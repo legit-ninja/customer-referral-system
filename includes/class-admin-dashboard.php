@@ -12,6 +12,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         add_action('wp_ajax_send_coach_message', [$this, 'send_coach_message']);
         add_action('wp_ajax_deactivate_coach', [$this, 'deactivate_coach']);
         add_action('wp_ajax_assign_venue', [$this, 'assign_venue']);
+        add_action('admin_post_import_coaches', [$this, 'import_coaches_from_csv']);
     }
 
     public function add_admin_menus() {
@@ -256,152 +257,100 @@ class InterSoccer_Referral_Admin_Dashboard {
     }
 
     public function render_coaches_page() {
-        require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-list-table.php';
-        $table = new InterSoccer_Coach_List_Table();
-        $table->prepare_items();
+        $coaches = $this->get_all_coaches();
         ?>
         <div class="wrap intersoccer-admin">
             <h1>Coach Management</h1>
-            <form method="get">
-                <input type="hidden" name="page" value="intersoccer-coaches">
-                <p class="search-box">
-                    <label class="screen-reader-text" for="coach-search-input">Search Coaches:</label>
-                    <input type="search" id="coach-search-input" name="s" value="<?php echo esc_attr($_REQUEST['s'] ?? ''); ?>">
-                    <input type="submit" class="button" value="Search Coaches">
-                </p>
-                <label>Tier:</label>
-                <select name="tier">
-                    <option value="">All Tiers</option>
-                    <option value="Bronze" <?php selected($_REQUEST['tier'] ?? '', 'Bronze'); ?>>Bronze</option>
-                    <option value="Silver" <?php selected($_REQUEST['tier'] ?? '', 'Silver'); ?>>Silver</option>
-                    <option value="Gold" <?php selected($_REQUEST['tier'] ?? '', 'Gold'); ?>>Gold</option>
-                    <option value="Platinum" <?php selected($_REQUEST['tier'] ?? '', 'Platinum'); ?>>Platinum</option>
-                </select>
-                <label>Venue:</label>
-                <select name="venue">
-                    <option value="">All Venues</option>
-                    <?php
-                    $venues = get_posts(['post_type' => 'intersoccer_venue', 'numberposts' => -1]);
-                    foreach ($venues as $venue) {
-                        echo '<option value="' . $venue->ID . '" ' . selected($_REQUEST['venue'] ?? 0, $venue->ID, false) . '>' . esc_html($venue->post_title) . '</option>';
-                    }
-                    ?>
-                </select>
-                <input type="submit" class="button" value="Filter">
-                <a href="<?php echo admin_url('admin.php?page=intersoccer-coaches&action=export_coaches'); ?>" class="button button-primary">Export CSV</a>
-            </form>
-            <form method="post">
-                <?php $table->display(); ?>
-            </form>
-            <div id="message-modal" style="display:none;">
-                <div class="modal-content">
-                    <h2>Send Message to Coaches</h2>
-                    <form id="bulk-message-form">
-                        <input type="hidden" name="coach_ids" id="message-coach-ids">
-                        <label>Subject:</label>
-                        <input type="text" name="subject" required>
-                        <label>Message:</label>
-                        <textarea name="content" rows="5" required></textarea>
-                        <button type="submit" class="button button-primary">Send</button>
-                        <button type="button" class="button modal-close">Cancel</button>
-                    </form>
+            
+            <?php if (empty($coaches)): ?>
+                <div class="notice notice-info">
+                    <p>No coaches found. <a href="<?php echo admin_url('admin.php?page=intersoccer-settings'); ?>">Import coaches from CSV</a> to get started.</p>
                 </div>
-            </div>
-            <div id="venue-modal" style="display:none;">
-                <div class="modal-content">
-                    <h2>Assign Venue</h2>
-                    <form id="bulk-venue-form">
-                        <input type="hidden" name="coach_ids" id="venue-coach-ids">
-                        <label>Venue:</label>
-                        <select name="venue_id" required>
-                            <?php foreach ($venues as $venue) {
-                                echo '<option value="' . $venue->ID . '">' . esc_html($venue->post_title) . '</option>';
-                            } ?>
-                        </select>
-                        <button type="submit" class="button button-primary">Assign</button>
-                        <button type="button" class="button modal-close">Cancel</button>
-                    </form>
+            <?php else: ?>
+                <p>Total coaches: <strong><?php echo count($coaches); ?></strong></p>
+            <?php endif; ?>
+            
+            <div class="coaches-grid">
+                <?php foreach ($coaches as $coach): ?>
+                <div class="coach-card">
+                    <div class="coach-header">
+                        <?php echo get_avatar($coach->ID, 60); ?>
+                        <div class="coach-info">
+                            <h3><?php echo esc_html($coach->display_name); ?></h3>
+                            <p><?php echo esc_html($coach->user_email); ?></p>
+                            <?php if ($coach->location): ?>
+                                <p><span class="dashicons dashicons-location"></span> <?php echo esc_html($coach->location); ?></p>
+                            <?php endif; ?>
+                            <?php if ($coach->specialization): ?>
+                                <span class="coach-specialization"><?php echo esc_html($coach->specialization); ?></span>
+                            <?php endif; ?>
+                            <span class="coach-tier"><?php echo $this->get_coach_tier($coach->referral_count); ?></span>
+                        </div>
+                    </div>
+                    
+                    <div class="coach-stats">
+                        <div class="stat">
+                            <span class="number"><?php echo $coach->referral_count; ?></span>
+                            <span class="label">Referrals</span>
+                        </div>
+                        <div class="stat">
+                            <span class="number"><?php echo number_format($coach->total_commission, 0); ?></span>
+                            <span class="label">CHF Earned</span>
+                        </div>
+                        <div class="stat">
+                            <span class="number"><?php echo number_format($coach->credits, 0); ?></span>
+                            <span class="label">Credits</span>
+                        </div>
+                    </div>
+                    
+                    <?php if ($coach->bio): ?>
+                    <div class="coach-bio">
+                        <p><?php echo esc_html(wp_trim_words($coach->bio, 15)); ?></p>
+                    </div>
+                    <?php endif; ?>
+                    
+                    <div class="coach-actions">
+                        <button class="button button-small view-details" data-coach-id="<?php echo $coach->ID; ?>">
+                            View Details
+                        </button>
+                        <a href="mailto:<?php echo esc_attr($coach->user_email); ?>" class="button button-small">
+                            Send Email
+                        </a>
+                        <?php if ($coach->phone): ?>
+                        <a href="tel:<?php echo esc_attr($coach->phone); ?>" class="button button-small">
+                            Call
+                        </a>
+                        <?php endif; ?>
+                    </div>
                 </div>
+                <?php endforeach; ?>
             </div>
         </div>
-        <script>
-        jQuery(document).ready(function($) {
-            $('.send-message').on('click', function(e) {
-                e.preventDefault();
-                $('#message-coach-ids').val($(this).data('coach-id'));
-                $('#message-modal').show();
-            });
-            $('.deactivate-coach').on('click', function(e) {
-                e.preventDefault();
-                if (confirm('Deactivate this coach?')) {
-                    $.post({
-                        url: intersoccer_ajax.ajax_url,
-                        data: {
-                            action: 'deactivate_coach',
-                            nonce: intersoccer_ajax.nonce,
-                            coach_id: $(this).data('coach-id')
-                        },
-                        success: function(res) {
-                            if (res.success) location.reload();
-                            else alert(res.data.message);
-                        }
-                    });
-                }
-            });
-            $('.modal-close').on('click', function() {
-                $(this).closest('.modal').hide();
-            });
-            $('#bulk-message-form').on('submit', function(e) {
-                e.preventDefault();
-                $.post({
-                    url: intersoccer_ajax.ajax_url,
-                    data: {
-                        action: 'send_coach_message',
-                        nonce: intersoccer_ajax.nonce,
-                        coach_ids: $('#message-coach-ids').val(),
-                        subject: $('input[name="subject"]').val(),
-                        content: $('textarea[name="content"]').val()
-                    },
-                    success: function(res) {
-                        alert(res.data.message);
-                        if (res.success) location.reload();
-                    }
-                });
-            });
-            $('#bulk-venue-form').on('submit', function(e) {
-                e.preventDefault();
-                $.post({
-                    url: intersoccer_ajax.ajax_url,
-                    data: {
-                        action: 'assign_venue',
-                        nonce: intersoccer_ajax.nonce,
-                        coach_ids: $('#venue-coach-ids').val(),
-                        venue_id: $('select[name="venue_id"]').val()
-                    },
-                    success: function(res) {
-                        alert(res.data.message);
-                        if (res.success) location.reload();
-                    }
-                });
-            });
-            $('.bulk-action-apply-button').on('click', function() {
-                var action = $(this).closest('.tablenav').find('select[name="action"]').val();
-                var ids = $('input[name="coach_ids[]"]:checked').map(function() { return $(this).val(); }).get().join(',');
-                if (action === 'send_message') {
-                    $('#message-coach-ids').val(ids);
-                    $('#message-modal').show();
-                } else if (action === 'assign_venue') {
-                    $('#venue-coach-ids').val(ids);
-                    $('#venue-modal').show();
-                }
-            });
-        });
-        </script>
+        
+        <style>
+        .coach-specialization {
+            background: #f0f6ff;
+            color: #0073aa;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+            margin-right: 8px;
+        }
+        
+        .coach-bio {
+            margin: 15px 0;
+            font-style: italic;
+            color: #666;
+            font-size: 13px;
+        }
+        </style>
         <?php
     }
 
     public function send_coach_message() {
-        check_ajax_referer('intersoccer_admin_nonce');
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) wp_send_json_error(['message' => 'Unauthorized']);
         $coach_ids = array_map('absint', explode(',', $_POST['coach_ids']));
         $subject = sanitize_text_field($_POST['subject']);
         $content = wp_kses_post($_POST['content']);
@@ -466,14 +415,20 @@ class InterSoccer_Referral_Admin_Dashboard {
         header('Content-Type: text/csv; charset=utf-8');
         header('Content-Disposition: attachment; filename="InterSoccer_Coaches_' . date('Y-m-d') . '.csv"');
         $output = fopen('php://output', 'w');
-        fputcsv($output, ['Coach Name', 'Email', 'Referrals', 'Credits (CHF)', 'Venues']);
+        fputcsv($output, ['Coach Name', 'Email', 'Referrals', 'Credits (CHF)', 'Tier', 'Venues', 'Phone', 'Specialization', 'Location', 'Experience Years', 'Bio']);
         foreach ($coaches as $coach) {
             fputcsv($output, [
-                $coach->coach_name,
-                $coach->email,
-                $coach->referrals,
+                $coach->display_name,
+                $coach->user_email,
+                $coach->referral_count,
                 number_format($coach->credits, 2),
-                $coach->venues ?: ''
+                intersoccer_get_coach_tier($coach->ID),
+                $coach->venues,
+                get_user_meta($coach->ID, 'intersoccer_phone', true),
+                get_user_meta($coach->ID, 'intersoccer_specialization', true),
+                get_user_meta($coach->ID, 'intersoccer_location', true),
+                get_user_meta($coach->ID, 'intersoccer_experience_years', true),
+                get_user_meta($coach->ID, 'intersoccer_bio', true)
             ]);
         }
         fclose($output);
@@ -496,10 +451,13 @@ class InterSoccer_Referral_Admin_Dashboard {
             <h1>Referral System Settings</h1>
             <form method="post" action="<?php echo admin_url('admin-post.php'); ?>" enctype="multipart/form-data">
                 <input type="hidden" name="action" value="import_coaches">
+                <?php wp_nonce_field('import_coaches_nonce', 'import_coaches_nonce'); ?>
                 <h2>Import Coaches</h2>
-                <p>Upload a CSV with columns: first_name, last_name, email</p>
+                <p>Upload a CSV with columns: first_name, last_name, email, phone, specialization, location, experience_years, bio</p>
                 <input type="file" name="coach_csv" accept=".csv" required>
                 <button type="submit" class="button button-primary">Import Coaches</button>
+            </form>
+           <form method="post" action="<?php echo admin_url('admin-post.php'); ?>" enctype="multipart/form-data">
                 <?php
                 settings_fields('intersoccer_settings');
                 do_settings_sections('intersoccer_settings');
@@ -531,12 +489,34 @@ class InterSoccer_Referral_Admin_Dashboard {
     }
 
     public function import_coaches_from_csv() {
-        if (!current_user_can('manage_options') || !isset($_FILES['coach_csv'])) {
-            wp_die('Unauthorized or no file uploaded');
+        
+        if (!current_user_can('manage_options') || !isset($_FILES['coach_csv']) || !check_admin_referer('import_coaches_nonce', 'import_coaches_nonce')) {
+            error_log('Import coaches failed: Unauthorized or no file uploaded');
+            wp_safe_redirect(admin_url('admin.php?page=intersoccer-settings&error=unauthorized'));
+            exit;
         }
+
         $file = $_FILES['coach_csv']['tmp_name'];
+        error_log('Import coaches triggered, $_FILES: ' . json_encode($_FILES));
+        if (!is_uploaded_file($file) || $_FILES['coach_csv']['error'] !== UPLOAD_ERR_OK) {
+            error_log('Import coaches failed: File upload error, code: ' . $_FILES['coach_csv']['error']);
+            wp_safe_redirect(admin_url('admin.php?page=intersoccer-settings&error=upload_failed'));
+            exit;
+        }
+
         if (($handle = fopen($file, 'r')) !== false) {
             $header = fgetcsv($handle);
+            
+            // More flexible header validation - check required fields exist
+            $required_fields = ['first_name', 'last_name', 'email'];
+            $missing_fields = array_diff($required_fields, $header);
+            
+            if (!empty($missing_fields)) {
+                error_log('Import coaches failed: Missing required fields: ' . implode(', ', $missing_fields));
+                wp_safe_redirect(admin_url('admin.php?page=intersoccer-settings&error=missing_fields'));
+                exit;
+            }
+
             while (($data = fgetcsv($handle)) !== false) {
                 $coach_data = array_combine($header, $data);
                 $user_id = wp_create_user(
@@ -544,6 +524,10 @@ class InterSoccer_Referral_Admin_Dashboard {
                     wp_generate_password(12),
                     sanitize_email($coach_data['email'])
                 );
+                if (is_wp_error($user_id)) {
+                    error_log('Import failed for ' . $coach_data['email'] . ': ' . $user_id->get_error_message());
+                    continue;
+                }
                 if (!is_wp_error($user_id)) {
                     wp_update_user([
                         'ID' => $user_id,
@@ -552,14 +536,26 @@ class InterSoccer_Referral_Admin_Dashboard {
                         'display_name' => sanitize_text_field($coach_data['first_name'] . ' ' . $coach_data['last_name']),
                         'role' => 'coach'
                     ]);
+                    update_user_meta($user_id, 'intersoccer_phone', sanitize_text_field($coach_data['phone']));
+                    update_user_meta($user_id, 'intersoccer_specialization', sanitize_text_field($coach_data['specialization']));
+                    update_user_meta($user_id, 'intersoccer_location', sanitize_text_field($coach_data['location']));
+                    update_user_meta($user_id, 'intersoccer_experience_years', absint($coach_data['experience_years']));
+                    update_user_meta($user_id, 'intersoccer_bio', wp_kses_post($coach_data['bio']));
                     InterSoccer_Referral_Handler::generate_coach_referral_link($user_id);
                     wp_new_user_notification($user_id, null, 'both');
-                    error_log('Imported coach: ' . $coach_data['email']);
+                    error_log('Imported coach: ' . $coach_data['email'] . ', meta saved: ' . json_encode($coach_data));
+                } else {
+                    error_log('Failed to import coach: ' . $coach_data['email'] . ', error: ' . $user_id->get_error_message());
                 }
             }
             fclose($handle);
+        } else {
+            error_log('Import coaches failed: Unable to open CSV file');
+            wp_safe_redirect(admin_url('admin.php?page=intersoccer-settings&error=file_open_failed'));
+            exit;
         }
-        wp_redirect(admin_url('admin.php?page=intersoccer-settings&imported=1'));
+
+        wp_safe_redirect(admin_url('admin.php?page=intersoccer-settings&imported=1'));
         exit;
     }
 
@@ -749,29 +745,52 @@ class InterSoccer_Referral_Admin_Dashboard {
 
     private function get_all_coaches() {
         global $wpdb;
-        $table_name = $wpdb->prefix . 'intersoccer_referrals';
+        $referrals_table = $wpdb->prefix . 'intersoccer_referrals';
         
-        return $wpdb->get_results("
-            SELECT 
-                u.*,
-                COALESCE(r.referral_count, 0) as referral_count,
-                COALESCE(r.total_commission, 0) as total_commission,
-                COALESCE(um.meta_value, 0) as credits
-            FROM {$wpdb->users} u
-            LEFT JOIN (
+        // Get all users with coach role
+        $coach_users = get_users([
+            'role' => 'coach',
+            'orderby' => 'display_name',
+            'order' => 'ASC'
+        ]);
+        
+        $coaches = [];
+        
+        foreach ($coach_users as $user) {
+            // Get referral stats for this coach
+            $referral_stats = $wpdb->get_row($wpdb->prepare("
                 SELECT 
-                    coach_id,
                     COUNT(*) as referral_count,
-                    SUM(commission_amount) as total_commission
-                FROM $table_name 
-                GROUP BY coach_id
-            ) r ON u.ID = r.coach_id
-            LEFT JOIN {$wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key = 'intersoccer_credits'
-            WHERE EXISTS (
-                SELECT 1 FROM {$wpdb->usermeta} 
-                WHERE user_id = u.ID AND meta_key = 'wp_capabilities' AND meta_value LIKE '%coach%'
-            )
-        ");
+                    COALESCE(SUM(commission_amount + loyalty_bonus + retention_bonus), 0) as total_commission
+                FROM $referrals_table 
+                WHERE coach_id = %d AND status = 'completed'
+            ", $user->ID));
+            
+            // Get coach credits
+            $credits = get_user_meta($user->ID, 'intersoccer_credits', true) ?: 0;
+            
+            // Build coach object
+            $coach = new stdClass();
+            $coach->ID = $user->ID;
+            $coach->display_name = $user->display_name;
+            $coach->user_email = $user->user_email;
+            $coach->first_name = $user->first_name;
+            $coach->last_name = $user->last_name;
+            $coach->referral_count = (int) $referral_stats->referral_count;
+            $coach->total_commission = (float) $referral_stats->total_commission;
+            $coach->credits = (float) $credits;
+            
+            // Add coach-specific meta
+            $coach->phone = get_user_meta($user->ID, 'intersoccer_phone', true);
+            $coach->specialization = get_user_meta($user->ID, 'intersoccer_specialization', true);
+            $coach->location = get_user_meta($user->ID, 'intersoccer_location', true);
+            $coach->experience_years = get_user_meta($user->ID, 'intersoccer_experience_years', true);
+            $coach->bio = get_user_meta($user->ID, 'intersoccer_bio', true);
+            
+            $coaches[] = $coach;
+        }
+        
+        return $coaches;
     }
 
     private function get_performance_chart_data() {

@@ -454,3 +454,10 @@
         text-align: center;
     }
 }
+
+@media (max-width: 768px) {
+    .wp-list-table thead { display: none; }
+    .wp-list-table tr { display: block; margin-bottom: 15px; }
+    .wp-list-table td { display: block; text-align: right; }
+    .wp-list-table td:before { content: attr(data-label); float: left; font-weight: bold; }
+}
