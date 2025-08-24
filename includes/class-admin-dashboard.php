@@ -23,7 +23,7 @@ class InterSoccer_Referral_Admin_Dashboard {
             'manage_options',
             'intersoccer-referrals',
             [$this, 'render_main_dashboard'],
-            'dashicons-groups',
+            'dashicons-money-alt',
             30
         );
 
