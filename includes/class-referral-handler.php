@@ -9,13 +9,55 @@ class InterSoccer_Referral_Handler {
         add_action('woocommerce_cart_calculate_fees', [$this, 'apply_credit_discount']);
         add_action('woocommerce_review_order_before_payment', [$this, 'add_credit_field']);
         add_action('woocommerce_checkout_update_order_meta', [$this, 'update_order_with_credits']);
+        add_action('wp_ajax_gift_credits', [$this, 'handle_gift_credits']);
     }
 
     // Generate referral link
+    public static function generate_customer_referral_link($user_id) {
+        $code = get_user_meta($user_id, 'intersoccer_customer_referral_code', true);
+        if (!$code) {
+            $code = 'cust_' . $user_id . '_' . wp_generate_password(6, false);
+            update_user_meta($user_id, 'intersoccer_customer_referral_code', $code);
+        }
+        return home_url('/?cust_ref=' . $code);
+    }
+
     public static function generate_coach_referral_link($coach_id) {
-        $code = 'coach_' . $coach_id . '_' . wp_generate_password(6, false);
-        update_user_meta($coach_id, 'referral_code', $code);
+        $code = get_user_meta($coach_id, 'referral_code', true);
+        if (!$code) {
+            $code = 'coach_' . $coach_id . '_' . wp_generate_password(6, false);
+            update_user_meta($coach_id, 'referral_code', $code);
+        }
         return home_url('/?ref=' . $code);
+    }
+
+    public function handle_gift_credits() {
+        check_ajax_referer('intersoccer_dashboard_nonce');
+        $amount = floatval($_POST['gift_amount']);
+        $recipient = get_user_by('email', sanitize_email($_POST['recipient_email']));
+        $sender_id = get_current_user_id();
+        $sender_credits = intersoccer_get_customer_credits($sender_id);
+        if ($recipient && $amount >= 50 && $amount <= $sender_credits) {
+            update_user_meta($sender_id, 'intersoccer_customer_credits', $sender_credits - $amount);
+            update_user_meta($recipient->ID, 'intersoccer_customer_credits', intersoccer_get_customer_credits($recipient->ID) + $amount);
+            update_user_meta($sender_id, 'intersoccer_customer_credits', $sender_credits - $amount + 20); // Reciprocity bonus
+            error_log('Credits gifted: ' . $amount . ' from user ' . $sender_id . ' to ' . $recipient->ID);
+            wp_send_json_success(['message' => 'Credits gifted! You earned a 20-point bonus!']);
+        }
+        wp_send_json_error(['message' => 'Invalid gift request']);
+    }
+
+    public function render_gift_form() {
+        $credits = intersoccer_get_customer_credits();
+        ?>
+        <form id="gift-credits" method="post">
+            <label>Gift Points (Max <?php echo $credits; ?>):</label>
+            <input type="number" name="gift_amount" max="<?php echo $credits; ?>" min="50" step="10">
+            <label>To User (Email):</label>
+            <input type="email" name="recipient_email">
+            <button type="submit">Gift</button>
+        </form>
+        <?php
     }
 
     // Handle referral cookie on init
@@ -91,21 +133,24 @@ class InterSoccer_Referral_Handler {
 
     // Add credit field to checkout
     public function add_credit_field() {
-        if (is_user_logged_in()) {
-            $user_id = get_current_user_id();
-            $credits = (float) get_user_meta($user_id, 'intersoccer_customer_credits', true);
-            if ($credits > 0) {
-                echo '<div id="intersoccer-credits"><h3>Apply Credits</h3>';
-                woocommerce_form_field('intersoccer_apply_credits', [
-                    'type' => 'number',
-                    'label' => 'Apply up to ' . $credits . ' CHF',
-                    'max' => $credits,
-                    'min' => 0,
-                    'step' => 0.01,
-                ], WC()->checkout->get_value('intersoccer_apply_credits'));
-                echo '</div>';
-            }
-        }
+        $credits = intersoccer_get_customer_credits();
+        ?>
+        <div class="intersoccer-credits">
+            <h3>Apply Credits</h3>
+            <p>Available: <span id="avail-credits"><?php echo $credits; ?> CHF</p>
+            <input type="range" id="credit-slider" name="intersoccer_apply_credits" min="0" max="<?php echo $credits; ?>" step="0.01" value="0">
+            <span id="credit-display">0 CHF</span>
+            <button type="button" id="apply-max-credits">Apply Max</button>
+        </div>
+        <script>
+        jQuery('#credit-slider').on('input', function() {
+            jQuery('#credit-display').text(this.value + ' CHF');
+        });
+        jQuery('#apply-max-credits').on('click', function() {
+            jQuery('#credit-slider').val(<?php echo $credits; ?>).trigger('input');
+        });
+        </script>
+        <?php
     }
 
     // Apply credit discount

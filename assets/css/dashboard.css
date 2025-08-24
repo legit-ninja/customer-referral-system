@@ -1,19 +1,53 @@
-/* assets/css/dashboard.css */
-.intersoccer-dashboard {
-    background: #fff;
+.intersoccer-customer-dashboard {
+    background: #f8fafc;
     padding: 20px;
     border: 1px solid #ddd;
-    max-width: 800px;
+    max-width: 600px;
     margin: 20px auto;
+    color: #1e3a8a;
 }
-.intersoccer-dashboard table {
+.intersoccer-customer-dashboard h2 {
+    color: #1e3a8a;
+}
+.intersoccer-customer-dashboard .button {
+    background: #22c55e;
+    color: white;
+    border: none;
+    padding: 10px;
+    cursor: pointer;
+}
+.intersoccer-customer-dashboard progress {
     width: 100%;
-    border-collapse: collapse;
+    height: 20px;
 }
-.intersoccer-dashboard th, .intersoccer-dashboard td {
-    border: 1px solid #ddd;
+.intersoccer-customer-dashboard form {
+    margin-top: 20px;
+}
+.intersoccer-customer-dashboard input {
+    margin: 5px 0;
     padding: 8px;
+    width: 100%;
 }
-.intersoccer-dashboard th {
-    background: #f4f4f4;
+@media (max-width: 768px) {
+    .intersoccer-customer-dashboard {
+        padding: 10px;
+    }
+}
+
+.customer-leaderboard {
+    margin: 20px 0;
+}
+.leaderboard-item {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    border-bottom: 1px solid #ddd;
+}
+.leaderboard-item .rank {
+    font-weight: bold;
+    color: #1e3a8a;
+}
+.leaderboard-item .reward {
+    color: #f59e0b;
+    font-weight: bold;
 }
