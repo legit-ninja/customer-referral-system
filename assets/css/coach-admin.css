@@ -1,0 +1,18 @@
+.intersoccer-tour .shepherd-content {
+    background: #f8fafc;
+    border: 2px solid #1e3a8a;
+    border-radius: 8px;
+    color: #1e3a8a;
+}
+.intersoccer-tour .shepherd-button {
+    background: #22c55e;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+}
+@media (max-width: 768px) {
+    .intersoccer-tour .shepherd-content {
+        width: 90%;
+        margin: 10px;
+    }
+}

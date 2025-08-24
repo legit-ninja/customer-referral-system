@@ -8,11 +8,11 @@ class InterSoccer_Referral_Admin_Dashboard {
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
         add_action('wp_ajax_populate_demo_data', [$this, 'populate_demo_data']);
         add_action('wp_ajax_clear_demo_data', [$this, 'clear_demo_data']);
-        add_action('admin_init', [$this, 'handle_settings']);
+        add_action('wp_ajax_export_roi_report', [$this, 'export_roi_report']);
         add_action('wp_ajax_send_coach_message', [$this, 'send_coach_message']);
         add_action('wp_ajax_deactivate_coach', [$this, 'deactivate_coach']);
-        add_action('wp_ajax_assign_venue', [$this, 'assign_venue']);
-        add_action('admin_post_import_coaches', [$this, 'import_coaches_from_csv']);
+        add_action('wp_ajax_update_customer_credits', [$this, 'update_customer_credits']);
+        add_action('admin_init', [$this, 'handle_settings']);
     }
 
     public function add_admin_menus() {
@@ -23,7 +23,7 @@ class InterSoccer_Referral_Admin_Dashboard {
             'manage_options',
             'intersoccer-referrals',
             [$this, 'render_main_dashboard'],
-            'dashicons-money-alt', // Changed from dashicons-groups
+            'dashicons-groups',
             30
         );
 
@@ -48,11 +48,29 @@ class InterSoccer_Referral_Admin_Dashboard {
 
         add_submenu_page(
             'intersoccer-referrals',
-            'Referrals',
-            'Referrals',
+            'Coach Referrals',
+            'Coach Referrals',
             'manage_options',
-            'intersoccer-referral-list',
-            [$this, 'render_referrals_page']
+            'intersoccer-coach-referrals',
+            [$this, 'render_coach_referrals_page']
+        );
+
+        add_submenu_page(
+            'intersoccer-referrals',
+            'Customer Referrals',
+            'Customer Referrals',
+            'manage_options',
+            'intersoccer-customer-referrals',
+            [$this, 'render_customer_referrals_page']
+        );
+
+        add_submenu_page(
+            'intersoccer-referrals',
+            'Financial Report',
+            'Financial Report',
+            'manage_options',
+            'intersoccer-financial-report',
+            [$this, 'render_financial_report_page']
         );
 
         add_submenu_page(
@@ -97,34 +115,7 @@ class InterSoccer_Referral_Admin_Dashboard {
                     Clear Demo Data
                 </button>
             </div>
-            <form method="get" class="intersoccer-filter-form">
-                <input type="hidden" name="page" value="intersoccer-referrals">
-                <label for="date_range">Date Range:</label>
-                <select name="date_range" id="date_range">
-                    <option value="this_month" <?php selected($_GET['date_range'] ?? '', 'this_month'); ?>>This Month</option>
-                    <option value="last_30_days" <?php selected($_GET['date_range'] ?? '', 'last_30_days'); ?>>Last 30 Days</option>
-                    <option value="all_time" <?php selected($_GET['date_range'] ?? '', 'all_time'); ?>>All Time</option>
-                </select>
-                <label for="coach_id">Coach:</label>
-                <select name="coach_id" id="coach_id">
-                    <option value="">All Coaches</option>
-                    <?php
-                    $coaches = get_users(['role' => 'coach']);
-                    foreach ($coaches as $coach) {
-                        echo '<option value="' . $coach->ID . '" ' . selected($_GET['coach_id'] ?? 0, $coach->ID, false) . '>' . esc_html($coach->display_name) . '</option>';
-                    }
-                    ?>
-                </select>
-                <label for="status">Status:</label>
-                <select name="status" id="status">
-                    <option value="all" <?php selected($_GET['status'] ?? '', 'all'); ?>>All Statuses</option>
-                    <option value="pending" <?php selected($_GET['status'] ?? '', 'pending'); ?>>Pending</option>
-                    <option value="completed" <?php selected($_GET['status'] ?? '', 'completed'); ?>>Paid</option>
-                    <option value="processing" <?php selected($_GET['status'] ?? '', 'processing'); ?>>Processing</option>
-                </select>
-                <button type="submit" class="button">Filter</button>
-                <a href="<?php echo admin_url('admin.php?page=intersoccer-referrals&action=export_referral_report'); ?>" class="button button-primary">Export CSV</a>
-            </form>
+
             <!-- Stats Cards -->
             <div class="intersoccer-stats-grid">
                 <div class="stat-card">
@@ -242,7 +233,11 @@ class InterSoccer_Referral_Admin_Dashboard {
                         </a>
                         <button class="quick-action-btn" id="export-data">
                             <span class="dashicons dashicons-download"></span>
-                            Export Data
+                            Export Coach Data
+                        </button>
+                        <button class="quick-action-btn" id="export-roi">
+                            <span class="dashicons dashicons-chart-line"></span>
+                            Export ROI Report
                         </button>
                     </div>
                 </div>
@@ -313,151 +308,210 @@ class InterSoccer_Referral_Admin_Dashboard {
                         <button class="button button-small view-details" data-coach-id="<?php echo $coach->ID; ?>">
                             View Details
                         </button>
-                        <a href="mailto:<?php echo esc_attr($coach->user_email); ?>" class="button button-small">
-                            Send Email
-                        </a>
-                        <?php if ($coach->phone): ?>
-                        <a href="tel:<?php echo esc_attr($coach->phone); ?>" class="button button-small">
-                            Call
-                        </a>
-                        <?php endif; ?>
+                        <button class="button button-small send-message" data-coach-id="<?php echo $coach->ID; ?>">
+                            Send Message
+                        </button>
                     </div>
                 </div>
                 <?php endforeach; ?>
             </div>
         </div>
+        <?php
+    }
+
+    public function render_coach_referrals_page() {
+        $coach_referrals = $this->get_coach_referrals();
+        ?>
+        <div class="wrap intersoccer-admin">
+            <h1>Coach Referrals</h1>
+            <p class="description">These referrals generate commission payments for coaches. Credits are used for financial compensation.</p>
+            
+            <div class="tablenav top">
+                <div class="alignleft actions">
+                    <select name="status_filter" id="status-filter">
+                        <option value="">All Statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="paid">Paid</option>
+                    </select>
+                    <button type="button" class="button" onclick="filterReferrals()">Filter</button>
+                </div>
+                <div class="alignright actions">
+                    <button type="button" class="button" onclick="exportCoachReferrals()">Export CSV</button>
+                </div>
+            </div>
+            
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th>Coach</th>
+                        <th>Customer</th>
+                        <th>Order</th>
+                        <th>Commission</th>
+                        <th>Loyalty Bonus</th>
+                        <th>Status</th>
+                        <th>Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($coach_referrals as $referral): ?>
+                    <tr>
+                        <td>
+                            <strong><?php echo esc_html($referral->coach_name); ?></strong>
+                            <div class="row-actions">
+                                <span class="tier"><?php echo intersoccer_get_coach_tier($referral->coach_id); ?> Coach</span>
+                            </div>
+                        </td>
+                        <td><?php echo esc_html($referral->customer_name ?: 'Customer #' . $referral->customer_id); ?></td>
+                        <td>
+                            <a href="<?php echo admin_url('post.php?post=' . $referral->order_id . '&action=edit'); ?>">
+                                Order #<?php echo $referral->order_id; ?>
+                            </a>
+                        </td>
+                        <td><strong><?php echo number_format($referral->commission_amount, 2); ?> CHF</strong></td>
+                        <td><?php echo number_format($referral->loyalty_bonus ?: 0, 2); ?> CHF</td>
+                        <td>
+                            <span class="status-badge status-<?php echo $referral->status; ?>">
+                                <?php echo ucfirst($referral->status); ?>
+                            </span>
+                        </td>
+                        <td><?php echo date('M j, Y', strtotime($referral->created_at)); ?></td>
+                        <td>
+                            <?php if ($referral->status === 'pending'): ?>
+                                <button class="button button-small" onclick="updateReferralStatus(<?php echo $referral->id; ?>, 'approved')">Approve</button>
+                            <?php elseif ($referral->status === 'approved'): ?>
+                                <button class="button button-primary button-small" onclick="updateReferralStatus(<?php echo $referral->id; ?>, 'paid')">Mark Paid</button>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
         
         <style>
-        .coach-specialization {
-            background: #f0f6ff;
-            color: #0073aa;
-            padding: 2px 8px;
+        .status-badge {
+            padding: 4px 8px;
             border-radius: 12px;
             font-size: 11px;
-            font-weight: 500;
-            margin-right: 8px;
+            font-weight: 600;
+            text-transform: uppercase;
         }
-        
-        .coach-bio {
-            margin: 15px 0;
-            font-style: italic;
-            color: #666;
-            font-size: 13px;
-        }
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-approved { background: #cce5ff; color: #004085; }
+        .status-paid { background: #d4edda; color: #155724; }
         </style>
         <?php
     }
 
-    public function send_coach_message() {
-        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
-        if (!current_user_can('manage_options')) wp_send_json_error(['message' => 'Unauthorized']);
-        $coach_ids = array_map('absint', explode(',', $_POST['coach_ids']));
-        $subject = sanitize_text_field($_POST['subject']);
-        $content = wp_kses_post($_POST['content']);
-        foreach ($coach_ids as $coach_id) {
-            $coach = get_user_by('ID', $coach_id);
-            if ($coach) {
-                wp_mail($coach->user_email, $subject, $content);
-                error_log('Message sent to coach ID: ' . $coach_id);
-            }
-        }
-        wp_send_json_success(['message' => 'Messages sent!']);
-    }
-
-    public function deactivate_coach() {
-        check_ajax_referer('intersoccer_admin_nonce');
-        $coach_id = absint($_POST['coach_id']);
-        $user = get_user_by('ID', $coach_id);
-        if ($user && in_array('coach', $user->roles)) {
-            wp_update_user(['ID' => $coach_id, 'role' => 'subscriber']);
-            error_log('Deactivated coach ID: ' . $coach_id);
-            wp_send_json_success(['message' => 'Coach deactivated']);
-        }
-        wp_send_json_error(['message' => 'Invalid coach ID']);
-    }
-
-    public function assign_venue() {
-        check_ajax_referer('intersoccer_admin_nonce');
-        $coach_ids = array_map('absint', explode(',', $_POST['coach_ids']));
-        $venue_id = absint($_POST['venue_id']);
-        foreach ($coach_ids as $coach_id) {
-            $venues = get_user_meta($coach_id, 'intersoccer_venues', true) ?: [];
-            if (!in_array($venue_id, $venues)) {
-                $venues[] = $venue_id;
-                update_user_meta($coach_id, 'intersoccer_venues', $venues);
-                error_log('Assigned venue ' . $venue_id . ' to coach ' . $coach_id);
-            }
-        }
-        wp_send_json_success(['message' => 'Venues assigned']);
-    }
-
-    public function export_coaches() {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'intersoccer_referrals';
-        $coaches = $wpdb->get_results("
-            SELECT 
-                u.display_name AS coach_name,
-                u.user_email AS email,
-                COALESCE(r.referral_count, 0) AS referrals,
-                COALESCE(um.meta_value, 0) AS credits,
-                (SELECT GROUP_CONCAT(p.post_title) FROM {$wpdb->posts} p WHERE p.ID IN (SELECT meta_value FROM {$wpdb->usermeta} WHERE user_id = u.ID AND meta_key = 'intersoccer_venues')) AS venues
-            FROM {$wpdb->users} u
-            LEFT JOIN (
-                SELECT coach_id, COUNT(*) as referral_count
-                FROM $table_name 
-                GROUP BY coach_id
-            ) r ON u.ID = r.coach_id
-            LEFT JOIN {$wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key = 'intersoccer_credits'
-            WHERE EXISTS (
-                SELECT 1 FROM {$wpdb->usermeta} WHERE user_id = u.ID AND meta_key = 'wp_capabilities' AND meta_value LIKE '%coach%'
-            )
-        ");
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="InterSoccer_Coaches_' . date('Y-m-d') . '.csv"');
-        $output = fopen('php://output', 'w');
-        fputcsv($output, ['Coach Name', 'Email', 'Referrals', 'Credits (CHF)', 'Tier', 'Venues', 'Phone', 'Specialization', 'Location', 'Experience Years', 'Bio']);
-        foreach ($coaches as $coach) {
-            fputcsv($output, [
-                $coach->display_name,
-                $coach->user_email,
-                $coach->referral_count,
-                number_format($coach->credits, 2),
-                intersoccer_get_coach_tier($coach->ID),
-                $coach->venues,
-                get_user_meta($coach->ID, 'intersoccer_phone', true),
-                get_user_meta($coach->ID, 'intersoccer_specialization', true),
-                get_user_meta($coach->ID, 'intersoccer_location', true),
-                get_user_meta($coach->ID, 'intersoccer_experience_years', true),
-                get_user_meta($coach->ID, 'intersoccer_bio', true)
-            ]);
-        }
-        fclose($output);
-        exit;
+    public function render_customer_referrals_page() {
+        $customer_referrals = $this->get_customer_referrals();
+        ?>
+        <div class="wrap intersoccer-admin">
+            <h1>Customer Referrals</h1>
+            <p class="description">Customer-to-customer referrals. Credits are redeemable at checkout only.</p>
+            
+            <div class="stats-overview" style="display: flex; gap: 20px; margin-bottom: 20px;">
+                <div class="stat-card" style="flex: 1; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <h3>Total Customer Referrals</h3>
+                    <span style="font-size: 24px; font-weight: bold; color: #0073aa;"><?php echo count($customer_referrals); ?></span>
+                </div>
+                <div class="stat-card" style="flex: 1; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+                    <h3>Credits Distributed</h3>
+                    <span style="font-size: 24px; font-weight: bold; color: #00a32a;">
+                        <?php echo number_format(array_sum(array_column($customer_referrals, 'credits_awarded')), 0); ?> CHF
+                    </span>
+                </div>
+            </div>
+            
+            <table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th>Referring Customer</th>
+                        <th>New Customer</th>
+                        <th>Credits Awarded</th>
+                        <th>Credits Used</th>
+                        <th>Status</th>
+                        <th>Date</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($customer_referrals)): ?>
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 40px;">
+                            <div style="color: #666;">
+                                <span class="dashicons dashicons-groups" style="font-size: 48px; opacity: 0.3;"></span>
+                                <p>No customer referrals yet.</p>
+                                <p><small>Customer referrals will appear here when customers share their referral links.</small></p>
+                            </div>
+                        </td>
+                    </tr>
+                    <?php else: ?>
+                        <?php foreach ($customer_referrals as $referral): ?>
+                        <tr>
+                            <td>
+                                <strong><?php echo esc_html($referral->referrer_name); ?></strong>
+                                <div class="row-actions">
+                                    <span><?php echo esc_html($referral->referrer_email); ?></span>
+                                </div>
+                            </td>
+                            <td>
+                                <strong><?php echo esc_html($referral->referred_name); ?></strong>
+                                <div class="row-actions">
+                                    <span><?php echo esc_html($referral->referred_email); ?></span>
+                                </div>
+                            </td>
+                            <td><strong><?php echo number_format($referral->credits_awarded, 0); ?> CHF</strong></td>
+                            <td>
+                                <?php if ($referral->credits_used > 0): ?>
+                                    <?php echo number_format($referral->credits_used, 2); ?> CHF
+                                <?php else: ?>
+                                    <span style="color: #666;">Not used</span>
+                                <?php endif; ?>
+                            </td>
+                            <td>
+                                <span class="status-badge status-<?php echo $referral->status; ?>">
+                                    <?php echo ucfirst($referral->status); ?>
+                                </span>
+                            </td>
+                            <td><?php echo date('M j, Y', strtotime($referral->created_at)); ?></td>
+                            <td>
+                                <button class="button button-small" onclick="viewCustomerDetails(<?php echo $referral->referrer_id; ?>)">
+                                    View Profile
+                                </button>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+            
+            <div style="margin-top: 20px; padding: 15px; background: #f0f6ff; border-left: 4px solid #0073aa;">
+                <h4>💡 Customer Referral System</h4>
+                <ul style="margin: 10px 0;">
+                    <li>Customers earn <strong>50 CHF credits</strong> per successful referral</li>
+                    <li>Credits can only be redeemed at checkout (not cash payments)</li>
+                    <li>Lower reward rate than coach referrals to encourage coach program</li>
+                    <li>Builds customer loyalty and organic growth</li>
+                </ul>
+            </div>
+        </div>
+        <?php
     }
 
     public function render_referrals_page() {
-        // Implementation for referrals listing page
-        ?>
-        <div class="wrap intersoccer-admin">
-            <h1>All Referrals</h1>
-            <!-- Referrals table implementation -->
-        </div>
-        <?php
+        // Legacy method - redirect to coach referrals
+        wp_redirect(admin_url('admin.php?page=intersoccer-coach-referrals'));
+        exit;
     }
 
     public function render_settings_page() {
         ?>
         <div class="wrap intersoccer-admin">
             <h1>Referral System Settings</h1>
-            <form method="post" action="<?php echo admin_url('admin-post.php'); ?>" enctype="multipart/form-data">
-                <input type="hidden" name="action" value="import_coaches">
-                <?php wp_nonce_field('import_coaches_nonce', 'import_coaches_nonce'); ?>
-                <h2>Import Coaches</h2>
-                <p>Upload a CSV with columns: first_name, last_name, email, phone, specialization, location, experience_years, bio</p>
-                <input type="file" name="coach_csv" accept=".csv" required>
-                <button type="submit" class="button button-primary">Import Coaches</button>
-            </form>
-           <form method="post" action="<?php echo admin_url('admin-post.php'); ?>" enctype="multipart/form-data">
+            <form method="post" action="options.php">
                 <?php
                 settings_fields('intersoccer_settings');
                 do_settings_sections('intersoccer_settings');
@@ -485,6 +539,390 @@ class InterSoccer_Referral_Admin_Dashboard {
                 <?php submit_button(); ?>
             </form>
         </div>
+        <?php
+    }
+
+    /**
+     * Render Financial Report Page (Complete Implementation)
+     */
+    public function render_financial_report_page() {
+        $financial_data = $this->get_financial_overview();
+        $customer_credits = $this->get_customer_credits_breakdown();
+        
+        ?>
+        <div class="wrap intersoccer-admin">
+            <h1>💰 Financial Report</h1>
+            <p class="description">Complete overview of credits, redemptions, and financial obligations.</p>
+            
+            <!-- Financial Overview Cards -->
+            <div class="financial-overview-grid">
+                <div class="financial-card total-active">
+                    <div class="card-icon">💳</div>
+                    <div class="card-content">
+                        <h3><?php echo number_format($financial_data['total_active_credits'], 2); ?> CHF</h3>
+                        <p>Total Active Credits</p>
+                        <span class="card-subtitle">Liability on books</span>
+                    </div>
+                </div>
+                
+                <div class="financial-card total-redeemed">
+                    <div class="card-icon">✅</div>
+                    <div class="card-content">
+                        <h3><?php echo number_format($financial_data['total_redeemed_credits'], 2); ?> CHF</h3>
+                        <p>Credits Redeemed</p>
+                        <span class="card-subtitle">Revenue impact</span>
+                    </div>
+                </div>
+                
+                <div class="financial-card coach-earnings">
+                    <div class="card-icon">👨‍🏫</div>
+                    <div class="card-content">
+                        <h3><?php echo number_format($financial_data['total_coach_earnings'], 2); ?> CHF</h3>
+                        <p>Coach Commissions</p>
+                        <span class="card-subtitle">Payment obligations</span>
+                    </div>
+                </div>
+                
+                <div class="financial-card net-impact">
+                    <div class="card-icon">📊</div>
+                    <div class="card-content">
+                        <h3><?php echo number_format($financial_data['net_financial_impact'], 2); ?> CHF</h3>
+                        <p>Net Financial Impact</p>
+                        <span class="card-subtitle">Total program cost</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Customer Credits Management -->
+            <div class="credits-management-section">
+                <div class="section-header">
+                    <h2>👥 Customer Credits Management</h2>
+                    <button class="button button-primary" onclick="showBulkCreditModal()">Bulk Credit Adjustment</button>
+                </div>
+                
+                <div class="credits-filters">
+                    <select id="credit-filter" onchange="filterCredits()">
+                        <option value="all">All Customers</option>
+                        <option value="high">High Balance (>200 CHF)</option>
+                        <option value="medium">Medium Balance (50-200 CHF)</option>
+                        <option value="low">Low Balance (<50 CHF)</option>
+                        <option value="zero">Zero Balance</option>
+                    </select>
+                    
+                    <input type="text" id="customer-search" placeholder="Search customers..." onkeyup="searchCustomers()">
+                    <button class="button" onclick="exportCreditsReport()">Export CSV</button>
+                </div>
+                
+                <table class="wp-list-table widefat fixed striped">
+                    <thead>
+                        <tr>
+                            <th>Customer</th>
+                            <th>Current Credits</th>
+                            <th>Credits Earned</th>
+                            <th>Credits Used</th>
+                            <th>Last Activity</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="customer-credits-table">
+                        <?php foreach ($customer_credits as $customer): ?>
+                        <tr data-credits="<?php echo $customer->current_credits; ?>" data-customer="<?php echo esc_attr(strtolower($customer->display_name . ' ' . $customer->user_email)); ?>">
+                            <td>
+                                <div class="customer-info">
+                                    <?php echo get_avatar($customer->ID, 32); ?>
+                                    <div class="customer-details">
+                                        <strong><?php echo esc_html($customer->display_name); ?></strong>
+                                        <div class="customer-email"><?php echo esc_html($customer->user_email); ?></div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="credits-display <?php echo $customer->current_credits > 200 ? 'high-credits' : ($customer->current_credits > 50 ? 'medium-credits' : 'low-credits'); ?>">
+                                    <?php echo number_format($customer->current_credits, 2); ?> CHF
+                                </span>
+                            </td>
+                            <td><?php echo number_format($customer->credits_earned, 2); ?> CHF</td>
+                            <td><?php echo number_format($customer->credits_used, 2); ?> CHF</td>
+                            <td><?php echo $customer->last_activity ? date('M j, Y', strtotime($customer->last_activity)) : 'Never'; ?></td>
+                            <td>
+                                <button class="button button-small edit-credits" 
+                                        data-customer-id="<?php echo $customer->ID; ?>" 
+                                        data-current-credits="<?php echo $customer->current_credits; ?>"
+                                        data-customer-name="<?php echo esc_attr($customer->display_name); ?>">
+                                    Edit Credits
+                                </button>
+                            </td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Add the modal and JavaScript here -->
+        <div id="edit-credits-modal" class="modal-overlay" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Edit Customer Credits</h3>
+                    <button class="modal-close" onclick="closeEditModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="edit-credits-form">
+                        <div class="form-group">
+                            <label>Customer:</label>
+                            <p id="edit-customer-name" class="customer-name"></p>
+                        </div>
+                        <div class="form-group">
+                            <label for="current-credits-display">Current Credits:</label>
+                            <p id="current-credits-display" class="current-credits"></p>
+                        </div>
+                        <div class="form-group">
+                            <label for="new-credits">New Credit Amount (CHF):</label>
+                            <input type="number" id="new-credits" step="0.01" min="0" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="adjustment-reason">Reason for Adjustment:</label>
+                            <select id="adjustment-reason" required>
+                                <option value="">Select reason...</option>
+                                <option value="customer_service">Customer Service Adjustment</option>
+                                <option value="promotion">Promotional Credit</option>
+                                <option value="refund">Refund Credits</option>
+                                <option value="correction">Data Correction</option>
+                                <option value="bonus">Special Bonus</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="adjustment-notes">Notes:</label>
+                            <textarea id="adjustment-notes" rows="3" placeholder="Optional notes about this adjustment..."></textarea>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="button button-primary">Update Credits</button>
+                            <button type="button" class="button" onclick="closeEditModal()">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <style>
+        .financial-overview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .financial-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transition: transform 0.2s ease;
+        }
+        
+        .financial-card:hover {
+            transform: translateY(-2px);
+        }
+        
+        .financial-card.total-active { border-left: 4px solid #e74c3c; }
+        .financial-card.total-redeemed { border-left: 4px solid #27ae60; }
+        .financial-card.coach-earnings { border-left: 4px solid #3498db; }
+        .financial-card.net-impact { border-left: 4px solid #9b59b6; }
+        
+        .card-icon {
+            font-size: 32px;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.05);
+            border-radius: 50%;
+        }
+        
+        .credits-management-section {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+        
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .credits-filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .customer-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .credits-display {
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 12px;
+        }
+        
+        .high-credits { background: #ffebee; color: #c62828; }
+        .medium-credits { background: #fff3e0; color: #ef6c00; }
+        .low-credits { background: #f3e5f5; color: #7b1fa2; }
+        
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid #e1e5e9;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .modal-body {
+            padding: 25px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        </style>
+        
+        <script>
+        let currentEditingCustomer = null;
+        
+        function showEditModal(customerId, currentCredits, customerName) {
+            currentEditingCustomer = customerId;
+            document.getElementById('edit-customer-name').textContent = customerName;
+            document.getElementById('current-credits-display').textContent = currentCredits + ' CHF';
+            document.getElementById('new-credits').value = currentCredits;
+            document.getElementById('edit-credits-modal').style.display = 'flex';
+        }
+        
+        function closeEditModal() {
+            document.getElementById('edit-credits-modal').style.display = 'none';
+            document.getElementById('edit-credits-form').reset();
+            currentEditingCustomer = null;
+        }
+        
+        // Edit credits button handlers
+        document.querySelectorAll('.edit-credits').forEach(button => {
+            button.addEventListener('click', function() {
+                const customerId = this.dataset.customerId;
+                const currentCredits = this.dataset.currentCredits;
+                const customerName = this.dataset.customerName;
+                showEditModal(customerId, currentCredits, customerName);
+            });
+        });
+        
+        // Form submission
+        document.getElementById('edit-credits-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            updateCustomerCredits();
+        });
+        
+        function updateCustomerCredits() {
+            const formData = {
+                action: 'update_customer_credits',
+                nonce: '<?php echo wp_create_nonce("intersoccer_admin_nonce"); ?>',
+                customer_id: currentEditingCustomer,
+                new_credits: document.getElementById('new-credits').value,
+                reason: document.getElementById('adjustment-reason').value,
+                notes: document.getElementById('adjustment-notes').value
+            };
+            
+            jQuery.post(ajaxurl, formData)
+                .done(function(response) {
+                    if (response.success) {
+                        alert('Credits updated successfully!');
+                        location.reload();
+                    } else {
+                        alert('Error: ' + response.data.message);
+                    }
+                })
+                .fail(function() {
+                    alert('Request failed. Please try again.');
+                });
+        }
+        
+        function filterCredits() {
+            const filter = document.getElementById('credit-filter').value;
+            const rows = document.querySelectorAll('#customer-credits-table tr');
+            
+            rows.forEach(row => {
+                const credits = parseFloat(row.dataset.credits) || 0;
+                let show = true;
+                
+                switch(filter) {
+                    case 'high': show = credits > 200; break;
+                    case 'medium': show = credits >= 50 && credits <= 200; break;
+                    case 'low': show = credits < 50 && credits > 0; break;
+                    case 'zero': show = credits === 0; break;
+                    default: show = true;
+                }
+                
+                row.style.display = show ? '' : 'none';
+            });
+        }
+        
+        function searchCustomers() {
+            const search = document.getElementById('customer-search').value.toLowerCase();
+            const rows = document.querySelectorAll('#customer-credits-table tr');
+            
+            rows.forEach(row => {
+                const customerText = row.dataset.customer || '';
+                row.style.display = customerText.includes(search) ? '' : 'none';
+            });
+        }
+        </script>
         <?php
     }
 
@@ -584,6 +1022,7 @@ class InterSoccer_Referral_Admin_Dashboard {
             wp_send_json_error(['message' => 'Error creating demo data: ' . $e->getMessage()]);
         }
     }
+    
 
     public function clear_demo_data() {
         if (!check_ajax_referer('intersoccer_admin_nonce', 'nonce', false)) {
@@ -597,12 +1036,15 @@ class InterSoccer_Referral_Admin_Dashboard {
         global $wpdb;
         
         try {
-            // Clear referrals table
-            $table_name = $wpdb->prefix . 'intersoccer_referrals';
-            $wpdb->query("TRUNCATE TABLE $table_name");
-            $wpdb->query("TRUNCATE TABLE {$wpdb->prefix}intersoccer_coach_performance");
-            $wpdb->query("TRUNCATE TABLE {$wpdb->prefix}intersoccer_coach_achievements");
-
+            // Clear all related tables
+            $referrals_table = $wpdb->prefix . 'intersoccer_referrals';
+            $performance_table = $wpdb->prefix . 'intersoccer_coach_performance';
+            $achievements_table = $wpdb->prefix . 'intersoccer_coach_achievements';
+            
+            $wpdb->query("TRUNCATE TABLE $referrals_table");
+            $wpdb->query("TRUNCATE TABLE $performance_table");
+            $wpdb->query("TRUNCATE TABLE $achievements_table");
+            
             // Remove demo users
             $demo_users = get_users(['meta_key' => 'intersoccer_demo_user', 'meta_value' => '1']);
             foreach ($demo_users as $user) {
@@ -613,6 +1055,123 @@ class InterSoccer_Referral_Admin_Dashboard {
         } catch (Exception $e) {
             wp_send_json_error(['message' => 'Error clearing demo data: ' . $e->getMessage()]);
         }
+    }
+
+    // AJAX handler for updating customer credits
+    public function update_customer_credits() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) wp_send_json_error(['message' => 'Unauthorized']);
+        
+        $customer_id = intval($_POST['customer_id']);
+        $new_credits = floatval($_POST['new_credits']);
+        $reason = sanitize_text_field($_POST['reason']);
+        $notes = sanitize_textarea_field($_POST['notes']);
+        
+        $customer = get_user_by('ID', $customer_id);
+        if (!$customer) {
+            wp_send_json_error(['message' => 'Customer not found']);
+        }
+        
+        $old_credits = get_user_meta($customer_id, 'intersoccer_customer_credits', true) ?: 0;
+        
+        // Update credits
+        update_user_meta($customer_id, 'intersoccer_customer_credits', $new_credits);
+        
+        // Log the adjustment
+        $adjustment_log = get_user_meta($customer_id, 'intersoccer_credit_adjustments', true) ?: [];
+        $adjustment_log[] = [
+            'date' => current_time('mysql'),
+            'admin_user' => get_current_user_id(),
+            'old_credits' => $old_credits,
+            'new_credits' => $new_credits,
+            'difference' => $new_credits - $old_credits,
+            'reason' => $reason,
+            'notes' => $notes
+        ];
+        update_user_meta($customer_id, 'intersoccer_credit_adjustments', $adjustment_log);
+        
+        error_log("Credits updated for customer {$customer_id}: {$old_credits} → {$new_credits} CHF (Reason: {$reason})");
+        
+        wp_send_json_success(['message' => 'Credits updated successfully']);
+    }
+
+    // ROI Report Export
+    public function export_roi_report() {
+        if (!check_ajax_referer('intersoccer_admin_nonce', 'nonce', false)) {
+            wp_die('Security check failed');
+        }
+
+        if (!current_user_can('manage_options')) {
+            wp_die('Insufficient permissions');
+        }
+
+        $report = InterSoccer_Commission_Calculator::generate_admin_report();
+        
+        header('Content-Type: text/csv');
+        header('Content-Disposition: attachment; filename="intersoccer_roi_' . date('Ymd_His') . '.csv"');
+        header('Cache-Control: must-revalidate, post-check=0, pre-check=0');
+        header('Expires: 0');
+        
+        $fp = fopen('php://output', 'w');
+        
+        // Add BOM for Excel UTF-8 support
+        fputs($fp, "\xEF\xBB\xBF");
+        
+        // Header section
+        fputcsv($fp, ['InterSoccer ROI Report - ' . date('Y-m-d H:i:s')]);
+        fputcsv($fp, ['Report Period', $report['period']['start'] . ' to ' . $report['period']['end']]);
+        fputcsv($fp, []);
+        
+        // Summary metrics
+        fputcsv($fp, ['PERFORMANCE SUMMARY']);
+        fputcsv($fp, ['Metric', 'Value', 'Unit']);
+        fputcsv($fp, ['Total Referrals', number_format($report['summary']->total_referrals), 'referrals']);
+        fputcsv($fp, ['Active Coaches', number_format($report['summary']->active_coaches), 'coaches']);
+        fputcsv($fp, ['Unique Customers', number_format($report['summary']->unique_customers), 'customers']);
+        fputcsv($fp, ['Total Base Commission', number_format($report['summary']->total_base_commission, 2), 'CHF']);
+        fputcsv($fp, ['Total Loyalty Bonuses', number_format($report['summary']->total_loyalty_bonus, 2), 'CHF']);
+        fputcsv($fp, ['Total Retention Bonuses', number_format($report['summary']->total_retention_bonus, 2), 'CHF']);
+        fputcsv($fp, ['Total Payout', number_format($report['summary']->total_payout, 2), 'CHF']);
+        
+        // Calculate ROI metrics
+        $avg_commission_per_referral = $report['summary']->total_referrals > 0 ? 
+            $report['summary']->total_payout / $report['summary']->total_referrals : 0;
+        $avg_commission_per_coach = $report['summary']->active_coaches > 0 ?
+            $report['summary']->total_payout / $report['summary']->active_coaches : 0;
+        
+        fputcsv($fp, ['Average Commission per Referral', number_format($avg_commission_per_referral, 2), 'CHF']);
+        fputcsv($fp, ['Average Earnings per Coach', number_format($avg_commission_per_coach, 2), 'CHF']);
+        fputcsv($fp, []);
+        
+        // Tier breakdown
+        fputcsv($fp, ['COACH TIER BREAKDOWN']);
+        fputcsv($fp, ['Tier', 'Coach Count', 'Total Commission (CHF)', 'Avg per Coach (CHF)']);
+        foreach ($report['tier_breakdown'] as $tier) {
+            $avg_per_coach = $tier->coach_count > 0 ? $tier->tier_commission / $tier->coach_count : 0;
+            fputcsv($fp, [
+                $tier->tier,
+                number_format($tier->coach_count),
+                number_format($tier->tier_commission, 2),
+                number_format($avg_per_coach, 2)
+            ]);
+        }
+        fputcsv($fp, []);
+        
+        // Growth metrics
+        fputcsv($fp, ['GROWTH METRICS']);
+        $trends = InterSoccer_Commission_Calculator::get_commission_trends(6);
+        fputcsv($fp, ['Month', 'Referrals', 'Commission (CHF)', 'Avg Commission (CHF)']);
+        foreach ($trends as $trend) {
+            fputcsv($fp, [
+                $trend['month'],
+                number_format($trend['referrals']),
+                number_format($trend['total_commission'], 2),
+                number_format($trend['avg_commission'], 2)
+            ]);
+        }
+        
+        fclose($fp);
+        exit;
     }
 
     private function create_demo_coaches() {
@@ -744,26 +1303,51 @@ class InterSoccer_Referral_Admin_Dashboard {
     }
 
     private function get_all_coaches() {
-        global $wpdb;
-        $referrals_table = $wpdb->prefix . 'intersoccer_referrals';
+        // Debug logging
+        error_log('InterSoccer: Fetching all coaches...');
         
         // Get all users with coach role
         $coach_users = get_users([
             'role' => 'coach',
             'orderby' => 'display_name',
-            'order' => 'ASC'
+            'order' => 'ASC',
+            'number' => -1  // Get all coaches
         ]);
         
+        error_log('InterSoccer: Found ' . count($coach_users) . ' coach users');
+        
+        if (empty($coach_users)) {
+            // Fallback: get users with coach role in capabilities
+            $coach_users = get_users([
+                'meta_query' => [
+                    [
+                        'key' => 'wp_capabilities',
+                        'value' => 'coach',
+                        'compare' => 'LIKE'
+                    ]
+                ]
+            ]);
+            error_log('InterSoccer: Fallback found ' . count($coach_users) . ' coaches with capabilities');
+        }
+        
+        global $wpdb;
+        $referrals_table = $wpdb->prefix . 'intersoccer_referrals';
         $coaches = [];
         
         foreach ($coach_users as $user) {
+            // Verify user has coach role
+            if (!in_array('coach', $user->roles)) {
+                error_log('InterSoccer: User ' . $user->ID . ' missing coach role, skipping');
+                continue;
+            }
+            
             // Get referral stats for this coach
             $referral_stats = $wpdb->get_row($wpdb->prepare("
                 SELECT 
                     COUNT(*) as referral_count,
-                    COALESCE(SUM(commission_amount + loyalty_bonus + retention_bonus), 0) as total_commission
+                    COALESCE(SUM(commission_amount + COALESCE(loyalty_bonus, 0) + COALESCE(retention_bonus, 0)), 0) as total_commission
                 FROM $referrals_table 
-                WHERE coach_id = %d AND status = 'completed'
+                WHERE coach_id = %d AND status IN ('completed', 'approved', 'paid')
             ", $user->ID));
             
             // Get coach credits
@@ -772,12 +1356,12 @@ class InterSoccer_Referral_Admin_Dashboard {
             // Build coach object
             $coach = new stdClass();
             $coach->ID = $user->ID;
-            $coach->display_name = $user->display_name;
+            $coach->display_name = $user->display_name ?: ($user->first_name . ' ' . $user->last_name);
             $coach->user_email = $user->user_email;
             $coach->first_name = $user->first_name;
             $coach->last_name = $user->last_name;
-            $coach->referral_count = (int) $referral_stats->referral_count;
-            $coach->total_commission = (float) $referral_stats->total_commission;
+            $coach->referral_count = (int) ($referral_stats ? $referral_stats->referral_count : 0);
+            $coach->total_commission = (float) ($referral_stats ? $referral_stats->total_commission : 0);
             $coach->credits = (float) $credits;
             
             // Add coach-specific meta
@@ -786,10 +1370,13 @@ class InterSoccer_Referral_Admin_Dashboard {
             $coach->location = get_user_meta($user->ID, 'intersoccer_location', true);
             $coach->experience_years = get_user_meta($user->ID, 'intersoccer_experience_years', true);
             $coach->bio = get_user_meta($user->ID, 'intersoccer_bio', true);
+            $coach->join_date = $user->user_registered;
             
             $coaches[] = $coach;
+            error_log('InterSoccer: Added coach ' . $coach->display_name . ' (ID: ' . $coach->ID . ')');
         }
         
+        error_log('InterSoccer: Returning ' . count($coaches) . ' processed coaches');
         return $coaches;
     }
 
@@ -846,126 +1433,211 @@ class InterSoccer_Referral_Admin_Dashboard {
         register_setting('intersoccer_settings', 'intersoccer_commission_second');
         register_setting('intersoccer_settings', 'intersoccer_commission_third');
     }
-
-    public function export_referral_report() {
-        if (!current_user_can('manage_options')) {
-            wp_die('Unauthorized');
-        }
-
+    
+    /**
+     * Get coach referrals with enhanced data
+     */
+    private function get_coach_referrals($limit = 50) {
         global $wpdb;
         $table_name = $wpdb->prefix . 'intersoccer_referrals';
-
-        // Handle filter parameters
-        $date_range = $_GET['date_range'] ?? 'this_month';
-        $coach_id = isset($_GET['coach_id']) ? absint($_GET['coach_id']) : 0;
-        $status = sanitize_text_field($_GET['status'] ?? 'all');
-
-        $where = "WHERE 1=1";
-        $params = [];
-        if ($date_range === 'last_30_days') {
-            $where .= " AND r.created_at >= %s";
-            $params[] = date('Y-m-d 00:00:00', strtotime('-30 days'));
-        } elseif ($date_range === 'this_month') {
-            $where .= " AND r.created_at >= %s AND r.created_at <= %s";
-            $params[] = date('Y-m-01 00:00:00');
-            $params[] = date('Y-m-t 23:59:59');
-        }
-        if ($coach_id) {
-            $where .= " AND r.coach_id = %d";
-            $params[] = $coach_id;
-        }
-        if ($status !== 'all') {
-            $where .= " AND r.status = %s";
-            $params[] = $status;
-        }
-
-        // Fetch referral data
-        $referrals = $wpdb->get_results($wpdb->prepare("
+        
+        return $wpdb->get_results($wpdb->prepare("
             SELECT 
-                cu.display_name AS coach_name,
-                cu.user_email AS coach_email,
-                u.display_name AS customer_name,
-                u.user_email AS customer_email,
-                r.order_id,
-                r.created_at AS order_date,
-                r.commission_amount,
-                r.status,
-                r.conversion_date AS payment_date,
-                r.purchase_count,
-                r.referral_code
-            FROM $table_name r
-            LEFT JOIN {$wpdb->users} cu ON r.coach_id = cu.ID
-            LEFT JOIN {$wpdb->users} u ON r.customer_id = u.ID
-            $where
-            ORDER BY r.created_at DESC
-        ", $params));
-
-        // Fetch order details
-        $data = [];
-        $total_commission = 0;
-        foreach ($referrals as $ref) {
-            $order = wc_get_order($ref->order_id);
-            if (!$order) continue;
-
-            $products = [];
-            foreach ($order->get_items() as $item) {
-                $products[] = $item->get_name();
-            }
-            $customer_type = $ref->purchase_count == 1 ? 'New' : 'Returning';
-            $discount = $order->get_total_discount() ?: 0;
-            $commission_rate = $ref->purchase_count == 1 ? get_option('intersoccer_commission_first', 15) :
-                              ($ref->purchase_count == 2 ? get_option('intersoccer_commission_second', 7.5) :
-                              get_option('intersoccer_commission_third', 5));
-
-            $data[] = [
-                'Coach Name' => $ref->coach_name,
-                'Coach Email' => $ref->coach_email,
-                'Customer Name' => $ref->customer_name,
-                'Customer Email' => $ref->customer_email,
-                'Order ID' => $ref->order_id,
-                'Order Date' => date_i18n('d.m.Y', strtotime($ref->order_date)),
-                'Product Name' => implode(', ', $products),
-                'Order Total (CHF)' => number_format($order->get_total(), 2),
-                'Discount Applied' => number_format($discount, 2),
-                'Commission Rate (%)' => number_format($commission_rate, 1),
-                'Commission Amount (CHF)' => number_format($ref->commission_amount, 2),
-                'Commission Status' => ucfirst($ref->status),
-                'Payment Date' => $ref->payment_date ? date_i18n('d.m.Y', strtotime($ref->payment_date)) : '-',
-                'Customer Type' => $customer_type,
-                'Referral Source' => $ref->referral_code
-            ];
-            $total_commission += $ref->commission_amount;
-        }
-
-        // Add totals row
-        $data[] = [
-            'Coach Name' => 'TOTALS',
-            'Coach Email' => '',
-            'Customer Name' => '',
-            'Customer Email' => '',
-            'Order ID' => '',
-            'Order Date' => '',
-            'Product Name' => '',
-            'Order Total (CHF)' => '',
-            'Discount Applied' => '',
-            'Commission Rate (%)' => '',
-            'Commission Amount (CHF)' => number_format($total_commission, 2),
-            'Commission Status' => '',
-            'Payment Date' => '',
-            'Customer Type' => '',
-            'Referral Source' => ''
-        ];
-
-        // Output CSV
-        header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="InterSoccer_Referral_Report_' . date('Y-m-d') . '.csv"');
-        $output = fopen('php://output', 'w');
-        fputcsv($output, array_keys($data[0]));
-        foreach ($data as $row) {
-            fputcsv($output, $row);
-        }
-        fclose($output);
-        exit;
+                r.*,
+                u1.display_name as coach_name,
+                u1.user_email as coach_email,
+                u2.display_name as customer_name,
+                u2.user_email as customer_email
+            FROM $table_name r 
+            LEFT JOIN {$wpdb->users} u1 ON r.coach_id = u1.ID 
+            LEFT JOIN {$wpdb->users} u2 ON r.customer_id = u2.ID 
+            ORDER BY r.created_at DESC 
+            LIMIT %d
+        ", $limit));
     }
-    // add_action('wp_ajax_export_roi_report', [$this, 'export_roi_report']);
+    
+    /**
+     * Get customer referrals (customer-to-customer)
+     */
+    private function get_customer_referrals($limit = 50) {
+        global $wpdb;
+        
+        // Get customer referral data from user meta
+        $customer_referrals = $wpdb->get_results("
+            SELECT 
+                u1.ID as referrer_id,
+                u1.display_name as referrer_name,
+                u1.user_email as referrer_email,
+                um1.meta_value as referred_user_id,
+                um2.meta_value as credits_awarded,
+                um3.meta_value as date_referred
+            FROM {$wpdb->users} u1
+            INNER JOIN {$wpdb->usermeta} um1 ON u1.ID = um1.user_id AND um1.meta_key = 'intersoccer_customer_referrals'
+            LEFT JOIN {$wpdb->usermeta} um2 ON u1.ID = um2.user_id AND um2.meta_key = 'intersoccer_referral_credits_earned'
+            LEFT JOIN {$wpdb->usermeta} um3 ON u1.ID = um3.user_id AND um3.meta_key = 'intersoccer_last_referral_date'
+            WHERE um1.meta_value != ''
+            ORDER BY um3.meta_value DESC
+            LIMIT $limit
+        ");
+        
+        // Enhanced data for each referral
+        $enhanced_referrals = [];
+        foreach ($customer_referrals as $referral) {
+            if ($referral->referred_user_id) {
+                $referred_user = get_user_by('ID', $referral->referred_user_id);
+                if ($referred_user) {
+                    $enhanced_referral = new stdClass();
+                    $enhanced_referral->referrer_id = $referral->referrer_id;
+                    $enhanced_referral->referrer_name = $referral->referrer_name;
+                    $enhanced_referral->referrer_email = $referral->referrer_email;
+                    $enhanced_referral->referred_name = $referred_user->display_name;
+                    $enhanced_referral->referred_email = $referred_user->user_email;
+                    $enhanced_referral->credits_awarded = $referral->credits_awarded ?: 50;
+                    $enhanced_referral->credits_used = get_user_meta($referral->referrer_id, 'intersoccer_credits_used_total', true) ?: 0;
+                    $enhanced_referral->status = 'active';
+                    $enhanced_referral->created_at = $referral->date_referred ?: current_time('mysql');
+                    
+                    $enhanced_referrals[] = $enhanced_referral;
+                }
+            }
+        }
+        
+        return $enhanced_referrals;
+    }
+
+    /**
+     * Secure AJAX handler for coach messaging
+     */
+    public function send_coach_message() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+        
+        $coach_id = intval($_POST['coach_id']);
+        $subject = sanitize_text_field($_POST['subject']);
+        $message = sanitize_textarea_field($_POST['message']);
+        
+        $coach = get_user_by('ID', $coach_id);
+        if (!$coach || !in_array('coach', $coach->roles)) {
+            wp_send_json_error(['message' => 'Invalid coach ID']);
+        }
+        
+        $sent = wp_mail($coach->user_email, $subject, $message);
+        
+        if ($sent) {
+            error_log("Message sent to coach {$coach_id}: {$subject}");
+            wp_send_json_success(['message' => 'Message sent successfully']);
+        } else {
+            error_log("Failed to send message to coach {$coach_id}");
+            wp_send_json_error(['message' => 'Failed to send message']);
+        }
+    }
+    
+    /**
+     * Secure AJAX handler for coach deactivation
+     */
+    public function deactivate_coach() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+        
+        $coach_id = intval($_POST['coach_id']);
+        $coach = get_user_by('ID', $coach_id);
+        
+        if (!$coach || !in_array('coach', $coach->roles)) {
+            wp_send_json_error(['message' => 'Invalid coach ID']);
+        }
+        
+        // Remove coach role but keep user account
+        $coach->remove_role('coach');
+        update_user_meta($coach_id, 'intersoccer_deactivated', current_time('mysql'));
+        
+        error_log("Coach {$coach_id} deactivated by " . get_current_user_id());
+        wp_send_json_success(['message' => 'Coach deactivated successfully']);
+    }
+
+     /**
+     * Get financial overview data
+     */
+    private function get_financial_overview() {
+        global $wpdb;
+        
+        // Get all customer credits
+        $customer_credits = $wpdb->get_results("
+            SELECT 
+                user_id,
+                meta_value as credits
+            FROM {$wpdb->usermeta} 
+            WHERE meta_key = 'intersoccer_customer_credits' 
+            AND meta_value > 0
+        ");
+        
+        $total_active_credits = array_sum(array_column($customer_credits, 'credits'));
+        
+        // Get redeemed credits from order meta
+        $total_redeemed = $wpdb->get_var("
+            SELECT COALESCE(SUM(meta_value), 0) 
+            FROM {$wpdb->postmeta} 
+            WHERE meta_key = '_intersoccer_credits_used'
+        ") ?: 0;
+        
+        // Get coach earnings
+        $referrals_table = $wpdb->prefix . 'intersoccer_referrals';
+        $coach_earnings = $wpdb->get_var("
+            SELECT COALESCE(SUM(commission_amount + COALESCE(loyalty_bonus, 0) + COALESCE(retention_bonus, 0)), 0)
+            FROM $referrals_table 
+            WHERE status IN ('approved', 'paid', 'completed')
+        ") ?: 0;
+        
+        return [
+            'total_active_credits' => $total_active_credits,
+            'total_redeemed_credits' => $total_redeemed,
+            'total_coach_earnings' => $coach_earnings,
+            'net_financial_impact' => $total_active_credits + $total_redeemed + $coach_earnings
+        ];
+    }
+
+    /**
+     * Get customer credits breakdown
+     */
+    private function get_customer_credits_breakdown() {
+        global $wpdb;
+        
+        return $wpdb->get_results("
+            SELECT 
+                u.ID,
+                u.display_name,
+                u.user_email,
+                u.user_registered,
+                COALESCE(credits.meta_value, 0) as current_credits,
+                COALESCE(earned.meta_value, 0) as credits_earned,
+                COALESCE(used_total.total_used, 0) as credits_used,
+                activity.last_activity
+            FROM {$wpdb->users} u
+            LEFT JOIN {$wpdb->usermeta} credits ON u.ID = credits.user_id AND credits.meta_key = 'intersoccer_customer_credits'
+            LEFT JOIN {$wpdb->usermeta} earned ON u.ID = earned.user_id AND earned.meta_key = 'intersoccer_total_credits_earned'
+            LEFT JOIN (
+                SELECT 
+                    customer_id,
+                    SUM(CAST(pm.meta_value as DECIMAL(10,2))) as total_used
+                FROM {$wpdb->prefix}intersoccer_referrals r
+                JOIN {$wpdb->postmeta} pm ON r.order_id = pm.post_id AND pm.meta_key = '_intersoccer_credits_used'
+                GROUP BY customer_id
+            ) used_total ON u.ID = used_total.customer_id
+            LEFT JOIN (
+                SELECT 
+                    user_id,
+                    MAX(meta_value) as last_activity
+                FROM {$wpdb->usermeta} 
+                WHERE meta_key = 'intersoccer_last_activity'
+                GROUP BY user_id
+            ) activity ON u.ID = activity.user_id
+            WHERE (credits.meta_value IS NOT NULL AND credits.meta_value > 0) 
+               OR earned.meta_value IS NOT NULL 
+               OR used_total.total_used IS NOT NULL
+            ORDER BY CAST(COALESCE(credits.meta_value, 0) as DECIMAL(10,2)) DESC
+        ");
+    }
 }

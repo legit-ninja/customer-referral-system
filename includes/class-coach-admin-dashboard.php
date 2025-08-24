@@ -18,6 +18,9 @@ class InterSoccer_Coach_Admin_Dashboard {
         
         // Enqueue coach-specific admin styles
         add_action('admin_enqueue_scripts', [$this, 'enqueue_coach_admin_styles']);
+
+        // Coach dashboard tour
+        add_action('wp_ajax_complete_tour', [$this, 'complete_tour']);
     }
 
     public static function generate_coach_referral_link($coach_id) {
@@ -210,42 +213,32 @@ class InterSoccer_Coach_Admin_Dashboard {
         $user_id = get_current_user_id();
         $credits = intersoccer_get_coach_credits($user_id);
         $tier = intersoccer_get_coach_tier($user_id);
-        $referral_link = method_exists('InterSoccer_Referral_Handler', 'generate_coach_referral_link') 
-            ? InterSoccer_Referral_Handler::generate_coach_referral_link($user_id)
-            : home_url('/?ref=coach_' . $user_id);
+        $referral_link = InterSoccer_Referral_Handler::generate_coach_referral_link($user_id);
+        error_log('Rendering coach dashboard, tour status: ' . get_user_meta($user_id, 'intersoccer_tour_completed', true));
         ?>
         <div class="wrap coach-dashboard">
             <h1>Welcome back, <?php echo wp_get_current_user()->display_name; ?>! 👋</h1>
-            
             <div class="coach-welcome-banner">
                 <div class="coach-stats-overview">
-                    <div class="stat-box">
+                    <div class="stat-box" id="tour-credits">
                         <span class="stat-number"><?php echo number_format($credits, 0); ?> CHF</span>
                         <span class="stat-label">Total Credits</span>
                     </div>
-                    <div class="stat-box">
+                    <div class="stat-box" id="tour-tier">
                         <span class="stat-number tier-<?php echo strtolower($tier); ?>"><?php echo $tier; ?></span>
                         <span class="stat-label">Current Tier</span>
                     </div>
-                    <div class="stat-box">
+                    <div class="stat-box" id="tour-referrals">
                         <span class="stat-number"><?php echo $this->get_coach_referral_count($user_id); ?></span>
                         <span class="stat-label">Total Referrals</span>
                     </div>
                 </div>
             </div>
-            
-            <div class="coach-quick-actions">
-                <a href="#" class="coach-action-btn primary" onclick="copyReferralLink()">
-                    📋 Copy Referral Link
-                </a>
-                <a href="<?php echo admin_url('admin.php?page=intersoccer-coach-referrals'); ?>" class="coach-action-btn">
-                    👥 View My Referrals
-                </a>
-                <a href="<?php echo admin_url('admin.php?page=intersoccer-coach-resources'); ?>" class="coach-action-btn">
-                    📚 Marketing Resources
-                </a>
+            <div class="coach-quick-actions" id="tour-actions">
+                <a href="#" class="coach-action-btn primary" onclick="copyReferralLink()">📋 Copy Referral Link</a>
+                <a href="<?php echo admin_url('admin.php?page=intersoccer-coach-referrals'); ?>" class="coach-action-btn">👥 View My Referrals</a>
+                <a href="<?php echo admin_url('admin.php?page=intersoccer-coach-resources'); ?>" class="coach-action-btn" id="tour-resources">📚 Marketing Resources</a>
             </div>
-            
             <script>
             function copyReferralLink() {
                 navigator.clipboard.writeText('<?php echo esc_js($referral_link); ?>');
@@ -370,6 +363,15 @@ class InterSoccer_Coach_Admin_Dashboard {
     public function enqueue_coach_admin_styles($hook) {
         if (current_user_can('coach') && !current_user_can('manage_options')) {
             wp_enqueue_style('coach-admin-styles', INTERSOCCER_REFERRAL_URL . 'assets/css/coach-admin.css', [], INTERSOCCER_REFERRAL_VERSION);
+            wp_enqueue_style('shepherd-css', 'https://cdn.jsdelivr.net/npm/shepherd.js@10.0.1/dist/css/shepherd.css', [], '10.0.1');
+            wp_enqueue_script('shepherd-js', 'https://cdn.jsdelivr.net/npm/shepherd.js@10.0.1/dist/js/shepherd.min.js', [], '10.0.1', true);
+            wp_enqueue_script('coach-tour-js', INTERSOCCER_REFERRAL_URL . 'assets/js/coach-tour.js', ['shepherd-js'], INTERSOCCER_REFERRAL_VERSION, true);
+            wp_localize_script('coach-tour-js', 'intersoccer_tour', [
+                'ajax_url' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('intersoccer_tour_nonce'),
+                'user_id' => get_current_user_id(),
+                'tour_completed' => get_user_meta(get_current_user_id(), 'intersoccer_tour_completed', true)
+            ]);
         }
     }
     
@@ -383,5 +385,16 @@ class InterSoccer_Coach_Admin_Dashboard {
             "SELECT COUNT(*) FROM $table_name WHERE coach_id = %d",
             $coach_id
         ));
+    }
+
+    public function complete_tour() {
+        check_ajax_referer('intersoccer_tour_nonce', 'nonce');
+        $user_id = absint($_POST['user_id']);
+        if (current_user_can('coach') && get_current_user_id() === $user_id) {
+            update_user_meta($user_id, 'intersoccer_tour_completed', 1);
+            error_log('Coach tour completed for user: ' . $user_id);
+            wp_send_json_success(['message' => 'Tour completed']);
+        }
+        wp_send_json_error(['message' => 'Unauthorized']);
     }
 }

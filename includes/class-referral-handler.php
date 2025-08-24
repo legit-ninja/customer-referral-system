@@ -70,52 +70,54 @@ class InterSoccer_Referral_Handler {
 
     // Process referral on order completion
     public function process_referral_order($order_id) {
-        if (!isset($_COOKIE['intersoccer_referral'])) {
-            return;
-        }
-
-        $ref_code = sanitize_text_field($_COOKIE['intersoccer_referral']);
-        $coach = $this->get_coach_by_code($ref_code);
-        if (!$coach) {
-            return;
-        }
-
         $order = wc_get_order($order_id);
         $customer_id = $order->get_customer_id();
-        $is_first_purchase = $this->is_first_purchase($customer_id);
+        $ref_code = WC()->session->get('intersoccer_referral') ?: ($_COOKIE['intersoccer_referral'] ?? '');
+        if (!$ref_code) return;
 
-        // Calculate commission
-        $commission = InterSoccer_Commission_Calculator::calculate_commission($order, $is_first_purchase ? 1 : 2);
-
-        // Store referral
         global $wpdb;
         $table_name = $wpdb->prefix . 'intersoccer_referrals';
+        $referrer = $this->get_referrer_by_code($ref_code);
+        if (!$referrer) return;
+
+        $is_first_purchase = $this->is_first_purchase($customer_id);
+        $commission = $referrer['type'] === 'coach' ? InterSoccer_Commission_Calculator::calculate_total_commission($order, $referrer['id'], $customer_id, $is_first_purchase ? 1 : 2) : 0;
+        $credits = $is_first_purchase ? 500 : 0; // 500 points for first purchase
+
         $wpdb->insert($table_name, [
-            'coach_id' => $coach->ID,
+            'coach_id' => $referrer['type'] === 'coach' ? $referrer['id'] : null,
             'customer_id' => $customer_id,
+            'referrer_id' => $referrer['id'],
+            'referrer_type' => $referrer['type'],
             'order_id' => $order_id,
             'commission_amount' => $commission,
             'status' => 'pending',
+            'purchase_count' => $is_first_purchase ? 1 : $this->get_purchase_count($customer_id),
+            'referral_code' => $ref_code,
+            'conversion_date' => current_time('mysql')
         ]);
 
-        // Update coach credits
-        $current_credits = (float) get_user_meta($coach->ID, 'intersoccer_credits', true);
-        update_user_meta($coach->ID, 'intersoccer_credits', $current_credits + $commission);
+        if ($referrer['type'] === 'coach') {
+            $coach_credits = (float) get_user_meta($referrer['id'], 'intersoccer_credits', true);
+            update_user_meta($referrer['id'], 'intersoccer_credits', $coach_credits + $commission);
+        } else {
+            $customer_credits = (float) get_user_meta($referrer['id'], 'intersoccer_customer_credits', true);
+            update_user_meta($referrer['id'], 'intersoccer_customer_credits', $customer_credits + $credits);
+            $referrals_made = get_user_meta($referrer['id'], 'intersoccer_referrals_made', true) ?: [];
+            $referrals_made[] = ['order_id' => $order_id, 'date' => current_time('mysql')];
+            update_user_meta($referrer['id'], 'intersoccer_referrals_made', $referrals_made);
+        }
 
-        // New customer incentives
         if ($is_first_purchase) {
-            $order->apply_discount(10); // 10% discount - simplistic, adjust as needed
+            $order->apply_discount(10);
             $order->save();
-
-            // Award 500 points (50 CHF)
             $customer_credits = (float) get_user_meta($customer_id, 'intersoccer_customer_credits', true);
             update_user_meta($customer_id, 'intersoccer_customer_credits', $customer_credits + 50);
-
-            // Simple welcome email
             wp_mail($order->get_billing_email(), 'Welcome to InterSoccer!', 'Thanks for joining via referral! You have 50 CHF credits.');
         }
 
-        // Clear cookie
+        error_log('Processed referral order #' . $order_id . ', referrer_type: ' . $referrer['type'] . ', credits: ' . $credits);
+        WC()->session->__unset('intersoccer_referral');
         setcookie('intersoccer_referral', '', time() - 3600, '/');
     }
 
@@ -127,8 +129,11 @@ class InterSoccer_Referral_Handler {
 
     // Check if first purchase
     private function is_first_purchase($customer_id) {
-        $orders = wc_get_orders(['customer' => $customer_id, 'status' => 'completed', 'limit' => -1]);
-        return count($orders) === 1; // Including current one
+        return wc_get_orders(['customer' => $customer_id, 'status' => 'completed', 'limit' => -1]) <= 1;
+    }
+
+    private function get_purchase_count($customer_id) {
+        return count(wc_get_orders(['customer' => $customer_id, 'status' => 'completed', 'limit' => -1]));
     }
 
     // Add credit field to checkout

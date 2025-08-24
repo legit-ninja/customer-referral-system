@@ -131,25 +131,28 @@ class InterSoccer_Referral_System {
         $charset_collate = $wpdb->get_charset_collate();
         
         // Referrals table
-        $referrals_table = $wpdb->prefix . 'intersoccer_referrals';
-        $sql = "CREATE TABLE $referrals_table (
-            id int(11) NOT NULL AUTO_INCREMENT,
-            coach_id bigint(20) unsigned NOT NULL,
-            customer_id bigint(20) unsigned NOT NULL,
-            order_id bigint(20) unsigned NOT NULL,
-            commission_amount decimal(10,2) NOT NULL DEFAULT '0.00',
-            loyalty_bonus decimal(10,2) NOT NULL DEFAULT '0.00',
-            retention_bonus decimal(10,2) NOT NULL DEFAULT '0.00',
-            status varchar(20) NOT NULL DEFAULT 'pending',
-            purchase_count int(11) NOT NULL DEFAULT 1,
-            referral_code varchar(100) DEFAULT NULL,
-            conversion_date datetime DEFAULT NULL,
-            created_at datetime DEFAULT CURRENT_TIMESTAMP,
-            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        $table_name = $wpdb->prefix . 'intersoccer_referrals';
+        $charset_collate = $wpdb->get_charset_collate();
+        $sql = "CREATE TABLE $table_name (
+            id INT NOT NULL AUTO_INCREMENT,
+            coach_id BIGINT UNSIGNED,
+            customer_id BIGINT UNSIGNED NOT NULL,
+            referrer_id BIGINT UNSIGNED,
+            referrer_type ENUM('coach', 'customer') DEFAULT 'coach',
+            order_id BIGINT UNSIGNED NOT NULL,
+            commission_amount DECIMAL(10,2) DEFAULT '0.00',
+            loyalty_bonus DECIMAL(10,2) DEFAULT '0.00',
+            retention_bonus DECIMAL(10,2) DEFAULT '0.00',
+            status VARCHAR(20) DEFAULT 'pending',
+            purchase_count INT DEFAULT 1,
+            referral_code VARCHAR(100),
+            conversion_date DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             KEY idx_coach_id (coach_id),
             KEY idx_customer_id (customer_id),
-            KEY idx_order_id (order_id),
+            KEY idx_referrer_id (referrer_id),
             KEY idx_status (status),
             KEY idx_created_at (created_at)
         ) $charset_collate;";
