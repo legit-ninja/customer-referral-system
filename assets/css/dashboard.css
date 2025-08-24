@@ -1,0 +1,19 @@
+/* assets/css/dashboard.css */
+.intersoccer-dashboard {
+    background: #fff;
+    padding: 20px;
+    border: 1px solid #ddd;
+    max-width: 800px;
+    margin: 20px auto;
+}
+.intersoccer-dashboard table {
+    width: 100%;
+    border-collapse: collapse;
+}
+.intersoccer-dashboard th, .intersoccer-dashboard td {
+    border: 1px solid #ddd;
+    padding: 8px;
+}
+.intersoccer-dashboard th {
+    background: #f4f4f4;
+}
