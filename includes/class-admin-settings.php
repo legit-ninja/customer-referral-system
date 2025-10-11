@@ -15,6 +15,9 @@ class InterSoccer_Admin_Settings {
         add_action('wp_ajax_get_audit_log', [$this, 'get_audit_log']);
         add_action('wp_ajax_get_points_statistics', [$this, 'get_points_statistics_ajax']);
         add_action('wp_ajax_get_points_ledger', [$this, 'get_points_ledger_ajax']);
+        add_action('wp_ajax_run_points_sync', [$this, 'run_points_sync_ajax']);
+        add_action('wp_ajax_get_sync_info', [$this, 'get_sync_info_ajax']);
+        add_action('wp_ajax_get_sync_info_ajax', [$this, 'get_sync_info_ajax']);
         add_action('admin_init', [$this, 'register_settings']);
     }
 
@@ -237,6 +240,59 @@ class InterSoccer_Admin_Settings {
                     </div>
                 </div>
             </div>
+
+            <!-- One-Time Points Sync -->
+            <div class="intersoccer-settings-section">
+                <h2>🚀 One-Time Points Synchronization</h2>
+                <div class="sync-notice">
+                    <div class="notice notice-info">
+                        <p><strong>Important:</strong> This tool scans all existing WooCommerce orders and allocates points to customers based on their order history. This is designed to be run once during initial setup.</p>
+                        <p><strong>What it does:</strong></p>
+                        <ul>
+                            <li>Scans all completed orders that haven't been processed for points</li>
+                            <li>Allocates 1 point per CHF spent on each order</li>
+                            <li>Creates detailed transaction records in the points ledger</li>
+                            <li>Updates customer point balances</li>
+                        </ul>
+                        <p><strong>⚠️ Note:</strong> Future orders will automatically allocate points. This is only needed for historical data.</p>
+                    </div>
+                </div>
+
+                <div class="sync-controls">
+                    <div class="sync-card">
+                        <h3>Initial Points Allocation</h3>
+                        <p>Run this once to allocate points for all existing orders.</p>
+                        <div class="sync-status" id="sync-status">
+                            <span class="status-indicator status-ready">Ready to sync</span>
+                        </div>
+                        <button id="run-points-sync" class="button button-primary button-hero">
+                            <span class="dashicons dashicons-update"></span>
+                            Run One-Time Points Sync
+                        </button>
+                        <div id="sync-progress" style="display: none; margin-top: 20px;">
+                            <div class="progress-container">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="sync-progress-fill" style="width: 0%"></div>
+                                </div>
+                                <div class="progress-text" id="sync-progress-text">Initializing sync...</div>
+                            </div>
+                            <div class="sync-details" id="sync-details" style="margin-top: 15px;">
+                                <div class="detail-item"><strong>Orders Processed:</strong> <span id="orders-processed">0</span></div>
+                                <div class="detail-item"><strong>Points Allocated:</strong> <span id="points-allocated">0.00</span></div>
+                                <div class="detail-item"><strong>Customers Updated:</strong> <span id="customers-updated">0</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="sync-card">
+                        <h3>Sync Information</h3>
+                        <div id="sync-info">
+                            <p>Loading sync information...</p>
+                        </div>
+                        <button id="refresh-sync-info" class="button">Refresh Info</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <script>
@@ -455,6 +511,210 @@ class InterSoccer_Admin_Settings {
                 });
             });
 
+            // One-Time Points Sync
+            $('#run-points-sync').on('click', function(e) {
+                e.preventDefault();
+
+                if (!confirm('This will scan ALL existing WooCommerce orders and allocate points. This operation may take several minutes. Continue?')) {
+                    return;
+                }
+
+                const $button = $(this);
+                const $progress = $('#sync-progress');
+                const $status = $('#sync-status');
+                const $progressFill = $('#sync-progress-fill');
+                const $progressText = $('#sync-progress-text');
+
+                // Update status
+                $status.html('<span class="status-indicator status-running">Running sync...</span>');
+                $button.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> Running Sync...');
+
+                $progress.show();
+                $progressFill.css('width', '0%');
+                $progressText.text('Initializing points synchronization...');
+
+                // Start the sync
+                runPointsSync();
+            });
+
+            function runPointsSync() {
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'run_points_sync',
+                        nonce: intersoccer_admin.nonce
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            $('#sync-progress-fill').css('width', '100%');
+                            $('#sync-progress-text').text('Sync completed successfully!');
+                            $('#sync-status').html('<span class="status-indicator status-success">Sync completed</span>');
+                            $('#run-points-sync').prop('disabled', false).html('<span class="dashicons dashicons-yes"></span> Sync Complete');
+
+                            // Update details
+                            $('#orders-processed').text(response.data.processed || 0);
+                            $('#points-allocated').text((response.data.points_allocated || 0).toFixed(2));
+                            $('#customers-updated').text(response.data.customers_updated || 0);
+
+                            // Show success message
+                            setTimeout(() => {
+                                alert(response.data.message);
+                                loadSyncInfo();
+                                loadPointsStats();
+                            }, 1000);
+                        } else {
+                            $('#sync-status').html('<span class="status-indicator status-error">Sync failed</span>');
+                            $('#run-points-sync').prop('disabled', false).html('<span class="dashicons dashicons-warning"></span> Retry Sync');
+                            alert('Sync failed: ' + (response.data?.message || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        $('#sync-status').html('<span class="status-indicator status-error">Sync error</span>');
+                        $('#run-points-sync').prop('disabled', false).html('<span class="dashicons dashicons-warning"></span> Retry Sync');
+                        $('#sync-progress-text').text('Error occurred during sync');
+                        alert('AJAX Error: ' + error);
+                    }
+                });
+            }
+
+            // Load sync information
+            function loadSyncInfo() {
+                $('#sync-info').html('<p>Loading sync information...</p>');
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'get_sync_info',
+                        nonce: intersoccer_admin.nonce
+                    },
+                    success: function(response) {
+                        $('#sync-info').html(response.data.html);
+                    },
+                    error: function() {
+                        $('#sync-info').html('<p>Error loading sync information</p>');
+                    }
+                });
+            }
+
+            $('#refresh-sync-info').on('click', loadSyncInfo);
+
+            // Event handlers
+            $('#refresh-stats').on('click', loadCreditStats);
+            $('#refresh-audit-log').on('click', function() { loadAuditLog($('#audit-filter').val()); });
+            $('#audit-filter').on('change', function() { loadAuditLog($(this).val()); });
+
+            $('#clear-audit-log').on('click', function() {
+                if (!confirm('Clear all audit log entries?')) return;
+
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'clear_audit_log',
+                        nonce: intersoccer_admin.nonce
+                    },
+                    success: function(response) {
+                        alert(response.data.message);
+                        loadAuditLog();
+                    }
+                });
+            });
+
+            $('#export-audit-log').on('click', function() {
+                window.open(intersoccer_admin.ajax_url + '?action=export_audit_log&nonce=' + intersoccer_admin.nonce, '_blank');
+            });
+
+            $('#refresh-points-stats').on('click', loadPointsStats);
+
+            // One-time points sync functionality
+            $('#run-points-sync').on('click', function(e) {
+                e.preventDefault();
+
+                if (!confirm('This will scan ALL existing WooCommerce orders and allocate points. This operation may take several minutes. Continue?')) {
+                    return;
+                }
+
+                const $button = $(this);
+                const $progress = $('#sync-progress');
+                const $status = $('#sync-status');
+                const $progressFill = $('#sync-progress-fill');
+                const $progressText = $('#sync-progress-text');
+
+                // Update status
+                $status.html('<span class="status-indicator status-running">Running sync...</span>');
+                $button.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> Running Sync...');
+
+                $progress.show();
+                $progressFill.css('width', '0%');
+                $progressText.text('Initializing points synchronization...');
+
+                // Start the sync
+                runPointsSync();
+            });
+
+            function runPointsSync() {
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'run_points_sync',
+                        nonce: intersoccer_admin.nonce
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            $('#sync-progress-fill').css('width', '100%');
+                            $('#sync-progress-text').text('Sync completed successfully!');
+                            $('#sync-status').html('<span class="status-indicator status-success">Sync completed</span>');
+                            $('#run-points-sync').prop('disabled', false).html('<span class="dashicons dashicons-yes"></span> Sync Complete');
+
+                            // Update details
+                            $('#orders-processed').text(response.data.processed || 0);
+                            $('#points-allocated').text((response.data.points_allocated || 0).toFixed(2));
+                            $('#customers-updated').text(response.data.customers_updated || 0);
+
+                            // Show success message
+                            setTimeout(() => {
+                                alert(response.data.message);
+                                loadSyncInfo();
+                                loadPointsStats();
+                            }, 1000);
+                        } else {
+                            $('#sync-status').html('<span class="status-indicator status-error">Sync failed</span>');
+                            $('#run-points-sync').prop('disabled', false).html('<span class="dashicons dashicons-warning"></span> Retry Sync');
+                            alert('Sync failed: ' + (response.data?.message || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        $('#sync-status').html('<span class="status-indicator status-error">Sync error</span>');
+                        $('#run-points-sync').prop('disabled', false).html('<span class="dashicons dashicons-warning"></span> Retry Sync');
+                        $('#sync-progress-text').text('Error occurred during sync');
+                        alert('AJAX Error: ' + error);
+                    }
+                });
+            }
+
+            // Load sync information
+            function loadSyncInfo() {
+                $('#sync-info').html('<p>Loading sync information...</p>');
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'get_sync_info',
+                        nonce: intersoccer_admin.nonce
+                    },
+                    success: function(response) {
+                        $('#sync-info').html(response.data.html);
+                    },
+                    error: function() {
+                        $('#sync-info').html('<p>Error loading sync information</p>');
+                    }
+                });
+            }
+
+            $('#refresh-sync-info').on('click', loadSyncInfo);
+
             // Event handlers
             $('#refresh-stats').on('click', loadCreditStats);
             $('#refresh-audit-log').on('click', function() { loadAuditLog($('#audit-filter').val()); });
@@ -488,6 +748,7 @@ class InterSoccer_Admin_Settings {
             loadCoachStats();
             loadAuditLog();
             loadPointsStats();
+            loadSyncInfo();
         });
         </script>
 
@@ -593,6 +854,119 @@ class InterSoccer_Admin_Settings {
             height: 100%;
             background: #28a745;
             transition: width 0.4s ease;
+        }
+
+        .sync-notice {
+            margin-bottom: 25px;
+        }
+
+        .sync-controls {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 25px;
+        }
+
+        .sync-card {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 8px;
+            border: 1px solid #e1e1e1;
+        }
+
+        .sync-card h3 {
+            margin-top: 0;
+            color: #23282d;
+            margin-bottom: 15px;
+        }
+
+        .sync-status {
+            margin: 15px 0;
+        }
+
+        .status-indicator {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-ready {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-running {
+            background: #cce5ff;
+            color: #004085;
+        }
+
+        .status-success {
+            background: #d5f4e6;
+            color: #155724;
+        }
+
+        .status-error {
+            background: #fadbd8;
+            color: #721c24;
+        }
+
+        .progress-container {
+            margin-bottom: 15px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            height: 12px;
+            margin-bottom: 8px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #007cba, #28a745);
+            transition: width 0.5s ease;
+        }
+
+        .progress-text {
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+        }
+
+        .sync-details {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+
+        .detail-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .detail-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .spin {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .sync-controls {
+                grid-template-columns: 1fr;
+            }
         }
         </style>
         <?php
@@ -1133,6 +1507,70 @@ class InterSoccer_Admin_Settings {
             'type' => 'number',
             'default' => '10',
             'sanitize_callback' => 'floatval'
+        ]);
+    }
+
+    /**
+     * Get sync information via AJAX
+     */
+    public function get_sync_info_ajax() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+
+        $points_manager = new InterSoccer_Points_Manager();
+        $sync_status = get_option('intersoccer_points_sync_status', [
+            'last_sync' => null,
+            'total_processed' => 0,
+            'total_points' => 0,
+            'status' => 'never_run'
+        ]);
+
+        $stats = $points_manager->get_points_statistics();
+
+        $html = "
+            <div class='sync-details'>
+                <div class='detail-item'>
+                    <strong>Last Sync:</strong> " . ($sync_status['last_sync'] ? date('Y-m-d H:i:s', strtotime($sync_status['last_sync'])) : 'Never') . "
+                </div>
+                <div class='detail-item'>
+                    <strong>Orders Processed:</strong> " . number_format($sync_status['total_processed']) . "
+                </div>
+                <div class='detail-item'>
+                    <strong>Total Points Allocated:</strong> " . number_format($sync_status['total_points'], 2) . "
+                </div>
+                <div class='detail-item'>
+                    <strong>Current Status:</strong> " . ucfirst($sync_status['status']) . "
+                </div>
+                <div class='detail-item'>
+                    <strong>Total Customers with Points:</strong> " . number_format($stats['customers_with_points']) . "
+                </div>
+                <div class='detail-item'>
+                    <strong>Total Points in System:</strong> " . number_format($stats['total_points_earned'], 2) . "
+                </div>
+            </div>
+        ";
+
+        wp_send_json_success(['html' => $html]);
+    }
+
+    /**
+     * Run points sync via AJAX
+     */
+    public function run_points_sync_ajax() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+
+        $points_manager = new InterSoccer_Points_Manager();
+        $result = $points_manager->perform_points_sync();
+
+        wp_send_json_success([
+            'message' => 'Points sync completed successfully',
+            'processed' => $result['processed'],
+            'points_allocated' => $result['points_allocated']
         ]);
     }
 }

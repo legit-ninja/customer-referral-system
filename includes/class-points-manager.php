@@ -98,11 +98,26 @@ class InterSoccer_Points_Manager {
             wp_send_json_error(['message' => 'Unauthorized']);
         }
 
+        $result = $this->perform_points_sync();
+
+        wp_send_json_success([
+            'message' => "Backfill completed! Processed: {$result['processed']}, Skipped: {$result['skipped']}, Errors: {$result['errors']}",
+            'processed' => $result['processed'],
+            'skipped' => $result['skipped'],
+            'errors' => $result['errors']
+        ]);
+    }
+
+    /**
+     * Perform the actual points sync operation and return results
+     */
+    public function perform_points_sync() {
         global $wpdb;
 
         $processed = 0;
         $skipped = 0;
         $errors = 0;
+        $points_allocated = 0;
 
         // Get all completed orders without points allocation
         $orders = wc_get_orders([
@@ -111,6 +126,11 @@ class InterSoccer_Points_Manager {
             'orderby' => 'date',
             'order' => 'ASC'
         ]);
+
+        // Filter out refunds - only process actual orders
+        $orders = array_filter($orders, function($order) {
+            return $order instanceof WC_Order && !$order instanceof WC_Order_Refund;
+        });
 
         foreach ($orders as $order) {
             $order_id = $order->get_id();
@@ -148,6 +168,7 @@ class InterSoccer_Points_Manager {
 
                     $this->update_user_points_balance($customer_id);
                     $processed++;
+                    $points_allocated += $points_to_allocate;
                 } else {
                     $skipped++;
                 }
@@ -159,12 +180,20 @@ class InterSoccer_Points_Manager {
 
         $this->log_audit('points_backfill', "Backfill completed: {$processed} processed, {$skipped} skipped, {$errors} errors");
 
-        wp_send_json_success([
-            'message' => "Backfill completed! Processed: {$processed}, Skipped: {$skipped}, Errors: {$errors}",
+        // Update sync status
+        update_option('intersoccer_points_sync_status', [
+            'last_sync' => current_time('mysql'),
+            'total_processed' => $processed,
+            'total_points' => $points_allocated,
+            'status' => 'completed'
+        ]);
+
+        return [
             'processed' => $processed,
             'skipped' => $skipped,
-            'errors' => $errors
-        ]);
+            'errors' => $errors,
+            'points_allocated' => $points_allocated
+        ];
     }
 
     /**
