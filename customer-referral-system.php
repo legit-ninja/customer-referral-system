@@ -4,7 +4,7 @@
  * Plugin URI: https://intersoccer.ch
  * Description: Advanced coach referral program with gamification and comprehensive analytics.
  * Version: 1.0.0
- * Author: Legit Ninja
+ * Author: Jeremy Lee
  * Author URI: https://github.com/legit-ninja
  * License: GPL-2.0+
  * Requires at least: 5.0
@@ -32,6 +32,12 @@ if (!file_exists(INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.ph
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-commission-calculator.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-dashboard.php';
+// Include modular admin dashboard classes
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-dashboard-main.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-coaches.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-referrals.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-financial.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-settings.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-dashboard.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-admin-dashboard.php';
 error_log('All plugin files loaded, Referral Handler exists: ' . class_exists('InterSoccer_Referral_Handler'));
@@ -56,26 +62,39 @@ class InterSoccer_Referral_System {
     }
     
     public function init() {
-        // Load text domain
+        // Load text domain (move to avoid early loading issues)
         load_plugin_textdomain('intersoccer-referral', false, dirname(INTERSOCCER_REFERRAL_BASENAME) . '/languages');
-        
-        // Initialize classes FIRST (before coach admin dashboard)
+
+        // Initialize core classes
         new InterSoccer_Referral_Handler();
         new InterSoccer_Commission_Calculator();
         new InterSoccer_Referral_Dashboard();
         new InterSoccer_Referral_Admin_Dashboard();
-        
-        // Initialize coach admin dashboard AFTER other classes
         new InterSoccer_Coach_Admin_Dashboard();
-        
+
         // Add custom user roles
         $this->add_custom_roles();
-        
+
+        if (class_exists('WooCommerce')) {
+            error_log('InterSoccer: WooCommerce detected, version: ' . WC()->version);
+        }
+
         // Enqueue assets
         add_action('wp_enqueue_scripts', [$this, 'enqueue_frontend_assets']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
+
+        // Move Elementor integration to plugins_loaded
+        add_action('elementor/loaded', [$this,'initiate_elementor_integration']);
+        add_action('elementor/init', [$this, 'initiate_elementor_integration']);
     }
-    
+
+    public function initiate_elementor_integration() {
+        
+        require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-elementor-widgets.php';
+        new InterSoccer_Elementor_Integration();
+        error_log('InterSoccer: Elementor Integration Loaded: InterSoccer_Elementor_Integration');
+    }
+
     public function activate() {
         // Create database tables
         $this->create_database_tables();
@@ -85,6 +104,9 @@ class InterSoccer_Referral_System {
         
         // Set default options
         $this->set_default_options();
+
+        // Initialize database optimization on plugin activation
+        register_activation_hook(__FILE__, ['InterSoccer_Database_Optimizer', 'create_indexes']);
         
         // Flush rewrite rules
         flush_rewrite_rules();
@@ -191,12 +213,86 @@ class InterSoccer_Referral_System {
             KEY idx_achievement_type (achievement_type),
             KEY idx_earned_at (earned_at)
         ) $charset_collate;";
+
+        // Customer partnerships table
+        $partnerships_table = $wpdb->prefix . 'intersoccer_customer_partnerships';
+        $partnerships_sql = "CREATE TABLE $partnerships_table (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            customer_id bigint(20) unsigned NOT NULL,
+            coach_id bigint(20) unsigned NOT NULL,
+            start_date datetime DEFAULT CURRENT_TIMESTAMP,
+            end_date datetime NULL,
+            total_orders int(11) DEFAULT 0,
+            total_commission decimal(10,2) DEFAULT '0.00',
+            status varchar(20) DEFAULT 'active',
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY unique_active_partnership (customer_id, status),
+            KEY idx_coach_id (coach_id),
+            KEY idx_status (status)
+        ) $charset_collate;";
+
+        // Customer activities table for tracking
+        $activities_table = $wpdb->prefix . 'intersoccer_customer_activities';
+        $activities_sql = "CREATE TABLE $activities_table (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            customer_id bigint(20) unsigned NOT NULL,
+            activity_type varchar(50) NOT NULL,
+            activity_data longtext,
+            points_awarded int(11) DEFAULT 0,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_customer_id (customer_id),
+            KEY idx_activity_type (activity_type),
+            KEY idx_created_at (created_at)
+        ) $charset_collate;";
+
+        // Referral credits table for customer credit system
+        $credits_table = $wpdb->prefix . 'intersoccer_referral_credits';
+        $credits_sql = "CREATE TABLE $credits_table (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            referral_id int(11),
+            customer_id bigint(20) unsigned NOT NULL,
+            coach_id bigint(20) unsigned,
+            credit_amount decimal(10,2) NOT NULL DEFAULT '0.00',
+            credit_type varchar(50) DEFAULT 'referral',
+            status varchar(20) DEFAULT 'active',
+            expires_at datetime NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_customer_id (customer_id),
+            KEY idx_coach_id (coach_id),
+            KEY idx_referral_id (referral_id),
+            KEY idx_status (status),
+            KEY idx_created_at (created_at)
+        ) $charset_collate;";
+
+        // Credit redemptions table for tracking credit usage
+        $redemptions_table = $wpdb->prefix . 'intersoccer_credit_redemptions';
+        $redemptions_sql = "CREATE TABLE $redemptions_table (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            customer_id bigint(20) unsigned NOT NULL,
+            order_item_id bigint(20) unsigned,
+            credit_amount decimal(10,2) NOT NULL DEFAULT '0.00',
+            order_total decimal(10,2) NOT NULL DEFAULT '0.00',
+            discount_applied decimal(10,2) NOT NULL DEFAULT '0.00',
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_customer_id (customer_id),
+            KEY idx_order_item_id (order_item_id),
+            KEY idx_created_at (created_at)
+        ) $charset_collate;";
         
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
         dbDelta($performance_sql);
         dbDelta($achievements_sql);
-        
+        dbDelta($partnerships_sql);
+        dbDelta($activities_sql);
+        dbDelta($credits_sql);
+        dbDelta($redemptions_sql);
         // Update version
         update_option('intersoccer_version', INTERSOCCER_REFERRAL_VERSION);
     }
@@ -256,7 +352,11 @@ class InterSoccer_Referral_System {
         add_option('intersoccer_enable_email_notifications', 1);
     }
     
+    /**
+    * enqueue frontend assets
+    */
     public function enqueue_frontend_assets() {
+        // Coach dashboard assets (existing)
         if (is_user_logged_in() && current_user_can('view_referral_dashboard') && !is_account_page()) {
             wp_enqueue_style('intersoccer-dashboard-css', INTERSOCCER_REFERRAL_URL . 'assets/css/dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
             wp_enqueue_script('intersoccer-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/dashboard.js', ['jquery'], INTERSOCCER_REFERRAL_VERSION, true);
@@ -266,6 +366,61 @@ class InterSoccer_Referral_System {
                 'copy_text' => __('Link copied!', 'intersoccer-referral'),
                 'error_text' => __('Error occurred', 'intersoccer-referral')
             ]);
+        }
+
+        // Customer dashboard assets
+        if (is_user_logged_in()) {
+            // Enqueue customer-specific assets
+            if (!wp_script_is('intersoccer-dashboard-js', 'enqueued')) {
+                wp_enqueue_script('intersoccer-customer-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/dashboard.js', ['jquery'], INTERSOCCER_REFERRAL_VERSION, true);
+            }
+            
+            // Always localize for customers (might not have coach capabilities)
+            if (!wp_script_is('intersoccer_dashboard', 'done')) {
+                wp_localize_script(
+                    wp_script_is('intersoccer-dashboard-js', 'enqueued') ? 'intersoccer-dashboard-js' : 'intersoccer-customer-dashboard-js',
+                    'intersoccer_dashboard',
+                    [
+                        'ajax_url' => admin_url('admin-ajax.php'),
+                        'nonce' => wp_create_nonce('intersoccer_dashboard_nonce'),
+                        'copy_text' => __('Link copied!', 'intersoccer-referral'),
+                        'error_text' => __('Error occurred', 'intersoccer-referral')
+                    ]
+                );
+            }
+        }
+        
+        // Elementor-specific assets (new) - only load if Elementor is active
+        if (class_exists('\Elementor\Plugin')) {
+            // Load for Elementor preview mode or when widgets are present on page
+            if (\Elementor\Plugin::$instance->preview->is_preview_mode() || 
+                $this->page_has_elementor_widgets()) {
+                
+                wp_enqueue_style(
+                    'intersoccer-elementor-dashboard-css',
+                    INTERSOCCER_REFERRAL_URL . 'assets/css/elementor-dashboard.css',
+                    [],
+                    INTERSOCCER_REFERRAL_VERSION
+                );
+                
+                wp_enqueue_script(
+                    'intersoccer-elementor-dashboard-js',
+                    INTERSOCCER_REFERRAL_URL . 'assets/js/elementor-dashboard.js',
+                    ['jquery'],
+                    INTERSOCCER_REFERRAL_VERSION,
+                    true
+                );
+                
+                wp_localize_script('intersoccer-elementor-dashboard-js', 'intersoccer_elementor', [
+                    'ajax_url' => admin_url('admin-ajax.php'),
+                    'nonce' => wp_create_nonce('intersoccer_elementor_nonce'),
+                    'strings' => [
+                        'copy_success' => __('Link copied!', 'intersoccer-referral'),
+                        'copy_error' => __('Failed to copy', 'intersoccer-referral'),
+                        'loading' => __('Loading...', 'intersoccer-referral'),
+                    ]
+                ]);
+            }
         }
     }
     
@@ -307,6 +462,47 @@ class InterSoccer_Referral_System {
                 'error_generic' => __('An error occurred. Please try again.', 'intersoccer-referral')
             ]
         ]);
+    }
+
+    public function debug_elementor_status() {
+        error_log('=== InterSoccer Elementor Debug ===');
+        error_log('Elementor Plugin class exists: ' . (class_exists('\Elementor\Plugin') ? 'YES' : 'NO'));
+        
+        if (class_exists('\Elementor\Plugin')) {
+            error_log('Elementor Plugin instance exists: ' . (isset(\Elementor\Plugin::$instance) ? 'YES' : 'NO'));
+            error_log('Elementor version: ' . (defined('ELEMENTOR_VERSION') ? ELEMENTOR_VERSION : 'NOT_DEFINED'));
+        }
+        
+        error_log('Available actions: ' . implode(', ', array_keys($GLOBALS['wp_filter'])));
+    }
+
+    /**
+     * Check if page has Elementor widgets
+     */
+
+    private function page_has_elementor_widgets() {
+        global $post;
+        
+        if (!$post) {
+            return false;
+        }
+        
+        // Check if page content contains InterSoccer Elementor widgets
+        $widget_types = [
+            'intersoccer_customer_dashboard',
+            'intersoccer_coach_dashboard', 
+            'intersoccer_referral_stats',
+            'intersoccer_coach_leaderboard',
+            'intersoccer_customer_progress'
+        ];
+        
+        foreach ($widget_types as $widget_type) {
+            if (strpos($post->post_content, $widget_type) !== false) {
+                return true;
+            }
+        }
+        
+        return false;
     }
 }
 
@@ -435,29 +631,36 @@ function intersoccer_update_coach_performance($coach_id) {
     
     $current_month = date('Y-m');
     
-    // Get current month stats
+    // Get current month stats with proper NULL handling
     $stats = $wpdb->get_row($wpdb->prepare("
         SELECT 
             COUNT(*) as referrals_count,
             SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as conversions_count,
-            SUM(CASE WHEN status = 'completed' THEN commission_amount ELSE 0 END) as total_commission,
-            SUM(CASE WHEN status = 'completed' THEN loyalty_bonus + retention_bonus ELSE 0 END) as total_bonuses
+            COALESCE(SUM(CASE WHEN status = 'completed' THEN commission_amount ELSE 0 END), 0) as total_commission,
+            COALESCE(SUM(CASE WHEN status = 'completed' THEN loyalty_bonus + retention_bonus ELSE 0 END), 0) as total_bonuses
         FROM $table_name 
         WHERE coach_id = %d AND DATE_FORMAT(created_at, '%%Y-%%m') = %s
     ", $coach_id, $current_month));
     
     $tier = intersoccer_get_coach_tier($coach_id);
     
-    // Insert or update performance record
-    $wpdb->replace($performance_table, [
-        'coach_id' => $coach_id,
+    // Ensure all values are not null and properly typed
+    $data = [
+        'coach_id' => (int) $coach_id,
         'month_year' => $current_month,
-        'referrals_count' => $stats->referrals_count,
-        'conversions_count' => $stats->conversions_count,
-        'total_commission' => $stats->total_commission ?: 0,
-        'total_bonuses' => $stats->total_bonuses ?: 0,
+        'referrals_count' => (int) ($stats->referrals_count ?? 0),
+        'conversions_count' => (int) ($stats->conversions_count ?? 0),
+        'total_commission' => (float) ($stats->total_commission ?? 0.00),
+        'total_bonuses' => (float) ($stats->total_bonuses ?? 0.00),
         'tier' => $tier
-    ]);
+    ];
+    
+    // Use wpdb->replace with proper data types
+    $result = $wpdb->replace($performance_table, $data);
+    
+    if ($result === false) {
+        error_log("InterSoccer: Failed to update coach performance for coach $coach_id: " . $wpdb->last_error);
+    }
 }
 
 // Helper function to send weekly reports
@@ -486,23 +689,23 @@ function intersoccer_send_weekly_report($coach_id) {
     $message = sprintf(
         __('Hi %s,
 
-Here\'s your weekly performance summary:
+        Here\'s your weekly performance summary:
 
-🎯 New Referrals: %d
-💰 Commission Earned: %.2f CHF
-💳 Total Credits: %.2f CHF
-🏆 Current Tier: %s
+        🎯 New Referrals: %d
+        💰 Commission Earned: %.2f CHF
+        💳 Total Credits: %.2f CHF
+        🏆 Current Tier: %s
 
-Keep up the great work!
+        Keep up the great work!
 
-Best regards,
-The InterSoccer Team', 'intersoccer-referral'),
-        $coach->display_name,
-        $weekly_stats->weekly_referrals,
-        $weekly_stats->weekly_commission ?: 0,
-        $credits,
-        $tier
-    );
-    
-    wp_mail($coach->user_email, $subject, $message);
-}
+        Best regards,
+        The InterSoccer Team', 'intersoccer-referral'),
+            $coach->display_name,
+            $weekly_stats->weekly_referrals,
+            $weekly_stats->weekly_commission ?: 0,
+            $credits,
+            $tier
+        );
+        
+        wp_mail($coach->user_email, $subject, $message);
+    }
