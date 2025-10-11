@@ -20,8 +20,8 @@ class InterSoccer_Referral_Admin_Dashboard {
         add_action('admin_menu', [$this, 'add_admin_menus']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
         add_action('admin_init', [$this, 'handle_settings']);
-        add_action('admin_post_import_coaches_from_csv', [$this, 'import_coaches_from_csv']);
-        add_action('admin_post_nopriv_import_coaches_from_csv', [$this, 'import_coaches_from_csv']);
+        add_action('admin_post_import_coaches_from_csv', [$this->settings, 'import_coaches_from_csv']);
+        add_action('admin_post_nopriv_import_coaches_from_csv', [$this->settings, 'import_coaches_from_csv']);
         add_action('wp_ajax_start_points_migration', [$this, 'start_points_migration']);
         add_action('wp_ajax_get_migration_progress', [$this, 'get_migration_progress']);
         add_action('wp_ajax_cancel_points_migration', [$this, 'cancel_points_migration']);
@@ -36,7 +36,13 @@ class InterSoccer_Referral_Admin_Dashboard {
         add_action('wp_ajax_import_customers_credits', [$this, 'import_customers_and_assign_credits']);
         add_action('wp_ajax_emergency_cleanup_import', [$this, 'emergency_cleanup_import_session']);
         add_action('wp_ajax_debug_join_issue', [$this, 'debug_join_issue']);
-        add_action('wp_ajax_reset_all_customer_credits', [$this, 'reset_all_customer_credits']);
+        add_action('wp_ajax_allocate_credits_to_customers', [$this->settings, 'allocate_credits_to_customers']);
+        add_action('wp_ajax_get_credit_statistics', [$this->settings, 'get_credit_statistics']);
+        add_action('wp_ajax_get_coach_statistics', [$this->settings, 'get_coach_statistics']);
+        add_action('wp_ajax_get_audit_log', [$this->settings, 'get_audit_log']);
+        add_action('wp_ajax_clear_audit_log', [$this->settings, 'clear_audit_log']);
+        add_action('wp_ajax_export_audit_log', [$this->settings, 'export_audit_log']);
+        add_action('wp_ajax_bulk_credit_adjustment', [$this->settings, 'bulk_credit_adjustment']);
 
         // Debug action to test AJAX is working
         add_action('wp_ajax_test_ajax_connection', [$this, 'test_ajax_connection']);
@@ -150,76 +156,6 @@ class InterSoccer_Referral_Admin_Dashboard {
                 $this->process_settings_update();
             }
         }
-    }
-
-    /**
-     * Process settings form updates
-     */
-    private function process_settings_update() {
-        // Handle settings updates here
-        // This is a placeholder for future settings functionality
-    }
-
-    /**
-     * RESET function to clear all assigned credits and start over
-     */
-    public function reset_all_customer_credits() {
-        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => 'Unauthorized']);
-        }
-
-        global $wpdb;
-
-        error_log('InterSoccer: Starting complete credit reset...');
-
-        // Delete all credit-related user meta
-        $credit_meta_keys = [
-            'intersoccer_customer_credits',
-            'intersoccer_total_credits_earned',
-            'intersoccer_credits_imported',
-            'intersoccer_import_date',
-            'intersoccer_credit_breakdown',
-            'intersoccer_credit_adjustments',
-            'intersoccer_credits_used_total'
-        ];
-
-        $deleted_total = 0;
-        foreach ($credit_meta_keys as $meta_key) {
-            $deleted = $wpdb->query($wpdb->prepare(
-                "DELETE FROM {$wpdb->usermeta} WHERE meta_key = %s",
-                $meta_key
-            ));
-            $deleted_total += $deleted;
-            error_log("InterSoccer: Deleted {$deleted} records for meta_key: {$meta_key}");
-        }
-
-        // Clear import summary
-        delete_option('intersoccer_last_import_summary');
-        delete_option('intersoccer_last_customer_import_report');
-
-        error_log("InterSoccer: Credit reset complete - deleted {$deleted_total} total records");
-
-        wp_send_json_success([
-            'message' => "Reset complete! Deleted {$deleted_total} credit records from all customers.",
-            'deleted_records' => $deleted_total
-        ]);
-    }
-
-    /**
-     * Handle coach CSV import
-     */
-    public function import_coaches_from_csv() {
-        // Handle CSV import for coaches
-        // This is a placeholder implementation
-        if (!current_user_can('manage_options')) {
-            wp_die('Unauthorized');
-        }
-
-        // Basic CSV import logic would go here
-        // For now, just redirect back
-        wp_redirect(admin_url('admin.php?page=intersoccer-coaches&imported=1'));
-        exit;
     }
 
     /**

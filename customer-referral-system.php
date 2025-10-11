@@ -38,6 +38,7 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-coaches.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-referrals.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-financial.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-settings.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-manager.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-dashboard.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-admin-dashboard.php';
 error_log('All plugin files loaded, Referral Handler exists: ' . class_exists('InterSoccer_Referral_Handler'));
@@ -71,6 +72,7 @@ class InterSoccer_Referral_System {
         new InterSoccer_Referral_Dashboard();
         new InterSoccer_Referral_Admin_Dashboard();
         new InterSoccer_Coach_Admin_Dashboard();
+        new InterSoccer_Points_Manager();
 
         // Add custom user roles
         $this->add_custom_roles();
@@ -284,6 +286,28 @@ class InterSoccer_Referral_System {
             KEY idx_order_item_id (order_item_id),
             KEY idx_created_at (created_at)
         ) $charset_collate;";
+
+        // Points log table for digital currency ledger
+        $points_log_table = $wpdb->prefix . 'intersoccer_points_log';
+        $points_log_sql = "CREATE TABLE $points_log_table (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            customer_id bigint(20) unsigned NOT NULL,
+            order_id bigint(20) unsigned,
+            transaction_type varchar(50) NOT NULL,
+            points_amount decimal(10,2) NOT NULL,
+            points_balance decimal(10,2) NOT NULL,
+            reference_type varchar(50),
+            reference_id bigint(20) unsigned,
+            description text,
+            metadata longtext,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_customer_id (customer_id),
+            KEY idx_order_id (order_id),
+            KEY idx_transaction_type (transaction_type),
+            KEY idx_created_at (created_at),
+            KEY idx_reference (reference_type, reference_id)
+        ) $charset_collate;";
         
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
@@ -293,6 +317,7 @@ class InterSoccer_Referral_System {
         dbDelta($activities_sql);
         dbDelta($credits_sql);
         dbDelta($redemptions_sql);
+        dbDelta($points_log_sql);
         // Update version
         update_option('intersoccer_version', INTERSOCCER_REFERRAL_VERSION);
     }

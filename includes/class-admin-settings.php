@@ -13,6 +13,8 @@ class InterSoccer_Admin_Settings {
         add_action('wp_ajax_get_credit_statistics', [$this, 'get_credit_statistics']);
         add_action('wp_ajax_get_coach_statistics', [$this, 'get_coach_statistics']);
         add_action('wp_ajax_get_audit_log', [$this, 'get_audit_log']);
+        add_action('wp_ajax_get_points_statistics', [$this, 'get_points_statistics_ajax']);
+        add_action('wp_ajax_get_points_ledger', [$this, 'get_points_ledger_ajax']);
         add_action('admin_init', [$this, 'register_settings']);
     }
 
@@ -196,6 +198,45 @@ class InterSoccer_Admin_Settings {
                     <?php submit_button('Save Settings'); ?>
                 </form>
             </div>
+
+            <!-- Points Management -->
+            <div class="intersoccer-settings-section">
+                <h2>Points Management</h2>
+                <div class="settings-grid">
+                    <div class="settings-card">
+                        <h3>Scan Orders for Points</h3>
+                        <p>Scan existing WooCommerce orders and allocate points to customers based on order amounts.</p>
+                        <button id="scan-orders-points" class="button button-primary">
+                            <span class="dashicons dashicons-search"></span> Scan Orders
+                        </button>
+                        <div id="scan-progress" style="display: none; margin-top: 10px;">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 0%"></div>
+                            </div>
+                            <p class="progress-text">Scanning orders...</p>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h3>Points Statistics</h3>
+                        <div id="points-stats">
+                            <p>Loading points statistics...</p>
+                        </div>
+                        <button id="refresh-points-stats" class="button">Refresh Stats</button>
+                    </div>
+
+                    <div class="settings-card">
+                        <h3>Points Ledger</h3>
+                        <p>View detailed points transaction history.</p>
+                        <button id="view-points-ledger" class="button button-secondary">View Ledger</button>
+                        <div id="points-ledger-container" style="display: none; margin-top: 15px;">
+                            <div id="points-ledger-content">
+                                <p>Loading ledger...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <script>
@@ -324,6 +365,96 @@ class InterSoccer_Admin_Settings {
                 });
             }
 
+            $('#scan-orders-points').on('click', function(e) {
+                e.preventDefault();
+                if (!confirm('This will scan all completed orders and allocate points. This may take some time. Continue?')) {
+                    return;
+                }
+
+                const $button = $(this);
+                const $progress = $('#scan-progress');
+                const $progressFill = $('.progress-fill');
+                const $progressText = $('.progress-text');
+
+                $button.prop('disabled', true).text('Scanning...');
+                $progress.show();
+                $progressFill.css('width', '0%');
+                $progressText.text('Scanning orders...');
+
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'scan_orders_for_points',
+                        nonce: intersoccer_admin.nonce
+                    },
+                    success: function(response) {
+                        $progressFill.css('width', '100%');
+                        $progressText.text('Scan completed!');
+                        setTimeout(() => {
+                            $progress.hide();
+                            $button.prop('disabled', false).text('Scan Orders');
+                            alert(response.data.message);
+                            loadPointsStats();
+                        }, 2000);
+                    },
+                    error: function() {
+                        $progress.hide();
+                        $button.prop('disabled', false).text('Scan Orders');
+                        alert('Error scanning orders. Please try again.');
+                    }
+                });
+            });
+
+            // Load points statistics
+            function loadPointsStats() {
+                $('#points-stats').html('<p>Loading points statistics...</p>');
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'get_points_statistics',
+                        nonce: intersoccer_admin.nonce
+                    },
+                    success: function(response) {
+                        $('#points-stats').html(response.data.html);
+                    },
+                    error: function() {
+                        $('#points-stats').html('<p>Error loading points statistics</p>');
+                    }
+                });
+            }
+
+            // View points ledger
+            $('#view-points-ledger').on('click', function() {
+                const $container = $('#points-ledger-container');
+                const $content = $('#points-ledger-content');
+
+                if ($container.is(':visible')) {
+                    $container.hide();
+                    return;
+                }
+
+                $container.show();
+                $content.html('<p>Loading points ledger...</p>');
+
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'get_points_ledger',
+                        nonce: intersoccer_admin.nonce,
+                        limit: 20
+                    },
+                    success: function(response) {
+                        $content.html(response.data.html);
+                    },
+                    error: function() {
+                        $content.html('<p>Error loading points ledger</p>');
+                    }
+                });
+            });
+
             // Event handlers
             $('#refresh-stats').on('click', loadCreditStats);
             $('#refresh-audit-log').on('click', function() { loadAuditLog($('#audit-filter').val()); });
@@ -350,10 +481,13 @@ class InterSoccer_Admin_Settings {
                 window.open(intersoccer_admin.ajax_url + '?action=export_audit_log&nonce=' + intersoccer_admin.nonce, '_blank');
             });
 
+            $('#refresh-points-stats').on('click', loadPointsStats);
+
             // Initialize
             loadCreditStats();
             loadCoachStats();
             loadAuditLog();
+            loadPointsStats();
         });
         </script>
 
@@ -444,6 +578,21 @@ class InterSoccer_Admin_Settings {
         .audit-log-entry .user {
             color: #007cba;
             margin-right: 10px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            background: #e1e1e1;
+            border-radius: 4px;
+            overflow: hidden;
+            height: 8px;
+            margin-top: 5px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #28a745;
+            transition: width 0.4s ease;
         }
         </style>
         <?php
@@ -864,6 +1013,95 @@ class InterSoccer_Admin_Settings {
                     esc_html($entry['details'])
                 );
             }
+        }
+
+        wp_send_json_success(['html' => $html]);
+    }
+
+    /**
+     * Get points statistics via AJAX
+     */
+    public function get_points_statistics_ajax() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $points_manager = new InterSoccer_Points_Manager();
+        $stats = $points_manager->get_points_statistics();
+
+        $html = "
+            <p><strong>Total Points Earned:</strong> " . number_format($stats['total_earned'], 2) . "</p>
+            <p><strong>Total Points Spent:</strong> " . number_format($stats['total_spent'], 2) . "</p>
+            <p><strong>Current Balance:</strong> " . number_format($stats['current_balance'], 2) . "</p>
+            <p><strong>Customers with Points:</strong> " . number_format($stats['customers_with_points']) . "</p>
+            <p><strong>Avg Points per Customer:</strong> " . number_format($stats['avg_points_per_customer'], 2) . "</p>
+        ";
+
+        wp_send_json_success(['html' => $html]);
+    }
+
+    /**
+     * Get points ledger via AJAX
+     */
+    public function get_points_ledger_ajax() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        global $wpdb;
+        $points_log_table = $wpdb->prefix . 'intersoccer_points_log';
+        $limit = intval($_POST['limit'] ?? 20);
+
+        $transactions = $wpdb->get_results($wpdb->prepare(
+            "SELECT pl.*, u.display_name, u.user_email
+             FROM {$points_log_table} pl
+             LEFT JOIN {$wpdb->users} u ON pl.customer_id = u.ID
+             ORDER BY pl.created_at DESC, pl.id DESC
+             LIMIT %d",
+            $limit
+        ));
+
+        if (empty($transactions)) {
+            $html = '<p>No points transactions found.</p>';
+        } else {
+            $html = '<table class="wp-list-table widefat fixed striped">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Customer</th>
+                        <th>Type</th>
+                        <th>Amount</th>
+                        <th>Balance</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>';
+
+            foreach ($transactions as $transaction) {
+                $amount_class = $transaction->points_amount >= 0 ? 'positive' : 'negative';
+                $html .= sprintf(
+                    '<tr>
+                        <td>%s</td>
+                        <td>%s<br><small>%s</small></td>
+                        <td>%s</td>
+                        <td class="%s">%s</td>
+                        <td>%.2f</td>
+                        <td>%s</td>
+                    </tr>',
+                    date('Y-m-d H:i', strtotime($transaction->created_at)),
+                    esc_html($transaction->display_name ?: 'Unknown'),
+                    esc_html($transaction->user_email ?: $transaction->customer_id),
+                    esc_html($transaction->transaction_type),
+                    $amount_class,
+                    ($transaction->points_amount >= 0 ? '+' : '') . number_format($transaction->points_amount, 2),
+                    floatval($transaction->points_balance),
+                    esc_html($transaction->description)
+                );
+            }
+
+            $html .= '</tbody></table>';
         }
 
         wp_send_json_success(['html' => $html]);
