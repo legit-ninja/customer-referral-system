@@ -1,92 +1,87 @@
-// assets/js/admin-dashboard.js
+/**
+ * InterSoccer Referral System Admin Dashboard JavaScript
+ * Handles chart initialization and interactive dashboard features
+ */
 
-jQuery(document).ready(function($) {
-    
-    // Initialize Chart.js performance chart
-    initializePerformanceChart();
-    
-    // Handle demo data population
-    $('#populate-demo-data').on('click', function(e) {
-        e.preventDefault();
-        populateDemoData();
+(function($) {
+    'use strict';
+
+    // Chart instances for cleanup
+    let charts = {};
+
+    // Initialize dashboard when document is ready
+    $(document).ready(function() {
+        initializeDashboard();
+        bindEvents();
     });
-    
-    // Handle demo data clearing
-    $('#clear-demo-data').on('click', function(e) {
-        e.preventDefault();
-        clearDemoData();
-    });
-    
-    // Handle export data
-    $('#export-data').on('click', function(e) {
-        e.preventDefault();
-        exportData();
-    });
-    
-    // Handle ROI export
-    $('#export-roi').on('click', function(e) {
-        e.preventDefault();
-        exportROIReport();
-    });
-    
-    // Coach detail modals
-    $('.view-details').on('click', function(e) {
-        e.preventDefault();
-        var coachId = $(this).data('coach-id');
-        showCoachDetails(coachId);
-    });
-    
-    // Send message functionality
-    $('.send-message').on('click', function(e) {
-        e.preventDefault();
-        var coachId = $(this).data('coach-id');
-        showMessageModal(coachId);
-    });
-    
-    // Auto-refresh dashboard data every 5 minutes
-    setInterval(refreshDashboardData, 300000);
-    
-    function initializePerformanceChart() {
-        var ctx = document.getElementById('performanceChart');
-        if (!ctx) return;
-        
-        // Chart.js fallback for missing data
-        if (!performanceData || !performanceData.length) {
-            performanceData = [
-                {month: 'No Data Available', referrals: 0, commissions: 0}
-            ];
+
+    /**
+     * Initialize all dashboard components
+     */
+    function initializeDashboard() {
+        if (typeof intersoccerChartData !== 'undefined') {
+            initializeCharts();
         }
-        
-        var chart = new Chart(ctx, {
+
+        // Initialize demo data handlers
+        initializeDemoDataHandlers();
+    }
+
+    /**
+     * Initialize all Chart.js charts
+     */
+    function initializeCharts() {
+        // Referral Trends Chart
+        if ($('#referralTrendsChart').length && intersoccerChartData.referral_trends) {
+            initializeReferralTrendsChart();
+        }
+
+        // Financial Performance Chart
+        if ($('#financialChart').length && intersoccerChartData.financial_performance) {
+            initializeFinancialChart();
+        }
+
+        // Coach Performance Chart
+        if ($('#coachPerformanceChart').length && intersoccerChartData.coach_performance) {
+            initializeCoachPerformanceChart();
+        }
+
+        // Credit Distribution Chart
+        if ($('#creditDistributionChart').length && intersoccerChartData.credit_distribution) {
+            initializeCreditDistributionChart();
+        }
+
+        // Redemption Activity Chart
+        if ($('#redemptionActivityChart').length && intersoccerChartData.redemption_activity) {
+            initializeRedemptionActivityChart();
+        }
+    }
+
+    /**
+     * Initialize Referral Trends Chart
+     */
+    function initializeReferralTrendsChart() {
+        const ctx = document.getElementById('referralTrendsChart').getContext('2d');
+        const data = intersoccerChartData.referral_trends;
+
+        charts.referralTrends = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: performanceData.map(item => item.month),
+                labels: data.labels,
                 datasets: [{
                     label: 'Referrals',
-                    data: performanceData.map(item => item.referrals),
-                    borderColor: '#667eea',
-                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                    borderWidth: 3,
-                    fill: true,
+                    data: data.referrals,
+                    borderColor: '#3498db',
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
                     tension: 0.4,
-                    pointBackgroundColor: '#667eea',
-                    pointBorderColor: '#ffffff',
-                    pointBorderWidth: 2,
-                    pointRadius: 6,
-                    pointHoverRadius: 8
+                    fill: true
                 }, {
-                    label: 'Commissions (CHF)',
-                    data: performanceData.map(item => item.commissions),
-                    borderColor: '#764ba2',
-                    backgroundColor: 'rgba(118, 75, 162, 0.1)',
-                    borderWidth: 3,
-                    fill: true,
+                    label: 'Completed',
+                    data: data.completed,
+                    borderColor: '#27ae60',
+                    backgroundColor: 'rgba(39, 174, 96, 0.1)',
                     tension: 0.4,
-                    pointBackgroundColor: '#764ba2',
-                    pointBorderColor: '#ffffff',
-                    pointBorderWidth: 2,
-                    pointRadius: 6,
-                    pointHoverRadius: 8
+                    fill: true
                 }]
             },
             options: {
@@ -94,484 +89,462 @@ jQuery(document).ready(function($) {
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        position: 'top',
-                        labels: {
-                            usePointStyle: true,
-                            font: {
-                                size: 14,
-                                weight: '500'
-                            }
-                        }
+                        display: true,
+                        position: 'top'
                     },
                     tooltip: {
-                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                        titleColor: 'white',
-                        bodyColor: 'white',
-                        borderColor: '#667eea',
-                        borderWidth: 1,
-                        cornerRadius: 8,
-                        displayColors: true
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.parsed.y;
+                            }
+                        }
                     }
                 },
                 scales: {
                     x: {
-                        grid: {
-                            display: false
-                        },
-                        ticks: {
-                            font: {
-                                size: 12,
-                                weight: '500'
-                            },
-                            color: '#7f8c8d'
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Month'
                         }
                     },
                     y: {
-                        beginAtZero: true,
-                        grid: {
-                            color: 'rgba(0, 0, 0, 0.1)',
-                            drawBorder: false
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Count'
                         },
+                        beginAtZero: true
+                    }
+                },
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                }
+            }
+        });
+    }
+
+    /**
+     * Initialize Financial Performance Chart
+     */
+    function initializeFinancialChart() {
+        const ctx = document.getElementById('financialChart').getContext('2d');
+        const data = intersoccerChartData.financial_performance;
+
+        charts.financial = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: 'Commission Revenue',
+                    data: data.revenue,
+                    backgroundColor: '#f39c12',
+                    borderColor: '#e67e22',
+                    borderWidth: 1
+                }, {
+                    label: 'Redemption Costs',
+                    data: data.costs,
+                    backgroundColor: '#9b59b6',
+                    borderColor: '#8e44ad',
+                    borderWidth: 1
+                }, {
+                    label: 'Net Profit/Loss',
+                    data: data.profit,
+                    backgroundColor: function(context) {
+                        const value = context.parsed.y;
+                        return value >= 0 ? '#27ae60' : '#e74c3c';
+                    },
+                    borderColor: function(context) {
+                        const value = context.parsed.y;
+                        return value >= 0 ? '#229954' : '#c0392b';
+                    },
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': CHF ' + context.parsed.y.toLocaleString();
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Month'
+                        }
+                    },
+                    y: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Amount (CHF)'
+                        },
+                        beginAtZero: true,
                         ticks: {
-                            font: {
-                                size: 12,
-                                weight: '500'
-                            },
-                            color: '#7f8c8d'
+                            callback: function(value) {
+                                return 'CHF ' + value.toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Initialize Coach Performance Chart
+     */
+    function initializeCoachPerformanceChart() {
+        const ctx = document.getElementById('coachPerformanceChart').getContext('2d');
+        const data = intersoccerChartData.coach_performance;
+
+        charts.coachPerformance = new Chart(ctx, {
+            type: 'horizontalBar',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: 'Referrals',
+                    data: data.referrals,
+                    backgroundColor: '#3498db',
+                    borderColor: '#2980b9',
+                    borderWidth: 1
+                }, {
+                    label: 'Commission (CHF)',
+                    data: data.commissions,
+                    backgroundColor: '#27ae60',
+                    borderColor: '#229954',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                if (context.datasetIndex === 0) {
+                                    return context.dataset.label + ': ' + context.parsed.x;
+                                } else {
+                                    return context.dataset.label + ': CHF ' + context.parsed.x.toLocaleString();
+                                }
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Value'
+                        },
+                        beginAtZero: true
+                    },
+                    y: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Coach'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Initialize Credit Distribution Chart
+     */
+    function initializeCreditDistributionChart() {
+        const ctx = document.getElementById('creditDistributionChart').getContext('2d');
+        const data = intersoccerChartData.credit_distribution;
+
+        charts.creditDistribution = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    data: data.values,
+                    backgroundColor: [
+                        '#3498db',
+                        '#27ae60',
+                        '#f39c12',
+                        '#9b59b6',
+                        '#e74c3c',
+                        '#1abc9c'
+                    ],
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                            padding: 20,
+                            usePointStyle: true
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((context.parsed / total) * 100).toFixed(1);
+                                return context.label + ': CHF ' + context.parsed.toLocaleString() + ' (' + percentage + '%)';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Initialize Redemption Activity Chart
+     */
+    function initializeRedemptionActivityChart() {
+        const ctx = document.getElementById('redemptionActivityChart').getContext('2d');
+        const data = intersoccerChartData.redemption_activity;
+
+        charts.redemptionActivity = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.labels,
+                datasets: [{
+                    label: 'Credits Earned',
+                    data: data.earned,
+                    borderColor: '#27ae60',
+                    backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }, {
+                    label: 'Credits Redeemed',
+                    data: data.redeemed,
+                    borderColor: '#e74c3c',
+                    backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                    tension: 0.4,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': CHF ' + context.parsed.y.toLocaleString();
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Month'
+                        }
+                    },
+                    y: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Amount (CHF)'
+                        },
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return 'CHF ' + value.toLocaleString();
+                            }
                         }
                     }
                 },
                 interaction: {
-                    intersect: false,
-                    mode: 'index'
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                }
+            }
+        });
+    }
+
+    /**
+     * Initialize demo data handlers
+     */
+    function initializeDemoDataHandlers() {
+        $('#populate-demo-data').on('click', function(e) {
+            e.preventDefault();
+
+            if (!confirm('This will populate the database with demo data. Continue?')) {
+                return;
+            }
+
+            const $button = $(this);
+            const originalText = $button.html();
+
+            $button.html('<span class="dashicons dashicons-update spin"></span> Populating...').prop('disabled', true);
+
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'intersoccer_populate_demo_data',
+                    nonce: intersoccer_admin.nonce
                 },
-                animation: {
-                    duration: 1000,
-                    easing: 'easeOutQuart'
-                }
-            }
-        });
-    }
-    
-    function populateDemoData() {
-        var $button = $('#populate-demo-data');
-        var originalText = $button.html();
-        
-        $button.html('<span class="dashicons dashicons-update spin"></span> Creating Demo Data...').prop('disabled', true);
-        
-        $.ajax({
-            url: intersoccer_ajax.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'populate_demo_data',
-                nonce: intersoccer_ajax.nonce
-            },
-            success: function(response) {
-                if (response.success) {
-                    showNotification('success', response.data.message);
-                    setTimeout(function() {
+                success: function(response) {
+                    if (response.success) {
+                        alert('Demo data populated successfully!');
                         location.reload();
-                    }, 2000);
-                } else {
-                    showNotification('error', response.data.message || 'Failed to create demo data');
+                    } else {
+                        alert('Error: ' + response.data);
+                        $button.html(originalText).prop('disabled', false);
+                    }
+                },
+                error: function() {
+                    alert('An error occurred while populating demo data.');
+                    $button.html(originalText).prop('disabled', false);
                 }
-            },
-            error: function() {
-                showNotification('error', 'Ajax request failed');
-            },
-            complete: function() {
-                $button.html(originalText).prop('disabled', false);
-            }
-        });
-    }
-    
-    function clearDemoData() {
-        if (!confirm('Are you sure you want to clear all demo data? This action cannot be undone.')) {
-            return;
-        }
-        
-        var $button = $('#clear-demo-data');
-        var originalText = $button.html();
-        
-        $button.html('<span class="dashicons dashicons-update spin"></span> Clearing Data...').prop('disabled', true);
-        
-        $.ajax({
-            url: intersoccer_ajax.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'clear_demo_data',
-                nonce: intersoccer_ajax.nonce
-            },
-            success: function(response) {
-                if (response.success) {
-                    showNotification('success', response.data.message);
-                    setTimeout(function() {
-                        location.reload();
-                    }, 2000);
-                } else {
-                    showNotification('error', response.data.message || 'Failed to clear demo data');
-                }
-            },
-            error: function() {
-                showNotification('error', 'Ajax request failed');
-            },
-            complete: function() {
-                $button.html(originalText).prop('disabled', false);
-            }
-        });
-    }
-    
-    function exportData() {
-        showNotification('info', 'Preparing data export...');
-        
-        // Create CSV data
-        var csvData = 'Coach Name,Email,Referrals,Total Commission,Credits\n';
-        
-        $('.coach-card').each(function() {
-            var name = $(this).find('h3').text();
-            var email = $(this).find('p').first().text();
-            var referrals = $(this).find('.stat .number').eq(0).text();
-            var commission = $(this).find('.stat .number').eq(1).text();
-            var credits = $(this).find('.stat .number').eq(2).text();
-            
-            csvData += name + ',' + email + ',' + referrals + ',' + commission + ',' + credits + '\n';
-        });
-        
-        // Download CSV
-        var blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
-        var link = document.createElement('a');
-        var url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', 'intersoccer_coaches_' + new Date().toISOString().split('T')[0] + '.csv');
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        showNotification('success', 'Data exported successfully!');
-    }
-    
-    function exportROIReport() {
-        showNotification('info', 'Preparing ROI report...');
-        
-        // Create form for ROI export
-        var form = $('<form>', {
-            'method': 'POST',
-            'action': intersoccer_ajax.ajax_url,
-            'style': 'display: none;'
-        });
-        
-        form.append($('<input>', {
-            'type': 'hidden',
-            'name': 'action',
-            'value': 'export_roi_report'
-        }));
-        
-        form.append($('<input>', {
-            'type': 'hidden',
-            'name': 'nonce',
-            'value': intersoccer_ajax.nonce
-        }));
-        
-        $('body').append(form);
-        form.submit();
-        form.remove();
-        
-        setTimeout(function() {
-            showNotification('success', 'ROI report exported successfully!');
-        }, 1000);
-    }
-    
-    function showCoachDetails(coachId) {
-        // Create modal HTML
-        var modalHtml = `
-            <div id="coach-details-modal" class="modal-overlay">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h2>Coach Details</h2>
-                        <button class="modal-close">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <div class="loading-placeholder">
-                            <div class="spinner"></div>
-                            <p>Loading coach details...</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        $('body').append(modalHtml);
-        
-        // Load coach data via AJAX (placeholder for now)
-        setTimeout(function() {
-            $('#coach-details-modal .modal-body').html(`
-                <div class="coach-detail-content">
-                    <div class="coach-avatar-large">
-                        <img src="https://www.gravatar.com/avatar/placeholder?s=80&d=mp" alt="Coach Avatar">
-                    </div>
-                    <div class="coach-metrics">
-                        <div class="metric">
-                            <span class="label">Total Referrals:</span>
-                            <span class="value">15</span>
-                        </div>
-                        <div class="metric">
-                            <span class="label">This Month:</span>
-                            <span class="value">3</span>
-                        </div>
-                        <div class="metric">
-                            <span class="label">Conversion Rate:</span>
-                            <span class="value">12.5%</span>
-                        </div>
-                        <div class="metric">
-                            <span class="label">Total Earnings:</span>
-                            <span class="value">1,250 CHF</span>
-                        </div>
-                    </div>
-                    <div class="coach-actions-modal">
-                        <button class="button button-primary">Send Message</button>
-                        <button class="button">View Full Report</button>
-                    </div>
-                </div>
-            `);
-        }, 1000);
-    }
-    
-    function showMessageModal(coachId) {
-        var modalHtml = `
-            <div id="message-modal" class="modal-overlay">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h2>Send Message to Coach</h2>
-                        <button class="modal-close">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <form id="coach-message-form">
-                            <div class="form-group">
-                                <label for="message-subject">Subject:</label>
-                                <input type="text" id="message-subject" name="subject" class="form-control" required>
-                            </div>
-                            <div class="form-group">
-                                <label for="message-content">Message:</label>
-                                <textarea id="message-content" name="content" class="form-control" rows="5" required></textarea>
-                            </div>
-                            <div class="form-actions">
-                                <button type="submit" class="button button-primary">Send Message</button>
-                                <button type="button" class="button modal-close">Cancel</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        $('body').append(modalHtml);
-    }
-    
-    // Modal close functionality
-    $(document).on('click', '.modal-close, .modal-overlay', function(e) {
-        if (e.target === this) {
-            $('.modal-overlay').remove();
-        }
-    });
-    
-    // Prevent modal content clicks from closing modal
-    $(document).on('click', '.modal-content', function(e) {
-        e.stopPropagation();
-    });
-    
-    function refreshDashboardData() {
-        // Placeholder for auto-refresh functionality
-        console.log('Refreshing dashboard data...');
-    }
-    
-    function showNotification(type, message) {
-        var notificationClass = type === 'success' ? 'notice-success' : 
-                               type === 'error' ? 'notice-error' : 'notice-info';
-        
-        var notification = $('<div class="' + notificationClass + '">' + message + '</div>');
-        
-        $('.intersoccer-admin').prepend(notification);
-        
-        setTimeout(function() {
-            notification.fadeOut(function() {
-                $(this).remove();
             });
-        }, 5000);
+        });
+
+        $('#clear-demo-data').on('click', function(e) {
+            e.preventDefault();
+
+            if (!confirm('This will clear all demo data. Continue?')) {
+                return;
+            }
+
+            const $button = $(this);
+            const originalText = $button.html();
+
+            $button.html('<span class="dashicons dashicons-update spin"></span> Clearing...').prop('disabled', true);
+
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'intersoccer_clear_demo_data',
+                    nonce: intersoccer_admin.nonce
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert('Demo data cleared successfully!');
+                        location.reload();
+                    } else {
+                        alert('Error: ' + response.data);
+                        $button.html(originalText).prop('disabled', false);
+                    }
+                },
+                error: function() {
+                    alert('An error occurred while clearing demo data.');
+                    $button.html(originalText).prop('disabled', false);
+                }
+            });
+        });
+
+        $('#export-data').on('click', function(e) {
+            e.preventDefault();
+
+            const $button = $(this);
+            const originalText = $button.html();
+
+            $button.html('<span class="dashicons dashicons-download"></span> Exporting...').prop('disabled', true);
+
+            // Create a temporary link to download the export
+            const exportUrl = ajaxurl + '?action=intersoccer_export_data&nonce=' + intersoccer_admin.nonce;
+            const link = document.createElement('a');
+            link.href = exportUrl;
+            link.download = 'intersoccer-referral-data-' + new Date().toISOString().split('T')[0] + '.csv';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            $button.html(originalText).prop('disabled', false);
+        });
+
+        $('#credit-reconciliation').on('click', function(e) {
+            e.preventDefault();
+
+            const $button = $(this);
+            const originalText = $button.html();
+
+            $button.html('<span class="dashicons dashicons-update spin"></span> Reconciling...').prop('disabled', true);
+
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'intersoccer_credit_reconciliation',
+                    nonce: intersoccer_admin.nonce
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert('Credit reconciliation completed successfully!');
+                        location.reload();
+                    } else {
+                        alert('Error: ' + response.data);
+                        $button.html(originalText).prop('disabled', false);
+                    }
+                },
+                error: function() {
+                    alert('An error occurred during credit reconciliation.');
+                    $button.html(originalText).prop('disabled', false);
+                }
+            });
+        });
     }
-    
-    // Add some CSS for modals and animations
-    var modalStyles = `
-        <style>
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.6);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 9999;
-            animation: fadeIn 0.3s ease;
-        }
-        
-        .modal-content {
-            background: white;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 500px;
-            max-height: 80%;
-            overflow-y: auto;
-            animation: slideIn 0.3s ease;
-        }
-        
-        .modal-header {
-            padding: 20px 25px;
-            border-bottom: 1px solid #e1e5e9;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .modal-header h2 {
-            margin: 0;
-            color: #2c3e50;
-        }
-        
-        .modal-close {
-            background: none;
-            border: none;
-            font-size: 24px;
-            cursor: pointer;
-            color: #7f8c8d;
-            line-height: 1;
-        }
-        
-        .modal-close:hover {
-            color: #2c3e50;
-        }
-        
-        .modal-body {
-            padding: 25px;
-        }
-        
-        .loading-placeholder {
-            text-align: center;
-            padding: 40px;
-        }
-        
-        .spinner {
-            width: 30px;
-            height: 30px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #667eea;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 15px;
-        }
-        
-        .coach-detail-content {
-            text-align: center;
-        }
-        
-        .coach-avatar-large img {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            border: 3px solid #667eea;
-            margin-bottom: 20px;
-        }
-        
-        .coach-metrics {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 25px;
-        }
-        
-        .metric {
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 8px;
-        }
-        
-        .metric .label {
-            display: block;
-            font-size: 12px;
-            color: #7f8c8d;
-            margin-bottom: 5px;
-        }
-        
-        .metric .value {
-            display: block;
-            font-size: 18px;
-            font-weight: bold;
-            color: #2c3e50;
-        }
-        
-        .coach-actions-modal {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-        }
-        
-        .form-group {
-            margin-bottom: 20px;
-        }
-        
-        .form-group label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: 600;
-            color: #2c3e50;
-        }
-        
-        .form-control {
-            width: 100%;
-            padding: 10px 12px;
-            border: 1px solid #e1e5e9;
-            border-radius: 6px;
-            font-size: 14px;
-        }
-        
-        .form-control:focus {
-            border-color: #667eea;
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-        
-        .form-actions {
-            display: flex;
-            gap: 10px;
-            justify-content: flex-end;
-        }
-        
-        .spin {
-            animation: spin 1s linear infinite;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-        
-        @keyframes slideIn {
-            from { transform: translateY(-50px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-        
-        .notice-info {
-            background: #cce5ff;
-            color: #004085;
-            border-left: 4px solid #007bff;
-            padding: 12px 15px;
-            margin: 20px 0;
-            border-radius: 4px;
-        }
-        </style>
-    `;
-    
-    $('head').append(modalStyles);
-});
+
+    /**
+     * Bind general event handlers
+     */
+    function bindEvents() {
+        // Add any additional event bindings here
+    }
+
+    /**
+     * Cleanup function for when the page is unloaded
+     */
+    $(window).on('beforeunload', function() {
+        // Destroy all charts to prevent memory leaks
+        Object.values(charts).forEach(chart => {
+            if (chart && typeof chart.destroy === 'function') {
+                chart.destroy();
+            }
+        });
+        charts = {};
+    });
+
+})(jQuery);

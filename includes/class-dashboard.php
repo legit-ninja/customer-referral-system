@@ -33,11 +33,12 @@ class InterSoccer_Referral_Dashboard {
         if (!is_user_logged_in() || is_account_page()) {
             return '<p>' . __('Please log in to view your referral dashboard.', 'intersoccer-referral') . '</p>';
         }
+        $customer_id = get_current_user_id();
         $user_id = get_current_user_id();
         $credits = intersoccer_get_customer_credits($user_id);
         $referrals = get_user_meta($user_id, 'intersoccer_referrals_made', true) ?: [];
         $referral_link = InterSoccer_Referral_Handler::generate_customer_referral_link($user_id);
-        
+        $partnership_coach_id = get_user_meta($customer_id, 'intersoccer_partnership_coach_id', true);
         // Get customer badges and stats
         $total_referrals = count($referrals);
         $badges = $this->get_customer_badges($user_id, $total_referrals, $credits);
@@ -48,7 +49,7 @@ class InterSoccer_Referral_Dashboard {
         ?>
         <div class="intersoccer-customer-dashboard">
             <div class="dashboard-header">
-                <h2>🎯 Your Referral Dashboard</h2>
+                <h2>Your Referral Dashboard</h2>
                 <div class="dashboard-stats">
                     <div class="stat-card credits-card" data-credits="<?php echo $credits; ?>">
                         <div class="stat-icon">💰</div>
@@ -69,15 +70,107 @@ class InterSoccer_Referral_Dashboard {
                         </div>
                     </div>
                     
-                    <?php if ($leaderboard_position <= 10): ?>
-                    <div class="stat-card leaderboard-card">
-                        <div class="stat-icon">🏆</div>
+                    <?php if ($partnership_coach_id): ?>
+                    <div class="stat-card partnership-card">
+                        <div class="stat-icon">🤝</div>
                         <div class="stat-content">
-                            <span class="stat-number">#<?php echo $leaderboard_position; ?></span>
-                            <span class="stat-label">Leaderboard Rank</span>
+                            <span class="stat-number"><?php echo $partnership_orders; ?></span>
+                            <span class="stat-label">Partnership Orders</span>
                         </div>
                     </div>
                     <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Coach Partnership Section -->
+            <div class="coach-partnership-section">
+                <h3>🎯 Your Coach Connection</h3>
+                
+                <?php if ($partnership_coach_id): ?>
+                    <?php 
+                    $coach = get_user_by('ID', $partnership_coach_id);
+                    $tier = intersoccer_get_coach_tier($partnership_coach_id);
+                    $partnership_duration = $partnership_start ? human_time_diff(strtotime($partnership_start)) : 'Recently';
+                    ?>
+                    
+                    <div class="current-partnership">
+                        <div class="coach-info">
+                            <div class="coach-avatar">
+                                <?php echo get_avatar($coach->ID, 60); ?>
+                                <div class="coach-tier-badge <?php echo strtolower($tier); ?>"><?php echo $tier; ?></div>
+                            </div>
+                            <div class="coach-details">
+                                <h4><?php echo $coach->display_name; ?></h4>
+                                <p class="coach-specialty"><?php echo get_user_meta($coach->ID, 'coach_specialty', true) ?: 'General Training'; ?></p>
+                                <p class="partnership-info">
+                                    <span class="partnership-duration">Connected for <?php echo $partnership_duration; ?></span>
+                                    <span class="partnership-commission">Earning 5% commission on your purchases</span>
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <div class="partnership-actions">
+                            <?php if ($cooldown_end && strtotime($cooldown_end) > time()): ?>
+                                <div class="cooldown-notice">
+                                    <span class="cooldown-icon">⏳</span>
+                                    <span>Coach change available in <?php echo human_time_diff(time(), strtotime($cooldown_end)); ?></span>
+                                </div>
+                            <?php else: ?>
+                                <button class="change-coach-btn" onclick="showCoachSelection()">
+                                    Change Coach Connection
+                                </button>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                    
+                <?php else: ?>
+                    <!-- No Partnership - Show Selection Interface -->
+                    <div class="no-partnership">
+                        <div class="partnership-intro">
+                            <h4>Connect with a Coach Partner</h4>
+                            <p>Choose a coach to support with every purchase. They'll earn 5% commission and provide you with personalized guidance.</p>
+                            <ul class="partnership-benefits">
+                                <li>✓ Support your favorite coach with every purchase</li>
+                                <li>✓ Receive personalized training tips</li>
+                                <li>✓ Access exclusive content</li>
+                                <li>✓ Build a long-term coaching relationship</li>
+                            </ul>
+                        </div>
+                        
+                        <button class="select-coach-btn" onclick="showCoachSelection()">
+                            Choose Your Coach Partner
+                        </button>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Coach Selection Modal -->
+            <div id="coach-selection-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Choose Your Coach Connection</h3>
+                        <span class="close" onclick="hideCoachSelection()">&times;</span>
+                    </div>
+                    
+                    <div class="coach-search">
+                        <input type="text" id="coach-search" placeholder="Search coaches..." oninput="searchCoaches()">
+                        <div class="coach-filters">
+                            <button class="filter-btn active" data-filter="all" onclick="filterCoaches('all')">All</button>
+                            <button class="filter-btn" data-filter="youth" onclick="filterCoaches('youth')">Youth</button>
+                            <button class="filter-btn" data-filter="advanced" onclick="filterCoaches('advanced')">Advanced</button>
+                            <button class="filter-btn" data-filter="top" onclick="filterCoaches('top')">Top Rated</button>
+                        </div>
+                    </div>
+                    
+                    <div id="coaches-list" class="coaches-grid">
+                        <!-- Coaches will be loaded via AJAX -->
+                    </div>
+                    
+                    <div class="modal-footer">
+                        <button id="confirm-selection" class="confirm-btn" onclick="confirmCoachSelection()" disabled>
+                            Confirm Selection
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -571,9 +664,404 @@ class InterSoccer_Referral_Dashboard {
                 flex-direction: column;
             }
         }
+
+        .coach-partnership-section {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .current-partnership {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 10px;
+            border: 2px solid #28a745;
+        }
+
+        .coach-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .coach-avatar {
+            position: relative;
+        }
+
+        .coach-avatar img {
+            border-radius: 50%;
+            border: 3px solid #28a745;
+        }
+
+        .coach-tier-badge {
+            position: absolute;
+            bottom: -5px;
+            right: -5px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-weight: bold;
+            color: white;
+        }
+
+        .coach-tier-badge.bronze { background: #cd7f32; }
+        .coach-tier-badge.silver { background: #c0c0c0; }
+        .coach-tier-badge.gold { background: #ffd700; color: #333; }
+        .coach-tier-badge.platinum { background: #e5e4e2; color: #333; }
+
+        .coach-details h4 {
+            margin: 0 0 5px 0;
+            color: #2c3e50;
+            font-size: 18px;
+        }
+
+        .coach-specialty {
+            color: #6c757d;
+            font-size: 14px;
+            margin: 0 0 8px 0;
+        }
+
+        .partnership-info span {
+            display: block;
+            font-size: 12px;
+            color: #28a745;
+            font-weight: 500;
+        }
+
+        .cooldown-notice {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #ffc107;
+            background: #fff3cd;
+            padding: 10px 15px;
+            border-radius: 6px;
+            border: 1px solid #ffeaa7;
+        }
+
+        .change-coach-btn, .select-coach-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: transform 0.2s ease;
+        }
+
+        .change-coach-btn:hover, .select-coach-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .no-partnership {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .partnership-intro h4 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .partnership-benefits {
+            list-style: none;
+            padding: 0;
+            margin: 20px 0;
+            text-align: left;
+            display: inline-block;
+        }
+
+        .partnership-benefits li {
+            padding: 5px 0;
+            color: #28a745;
+        }
+
+        /* Modal Styles */
+        .modal {
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.4);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 0;
+            border-radius: 10px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 25px;
+            border-bottom: 1px solid #e9ecef;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px 10px 0 0;
+        }
+
+        .close {
+            font-size: 24px;
+            cursor: pointer;
+            color: white;
+        }
+
+        .coach-search {
+            padding: 20px 25px;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        #coach-search {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+
+        .coach-filters {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .filter-btn {
+            padding: 8px 16px;
+            border: 2px solid #e9ecef;
+            background: white;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .filter-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .coaches-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            padding: 20px 25px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .coach-card {
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .coach-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        }
+
+        .coach-card.selected {
+            border-color: #28a745;
+            background: #f8fff9;
+        }
+
+        .modal-footer {
+            padding: 20px 25px;
+            border-top: 1px solid #e9ecef;
+            text-align: right;
+        }
+
+        .confirm-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .confirm-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .current-partnership {
+                flex-direction: column;
+                gap: 15px;
+                text-align: center;
+            }
+
+            .coach-info {
+                flex-direction: column;
+                text-align: center;
+            }
+
+            .modal-content {
+                width: 95%;
+                margin: 2% auto;
+            }
+
+            .coaches-grid {
+                grid-template-columns: 1fr;
+            }
+        }
         </style>
 
         <script>
+        let selectedCoachId = null;
+        let availableCoaches = [];
+
+        function showCoachSelection() {
+            document.getElementById('coach-selection-modal').style.display = 'block';
+            loadCoaches();
+        }
+
+        function hideCoachSelection() {
+            document.getElementById('coach-selection-modal').style.display = 'none';
+            selectedCoachId = null;
+            document.getElementById('confirm-selection').disabled = true;
+        }
+
+        function loadCoaches(search = '', filter = 'all') {
+            jQuery.post({
+                url: intersoccer_dashboard.ajax_url,
+                data: {
+                    action: 'get_available_coaches',
+                    nonce: intersoccer_dashboard.nonce,
+                    search: search,
+                    filter: filter
+                },
+                success: function(response) {
+                    if (response.success) {
+                        availableCoaches = response.data.coaches;
+                        renderCoaches(availableCoaches);
+                    }
+                },
+                error: function() {
+                    document.getElementById('coaches-list').innerHTML = '<p>Error loading coaches. Please try again.</p>';
+                }
+            });
+        }
+
+        function renderCoaches(coaches) {
+            const container = document.getElementById('coaches-list');
+            
+            if (coaches.length === 0) {
+                container.innerHTML = '<p>No coaches found matching your criteria.</p>';
+                return;
+            }
+
+            container.innerHTML = coaches.map(coach => `
+                <div class="coach-card" data-coach-id="${coach.id}" onclick="selectCoach(${coach.id})">
+                    <div class="coach-card-header">
+                        <h5>${coach.name}</h5>
+                        <span class="coach-tier-badge ${coach.tier.toLowerCase()}">${coach.tier}</span>
+                    </div>
+                    <p class="coach-specialty">${coach.specialty}</p>
+                    <div class="coach-stats">
+                        <span>⭐ ${coach.rating}/5</span>
+                        <span>👥 ${coach.total_athletes} athletes</span>
+                    </div>
+                    <div class="coach-benefits">
+                        ${coach.benefits.map(benefit => `<small>• ${benefit}</small>`).join('<br>')}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function selectCoach(coachId) {
+            // Remove previous selection
+            document.querySelectorAll('.coach-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            
+            // Select new coach
+            const selectedCard = document.querySelector(`[data-coach-id="${coachId}"]`);
+            selectedCard.classList.add('selected');
+            
+            selectedCoachId = coachId;
+            document.getElementById('confirm-selection').disabled = false;
+        }
+
+        function confirmCoachSelection() {
+            if (!selectedCoachId) return;
+
+            const confirmBtn = document.getElementById('confirm-selection');
+            confirmBtn.textContent = 'Connecting...';
+            confirmBtn.disabled = true;
+
+            jQuery.post({
+                url: intersoccer_dashboard.ajax_url,
+                data: {
+                    action: 'select_coach_partner',
+                    nonce: intersoccer_dashboard.nonce,
+                    coach_id: selectedCoachId
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert(response.data.message);
+                        location.reload();
+                    } else {
+                        alert(response.data.message);
+                        confirmBtn.textContent = 'Confirm Selection';
+                        confirmBtn.disabled = false;
+                    }
+                },
+                error: function() {
+                    alert('Error connecting with coach. Please try again.');
+                    confirmBtn.textContent = 'Confirm Selection';
+                    confirmBtn.disabled = false;
+                }
+            });
+        }
+
+        function searchCoaches() {
+            const searchTerm = document.getElementById('coach-search').value;
+            const activeFilter = document.querySelector('.filter-btn.active').dataset.filter;
+            loadCoaches(searchTerm, activeFilter);
+        }
+
+        function filterCoaches(filter) {
+            // Update active filter
+            document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`[data-filter="${filter}"]`).classList.add('active');
+            
+            const searchTerm = document.getElementById('coach-search').value;
+            loadCoaches(searchTerm, filter);
+        }
+
+        // Your existing copyReferralLink function and other dashboard scripts...
+        function copyReferralLink() {
+            const linkInput = document.getElementById('referral-link');
+            const copyBtn = document.getElementById('copy-link-btn');
+            
+            linkInput.select();
+            document.execCommand('copy');
+            
+            copyBtn.classList.add('copied');
+            setTimeout(() => copyBtn.classList.remove('copied'), 2000);
+        }
+
         function copyReferralLink() {
             const linkInput = document.getElementById('referral-link');
             const copyBtn = document.getElementById('copy-link-btn');

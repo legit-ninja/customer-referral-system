@@ -29,6 +29,55 @@ class InterSoccer_Commission_Calculator {
                 return $total * $third_rate;
         }
     }
+
+    /**
+     * Calculate partnership commission (ongoing 5% commission)
+     */
+    public static function calculate_partnership_commission($order, $coach_id) {
+        $total = $order->get_total() - $order->get_total_tax();
+        $base_rate = 0.05; // 5% base partnership commission
+        
+        // Apply tier multiplier
+        $tier_bonus = self::calculate_tier_bonus($coach_id, $total * $base_rate);
+        
+        return [
+            'base_commission' => round($total * $base_rate, 2),
+            'tier_bonus' => round($tier_bonus, 2),
+            'total_amount' => round(($total * $base_rate) + $tier_bonus, 2)
+        ];
+    }
+
+    /**
+     * Calculate stacked commission when referral coach = partnership coach
+     */
+    public static function calculate_stacked_commission($order, $coach_id, $customer_id, $purchase_count) {
+        $referral_commission = self::calculate_total_commission($order, $coach_id, $customer_id, $purchase_count);
+        $partnership_commission = self::calculate_partnership_commission($order, $coach_id);
+        
+        // Same coach bonus: +2% when referral and partnership are same coach
+        $same_coach_bonus = ($order->get_total() - $order->get_total_tax()) * 0.02;
+        
+        // Cap total at 25% of order value to prevent abuse
+        $order_total = $order->get_total() - $order->get_total_tax();
+        $max_commission = $order_total * 0.25;
+        
+        $total_commission = $referral_commission['total_amount'] + 
+                        $partnership_commission['total_amount'] + 
+                        $same_coach_bonus;
+        
+        if ($total_commission > $max_commission) {
+            $total_commission = $max_commission;
+            error_log('Commission capped for order #' . $order->get_id() . ': was ' . ($referral_commission['total_amount'] + $partnership_commission['total_amount'] + $same_coach_bonus) . ', capped at ' . $max_commission);
+        }
+        
+        return [
+            'referral_amount' => $referral_commission['total_amount'],
+            'partnership_amount' => $partnership_commission['total_amount'], 
+            'same_coach_bonus' => $same_coach_bonus,
+            'total_amount' => round($total_commission, 2),
+            'was_capped' => $total_commission >= $max_commission
+        ];
+    }
     
     /**
      * Calculate loyalty bonus based on purchase count
@@ -189,59 +238,182 @@ class InterSoccer_Commission_Calculator {
         $order = wc_get_order($order_id);
         if (!$order) return;
         
-        // Check if this order has a referral
+        $customer_id = $order->get_customer_id();
+        if (!$customer_id) return;
+        
+        // Check for partnership coach
+        $partnership_coach_id = get_user_meta($customer_id, 'intersoccer_partnership_coach_id', true);
+        
+        // Check for existing referral
         global $wpdb;
         $table_name = $wpdb->prefix . 'intersoccer_referrals';
-        
         $referral = $wpdb->get_row($wpdb->prepare(
             "SELECT * FROM $table_name WHERE order_id = %d",
             $order_id
         ));
         
-        if (!$referral) return;
+        // Process partnership commission if customer has a coach partner
+        if ($partnership_coach_id) {
+            $this->process_partnership_commission($order_id, $customer_id, $partnership_coach_id, $referral);
+        }
         
-        // Calculate advanced commission structure
-        $commission_data = self::calculate_total_commission(
-            $order,
-            $referral->coach_id,
-            $referral->customer_id,
-            $referral->purchase_count
-        );
+        // Continue with existing referral processing if exists
+        if ($referral) {
+            // Your existing referral processing code here
+            $commission_data = self::calculate_total_commission(
+                $order,
+                $referral->coach_id,
+                $referral->customer_id,
+                $referral->purchase_count
+            );
+            
+            // Handle stacking if same coach
+            if ($partnership_coach_id && $partnership_coach_id == $referral->coach_id) {
+                $stacked_commission = self::calculate_stacked_commission(
+                    $order, 
+                    $referral->coach_id, 
+                    $customer_id, 
+                    $referral->purchase_count
+                );
+                
+                // Log stacking
+                error_log('Commission stacking for Order #' . $order_id . ': Referral coach matches partnership coach. Total: ' . $stacked_commission['total_amount']);
+            }
+            
+            // Update referral record (existing code continues...)
+            $wpdb->update(
+                $table_name,
+                [
+                    'commission_amount' => $commission_data['base_commission'],
+                    'loyalty_bonus' => $commission_data['loyalty_bonus'],
+                    'retention_bonus' => $commission_data['retention_bonus'] + $commission_data['network_bonus'],
+                    'status' => 'completed',
+                    'conversion_date' => current_time('mysql')
+                ],
+                ['id' => $referral->id]
+            );
+            
+            // Update coach credits
+            $current_credits = (float) get_user_meta($referral->coach_id, 'intersoccer_credits', true);
+            update_user_meta(
+                $referral->coach_id,
+                'intersoccer_credits',
+                $current_credits + $commission_data['total_amount']
+            );
+            
+            $this->check_coach_achievements($referral->coach_id, $commission_data);
+            $this->notify_coach_of_commission($referral->coach_id, $order_id, $commission_data);
+        }
+    }
+
+    /**
+     * Process partnership commission for ongoing orders
+     */
+    private function process_partnership_commission($order_id, $customer_id, $partnership_coach_id, $existing_referral = null) {
+        $order = wc_get_order($order_id);
+        if (!$order) return;
         
-        // Update referral record with detailed breakdown
-        $wpdb->update(
-            $table_name,
-            [
-                'commission_amount' => $commission_data['base_commission'],
-                'loyalty_bonus' => $commission_data['loyalty_bonus'],
-                'retention_bonus' => $commission_data['retention_bonus'] + $commission_data['network_bonus'],
-                'status' => 'completed',
-                'conversion_date' => current_time('mysql')
-            ],
-            ['id' => $referral->id]
-        );
+        // Check partnership cooldown
+        $cooldown_end = get_user_meta($customer_id, 'intersoccer_partnership_switch_cooldown', true);
+        if ($cooldown_end && strtotime($cooldown_end) > time()) {
+            error_log('Partnership commission skipped for order #' . $order_id . ': customer ' . $customer_id . ' in cooldown until ' . $cooldown_end);
+            return;
+        }
         
-        // Update coach credits with total amount
-        $current_credits = (float) get_user_meta($referral->coach_id, 'intersoccer_credits', true);
+        // Calculate partnership commission
+        $partnership_commission = self::calculate_partnership_commission($order, $partnership_coach_id);
+        
+        // Handle stacking if same coach as referral
+        $total_commission = $partnership_commission['total_amount'];
+        $commission_type = 'partnership';
+        
+        if ($existing_referral && $existing_referral->coach_id == $partnership_coach_id) {
+            $stacked = self::calculate_stacked_commission($order, $partnership_coach_id, $customer_id, $existing_referral->purchase_count);
+            $total_commission = $stacked['partnership_amount']; // Only add partnership portion
+            $commission_type = 'partnership_stacked';
+            
+            error_log('Partnership commission stacked for Order #' . $order_id . ': Partnership amount: ' . $stacked['partnership_amount']);
+        }
+        
+        // Insert partnership commission record
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'intersoccer_referrals';
+        
+        $wpdb->insert($table_name, [
+            'coach_id' => $partnership_coach_id,
+            'customer_id' => $customer_id,
+            'referrer_id' => $partnership_coach_id,
+            'referrer_type' => 'coach',
+            'order_id' => $order_id,
+            'commission_amount' => $partnership_commission['base_commission'],
+            'loyalty_bonus' => 0, // Partnerships don't get loyalty bonuses
+            'retention_bonus' => $partnership_commission['tier_bonus'],
+            'status' => 'completed',
+            'purchase_count' => 0, // Ongoing partnership
+            'referral_code' => 'PARTNERSHIP_' . $partnership_coach_id,
+            'conversion_date' => current_time('mysql')
+        ]);
+        
+        // Update coach credits
+        $current_credits = (float) get_user_meta($partnership_coach_id, 'intersoccer_credits', true);
         update_user_meta(
-            $referral->coach_id,
+            $partnership_coach_id,
             'intersoccer_credits',
-            $current_credits + $commission_data['total_amount']
+            $current_credits + $total_commission
         );
         
-        // Log the advanced commission calculation
-        error_log(sprintf(
-            'Advanced commission calculated for Order #%d: Base: %.2f, Total: %.2f',
-            $order_id,
+        // Update partnership order count
+        $partnership_orders = (int) get_user_meta($customer_id, 'intersoccer_partnership_order_count', true);
+        update_user_meta($customer_id, 'intersoccer_partnership_order_count', $partnership_orders + 1);
+        
+        // Log partnership commission
+        error_log('Partnership commission processed for Order #' . $order_id . ': Customer: ' . $customer_id . ', Coach: ' . $partnership_coach_id . ', Amount: ' . $total_commission);
+        
+        // Notify coach
+        $this->notify_coach_of_partnership_commission($partnership_coach_id, $order_id, $partnership_commission, $commission_type);
+    }
+    
+    /**
+     * Notify coach of partnership commission
+     */
+    private function notify_coach_of_partnership_commission($coach_id, $order_id, $commission_data, $type = 'partnership') {
+        if (!get_option('intersoccer_enable_email_notifications', 1)) {
+            return;
+        }
+        
+        $coach = get_user_by('ID', $coach_id);
+        if (!$coach) return;
+        
+        $subject = sprintf(__('Partnership Commission Earned - Order #%d', 'intersoccer-referral'), $order_id);
+        
+        $type_label = $type === 'partnership_stacked' ? 'Partnership + Referral Bonus' : 'Partnership';
+        
+        $message = sprintf(
+            __('Great news %s!
+
+    Your partner made a purchase and you earned:
+
+    🤝 %s Commission: %.2f CHF
+    🏆 Tier Bonus: %.2f CHF
+    💳 Total Earned: %.2f CHF
+
+    Your current tier: %s
+    Total credits: %.2f CHF
+
+    Partnership earnings are growing!
+
+    Best regards,
+    The InterSoccer Team', 'intersoccer-referral'),
+            $coach->display_name,
+            $type_label,
             $commission_data['base_commission'],
-            $commission_data['total_amount']
-        ));
+            $commission_data['tier_bonus'],
+            $commission_data['total_amount'],
+            intersoccer_get_coach_tier($coach_id),
+            intersoccer_get_coach_credits($coach_id)
+        );
         
-        // Trigger achievement check
-        $this->check_coach_achievements($referral->coach_id, $commission_data);
-        
-        // Send notification to coach
-        $this->notify_coach_of_commission($referral->coach_id, $order_id, $commission_data);
+        wp_mail($coach->user_email, $subject, $message);
     }
     
     /**

@@ -10,6 +10,13 @@ class InterSoccer_Referral_Handler {
         add_action('woocommerce_review_order_before_payment', [$this, 'add_credit_field']);
         add_action('woocommerce_checkout_update_order_meta', [$this, 'update_order_with_credits']);
         add_action('wp_ajax_gift_credits', [$this, 'handle_gift_credits']);
+        // New partnership handlers
+        add_action('wp_ajax_select_coach_partner', [$this, 'handle_coach_partnership_selection']);
+        add_action('wp_ajax_switch_coach_partner', [$this, 'handle_coach_partnership_switch']);
+        add_action('wp_ajax_get_available_coaches', [$this, 'get_available_coaches_ajax']);
+        
+        // Add partnership shortcode
+        add_shortcode('intersoccer_coach_selection', [$this, 'render_coach_selection_interface']);
     }
 
     // Generate referral link
@@ -29,6 +36,90 @@ class InterSoccer_Referral_Handler {
             update_user_meta($coach_id, 'referral_code', $code);
         }
         return home_url('/?ref=' . $code);
+    }
+
+    /**
+     * Handle coach partnership selection AJAX
+     */
+    public function handle_coach_partnership_selection() {
+        check_ajax_referer('intersoccer_dashboard_nonce', 'nonce');
+        
+        if (!is_user_logged_in()) {
+            wp_send_json_error(['message' => 'Must be logged in']);
+        }
+        
+        $customer_id = get_current_user_id();
+        $coach_id = intval($_POST['coach_id']);
+        
+        // Validate coach exists and has correct role
+        $coach = get_user_by('ID', $coach_id);
+        if (!$coach || !in_array('coach', $coach->roles)) {
+            wp_send_json_error(['message' => 'Invalid coach selected']);
+        }
+        
+        // Check if customer is in cooldown period
+        $cooldown_end = get_user_meta($customer_id, 'intersoccer_partnership_switch_cooldown', true);
+        if ($cooldown_end && strtotime($cooldown_end) > time()) {
+            $remaining_hours = ceil((strtotime($cooldown_end) - time()) / 3600);
+            wp_send_json_error(['message' => "You must wait {$remaining_hours} hours before changing coaches."]);
+        }
+        
+        // Get current partnership coach for logging
+        $current_coach_id = get_user_meta($customer_id, 'intersoccer_partnership_coach_id', true);
+        
+        // Set new partnership
+        update_user_meta($customer_id, 'intersoccer_partnership_coach_id', $coach_id);
+        update_user_meta($customer_id, 'intersoccer_partnership_start_date', current_time('mysql'));
+        
+        // Set cooldown if switching coaches (not first selection)
+        if ($current_coach_id && $current_coach_id != $coach_id) {
+            $cooldown_end_date = date('Y-m-d H:i:s', time() + (7 * 24 * 3600)); // 7 days
+            update_user_meta($customer_id, 'intersoccer_partnership_switch_cooldown', $cooldown_end_date);
+            
+            error_log('Coach partnership switched - Customer: ' . $customer_id . ', From: ' . $current_coach_id . ', To: ' . $coach_id . ', Cooldown until: ' . $cooldown_end_date);
+        } else {
+            error_log('Coach partnership selected - Customer: ' . $customer_id . ', Coach: ' . $coach_id);
+        }
+        
+        // Send notification emails
+        $this->notify_partnership_selection($customer_id, $coach_id, $current_coach_id);
+        
+        wp_send_json_success([
+            'message' => 'Coach partnership updated successfully!',
+            'coach_name' => $coach->display_name,
+            'cooldown_set' => !empty($current_coach_id)
+        ]);
+    }
+
+    /**
+     * Get available coaches for selection
+     */
+    public function get_available_coaches_ajax() {
+        check_ajax_referer('intersoccer_dashboard_nonce', 'nonce');
+        
+        $search_term = sanitize_text_field($_POST['search'] ?? '');
+        $filter = sanitize_text_field($_POST['filter'] ?? 'all');
+        
+        $coaches = $this->get_available_coaches($search_term, $filter);
+        
+        wp_send_json_success(['coaches' => $coaches]);
+    }
+
+    /**
+     * Render coach selection interface shortcode
+     */
+    public function render_coach_selection_interface($atts) {
+        if (!is_user_logged_in()) {
+            return '<p>Please log in to select a coach partner.</p>';
+        }
+        
+        $customer_id = get_current_user_id();
+        $current_coach_id = get_user_meta($customer_id, 'intersoccer_partnership_coach_id', true);
+        $cooldown_end = get_user_meta($customer_id, 'intersoccer_partnership_switch_cooldown', true);
+        
+        ob_start();
+        include INTERSOCCER_REFERRAL_PATH . 'templates/coach-selection-template.php';
+        return ob_get_clean();
     }
 
     public function handle_gift_credits() {
@@ -82,8 +173,9 @@ class InterSoccer_Referral_Handler {
 
         $is_first_purchase = $this->is_first_purchase($customer_id);
         $commission = $referrer['type'] === 'coach' ? InterSoccer_Commission_Calculator::calculate_total_commission($order, $referrer['id'], $customer_id, $is_first_purchase ? 1 : 2) : 0;
-        $credits = $is_first_purchase ? 500 : 0; // 500 points for first purchase
+        $credits = $is_first_purchase ? 500 : 0;
 
+        // Insert referral record
         $wpdb->insert($table_name, [
             'coach_id' => $referrer['type'] === 'coach' ? $referrer['id'] : null,
             'customer_id' => $customer_id,
@@ -97,6 +189,47 @@ class InterSoccer_Referral_Handler {
             'conversion_date' => current_time('mysql')
         ]);
 
+        // Auto-assign partnership if referred by coach and customer doesn't have one
+        if ($referrer['type'] === 'coach' && $is_first_purchase) {
+            $existing_partnership = get_user_meta($customer_id, 'intersoccer_partnership_coach_id', true);
+            if (!$existing_partnership) {
+                update_user_meta($customer_id, 'intersoccer_partnership_coach_id', $referrer['id']);
+                update_user_meta($customer_id, 'intersoccer_partnership_start_date', current_time('mysql'));
+                
+                error_log('Auto-assigned partnership - Customer: ' . $customer_id . ', Coach: ' . $referrer['id']);
+                
+                // Notify customer about auto-assignment
+                $coach = get_user_by('ID', $referrer['id']);
+                if ($coach) {
+                    $customer = get_user_by('ID', $customer_id);
+                    $subject = 'Welcome to InterSoccer - Coach Connection Assigned!';
+                    $message = sprintf(
+                        'Hi %s,
+
+    Welcome to InterSoccer! Since you joined through %s\'s referral, we\'ve automatically connected you as partners.
+
+    This means:
+    - %s will earn a 5%% commission on your future purchases
+    - You get personalized support and training tips
+    - Access to exclusive content and community features
+
+    You can change your Coach Connection anytime in your dashboard if you prefer someone else.
+
+    Enjoy your training!
+
+    Best regards,
+    The InterSoccer Team',
+                        $customer->display_name,
+                        $coach->display_name,
+                        $coach->display_name
+                    );
+                    
+                    wp_mail($customer->user_email, $subject, $message);
+                }
+            }
+        }
+
+        // Continue with existing referral processing...
         if ($referrer['type'] === 'coach') {
             $coach_credits = (float) get_user_meta($referrer['id'], 'intersoccer_credits', true);
             update_user_meta($referrer['id'], 'intersoccer_credits', $coach_credits + $commission);
@@ -108,17 +241,220 @@ class InterSoccer_Referral_Handler {
             update_user_meta($referrer['id'], 'intersoccer_referrals_made', $referrals_made);
         }
 
+        // Apply first-time customer benefits
         if ($is_first_purchase) {
-            $order->apply_discount(10);
-            $order->save();
             $customer_credits = (float) get_user_meta($customer_id, 'intersoccer_customer_credits', true);
             update_user_meta($customer_id, 'intersoccer_customer_credits', $customer_credits + 50);
-            wp_mail($order->get_billing_email(), 'Welcome to InterSoccer!', 'Thanks for joining via referral! You have 50 CHF credits.');
+            
+            wp_mail($order->get_billing_email(), 'Welcome to InterSoccer!', 'Thanks for joining! You have 50 CHF credits and are connected with your coach partner.');
         }
 
         error_log('Processed referral order #' . $order_id . ', referrer_type: ' . $referrer['type'] . ', credits: ' . $credits);
+        
+        // Clear referral session
         WC()->session->__unset('intersoccer_referral');
         setcookie('intersoccer_referral', '', time() - 3600, '/');
+    }
+
+    /**
+     * Get available coaches based on search and filter criteria
+     */
+    private function get_available_coaches($search_term = '', $filter = 'all') {
+        $args = [
+            'role' => 'coach',
+            'number' => 20, // Limit results
+            'orderby' => 'meta_value_num',
+            'meta_key' => 'intersoccer_coach_rating',
+            'order' => 'DESC'
+        ];
+        
+        if ($search_term) {
+            $args['search'] = '*' . $search_term . '*';
+            $args['search_columns'] = ['display_name', 'user_email'];
+        }
+        
+        $coaches = get_users($args);
+        $coach_data = [];
+        
+        foreach ($coaches as $coach) {
+            // Get coach stats
+            global $wpdb;
+            $table_name = $wpdb->prefix . 'intersoccer_referrals';
+            
+            $stats = $wpdb->get_row($wpdb->prepare("
+                SELECT 
+                    COUNT(*) as total_referrals,
+                    AVG(commission_amount + loyalty_bonus + retention_bonus) as avg_commission
+                FROM $table_name 
+                WHERE coach_id = %d AND status = 'completed'
+            ", $coach->ID));
+            
+            $tier = intersoccer_get_coach_tier($coach->ID);
+            $specialty = get_user_meta($coach->ID, 'coach_specialty', true) ?: 'General Training';
+            $rating = (float) get_user_meta($coach->ID, 'intersoccer_coach_rating', true) ?: 4.5;
+            
+            // Apply filter logic
+            if ($filter !== 'all') {
+                switch ($filter) {
+                    case 'youth':
+                        if (stripos($specialty, 'youth') === false) continue 2;
+                        break;
+                    case 'advanced':
+                        if (stripos($specialty, 'advanced') === false && $tier !== 'Platinum') continue 2;
+                        break;
+                    case 'top':
+                        if ($tier !== 'Gold' && $tier !== 'Platinum') continue 2;
+                        break;
+                    case 'local':
+                        // Could implement location-based filtering here
+                        break;
+                }
+            }
+            
+            $coach_data[] = [
+                'id' => $coach->ID,
+                'name' => $coach->display_name,
+                'specialty' => $specialty,
+                'tier' => $tier,
+                'rating' => $rating,
+                'total_athletes' => (int) $stats->total_referrals ?: 0,
+                'avatar_url' => get_avatar_url($coach->ID, ['size' => 80]),
+                'benefits' => $this->get_coach_benefits($coach->ID, $tier)
+            ];
+        }
+        
+        return $coach_data;
+    }
+
+    /**
+     * Get coach-specific benefits based on tier
+     */
+    private function get_coach_benefits($coach_id, $tier) {
+        $benefits = [
+            '5% of your purchases support ' . get_user_by('ID', $coach_id)->display_name
+        ];
+        
+        switch ($tier) {
+            case 'Platinum':
+                $benefits[] = 'Monthly video reviews';
+                $benefits[] = 'Priority support access';
+                $benefits[] = 'Exclusive content library';
+                break;
+            case 'Gold':
+                $benefits[] = 'Advanced technique analysis';
+                $benefits[] = 'Quarterly progress reports';
+                break;
+            case 'Silver':
+                $benefits[] = 'Personalized training tips';
+                $benefits[] = 'Equipment recommendations';
+                break;
+            default:
+                $benefits[] = 'Training progress tracking';
+                $benefits[] = 'Community forum access';
+        }
+        
+        return $benefits;
+    }
+
+    /**
+     * Send partnership selection notifications
+     */
+    private function notify_partnership_selection($customer_id, $new_coach_id, $old_coach_id = null) {
+        if (!get_option('intersoccer_enable_email_notifications', 1)) {
+            return;
+        }
+        
+        $customer = get_user_by('ID', $customer_id);
+        $new_coach = get_user_by('ID', $new_coach_id);
+        
+        // Notify new coach
+        if ($new_coach) {
+            $subject = __('New Partnership Connection!', 'intersoccer-referral');
+            $message = sprintf(
+                __('Great news %s!
+
+    %s has chosen you as their Coach Connection partner.
+
+    You will now earn a 5%% commission on all their future purchases. This is a great opportunity to build a lasting relationship and support their soccer journey.
+
+    Customer Details:
+    - Name: %s
+    - Email: %s
+    - Partnership started: %s
+
+    Keep up the excellent coaching work!
+
+    Best regards,
+    The InterSoccer Team', 'intersoccer-referral'),
+                $new_coach->display_name,
+                $customer->display_name,
+                $customer->display_name,
+                $customer->user_email,
+                current_time('F j, Y')
+            );
+            
+            wp_mail($new_coach->user_email, $subject, $message);
+        }
+        
+        // Notify old coach if switching
+        if ($old_coach_id && $old_coach_id != $new_coach_id) {
+            $old_coach = get_user_by('ID', $old_coach_id);
+            if ($old_coach) {
+                $subject = __('Partnership Update', 'intersoccer-referral');
+                $message = sprintf(
+                    __('Hi %s,
+
+    %s has switched to a different Coach Connection partner.
+
+    Don\'t worry - this is part of the process and doesn\'t reflect on your coaching abilities. Keep focusing on your other partnerships and referrals.
+
+    You can always reconnect with customers through great service and engagement.
+
+    Best regards,
+    The InterSoccer Team', 'intersoccer-referral'),
+                    $old_coach->display_name,
+                    $customer->display_name
+                );
+                
+                wp_mail($old_coach->user_email, $subject, $message);
+            }
+        }
+    }
+
+    /**
+     * Get referrer by code (enhanced to handle both coach and customer referrals)
+     */
+    private function get_referrer_by_code($code) {
+        // Check for coach referral code
+        $coaches = get_users([
+            'role' => 'coach',
+            'meta_key' => 'referral_code',
+            'meta_value' => $code
+        ]);
+        
+        if (!empty($coaches)) {
+            return [
+                'id' => $coaches[0]->ID,
+                'type' => 'coach',
+                'user' => $coaches[0]
+            ];
+        }
+        
+        // Check for customer referral code
+        $customers = get_users([
+            'meta_key' => 'intersoccer_customer_referral_code',
+            'meta_value' => $code
+        ]);
+        
+        if (!empty($customers)) {
+            return [
+                'id' => $customers[0]->ID,
+                'type' => 'customer',
+                'user' => $customers[0]
+            ];
+        }
+        
+        return null;
     }
 
     // Get coach by referral code
