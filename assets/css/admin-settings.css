@@ -1,0 +1,208 @@
+/* Admin Settings Styles */
+.settings-card {
+    background: #fff;
+    border: 1px solid #e1e1e1;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.settings-card h3 {
+    margin-top: 0;
+    color: #23282d;
+    border-bottom: 1px solid #e1e1e1;
+    padding-bottom: 10px;
+}
+
+.csv-import-instructions {
+    background: #f8f9fa;
+    border: 1px solid #e1e1e1;
+    border-radius: 4px;
+    padding: 15px;
+    margin-bottom: 20px;
+}
+
+.csv-import-instructions ul {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.csv-import-instructions code {
+    background: #e1e1e1;
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-family: monospace;
+}
+
+.csv-import-instructions .button-small {
+    margin-top: 10px;
+}
+
+/* Import Progress */
+.import-progress {
+    margin: 20px 0;
+}
+
+.progress-bar {
+    background: #e1e1e1;
+    border-radius: 4px;
+    height: 20px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.progress-fill {
+    background: linear-gradient(90deg, #007cba 0%, #00a0d2 100%);
+    height: 100%;
+    width: 0%;
+    transition: width 0.3s ease;
+    border-radius: 4px;
+}
+
+.progress-text {
+    font-size: 14px;
+    color: #666;
+    text-align: center;
+}
+
+/* Import Results */
+.import-summary {
+    margin-top: 20px;
+}
+
+.import-summary h4 {
+    margin-top: 0;
+    color: #23282d;
+    border-bottom: 1px solid #e1e1e1;
+    padding-bottom: 8px;
+}
+
+.import-success {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    padding: 12px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
+
+.import-success h5 {
+    margin: 0 0 8px 0;
+    color: #155724;
+}
+
+.import-success ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.import-success li {
+    margin-bottom: 4px;
+}
+
+.import-errors {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    padding: 12px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
+
+.import-errors h5 {
+    margin: 0 0 8px 0;
+    color: #721c24;
+}
+
+.import-errors ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.import-errors li {
+    margin-bottom: 4px;
+}
+
+.import-warnings {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    color: #856404;
+    padding: 12px;
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
+
+.import-warnings h5 {
+    margin: 0 0 8px 0;
+    color: #856404;
+}
+
+.import-warnings ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.import-warnings li {
+    margin-bottom: 4px;
+}
+
+/* Form Styles */
+.form-row {
+    margin-bottom: 15px;
+}
+
+.form-row label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 5px;
+    color: #23282d;
+}
+
+.form-row input[type="file"] {
+    margin-bottom: 5px;
+}
+
+.file-info {
+    color: #666;
+    font-size: 12px;
+    font-style: italic;
+}
+
+.form-actions {
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid #e1e1e1;
+}
+
+.form-actions .button {
+    margin-right: 10px;
+}
+
+/* Loading Animation */
+.dashicons.spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Responsive Design */
+@media (max-width: 782px) {
+    .settings-card {
+        padding: 15px;
+    }
+
+    .csv-import-instructions {
+        padding: 10px;
+    }
+
+    .form-actions .button {
+        display: block;
+        width: 100%;
+        margin-bottom: 10px;
+        margin-right: 0;
+    }
+}
