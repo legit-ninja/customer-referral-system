@@ -6,8 +6,10 @@ class InterSoccer_Referral_Handler {
     public function __construct() {
         add_action('init', [$this, 'handle_referral_cookie']);
         add_action('woocommerce_thankyou', [$this, 'process_referral_order']);
-        add_action('woocommerce_cart_calculate_fees', [$this, 'apply_credit_discount']);
-        add_action('woocommerce_review_order_before_payment', [$this, 'add_credit_field']);
+        // Disabled old credit discount system - replaced with points system in admin dashboard
+        // add_action('woocommerce_cart_calculate_fees', [$this, 'apply_credit_discount']);
+        // Disabled old slider interface - replaced with Amazon Prime style in admin dashboard
+        // add_action('woocommerce_review_order_before_payment', [$this, 'add_credit_field']);
         add_action('woocommerce_checkout_update_order_meta', [$this, 'update_order_with_credits']);
         add_action('wp_ajax_gift_credits', [$this, 'handle_gift_credits']);
         // New partnership handlers
