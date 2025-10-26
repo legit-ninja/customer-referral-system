@@ -4,7 +4,7 @@
 class InterSoccer_Points_Manager {
 
     private $points_log_table;
-    private $points_per_currency = 1; // 1 point per CHF spent
+    private $points_per_currency = 0.1; // 1 point per 10 CHF spent
 
     public function __construct() {
         global $wpdb;
@@ -15,6 +15,13 @@ class InterSoccer_Points_Manager {
         add_action('wp_ajax_scan_orders_for_points', [$this, 'scan_orders_for_points']);
         add_action('wp_ajax_get_points_balance', [$this, 'get_points_balance_ajax']);
         add_action('wp_ajax_get_points_history', [$this, 'get_points_history_ajax']);
+
+        // Add redemption hooks
+        add_action('woocommerce_cart_calculate_fees', [$this, 'apply_points_discount']);
+        add_action('woocommerce_checkout_process', [$this, 'validate_points_redemption']);
+        add_action('woocommerce_checkout_create_order', [$this, 'process_points_redemption'], 10, 2);
+        add_action('woocommerce_order_status_cancelled', [$this, 'refund_points_on_cancellation'], 10, 1);
+        add_action('woocommerce_order_status_failed', [$this, 'refund_points_on_failure'], 10, 1);
     }
 
     /**
@@ -200,7 +207,7 @@ class InterSoccer_Points_Manager {
      * Calculate points from currency amount
      */
     private function calculate_points_from_amount($amount) {
-        return round($amount * $this->points_per_currency, 2);
+        return round($amount / 10, 2); // 10 CHF = 1 point
     }
 
     /**
@@ -258,7 +265,7 @@ class InterSoccer_Points_Manager {
     /**
      * Update user meta with current points balance
      */
-    private function update_user_points_balance($customer_id) {
+    public function update_user_points_balance($customer_id) {
         $balance = $this->get_points_balance($customer_id);
         update_user_meta($customer_id, 'intersoccer_points_balance', $balance);
     }
@@ -468,5 +475,244 @@ class InterSoccer_Points_Manager {
         }
 
         update_option('intersoccer_audit_log', $audit_log);
+    }
+
+    /**
+     * Apply points discount to cart
+     */
+    public function apply_points_discount() {
+        if (!is_checkout() || !is_user_logged_in()) {
+            return;
+        }
+
+        $user_id = get_current_user_id();
+        $points_to_redeem = WC()->session->get('intersoccer_points_to_redeem', 0);
+
+        if ($points_to_redeem <= 0) {
+            return;
+        }
+
+        // Validate redemption limits
+        if (!$this->can_redeem_points($user_id, $points_to_redeem)) {
+            WC()->session->set('intersoccer_points_to_redeem', 0);
+            return;
+        }
+
+        $discount_amount = $this->calculate_discount_from_points($points_to_redeem);
+
+        if ($discount_amount > 0) {
+            WC()->cart->add_fee(__('Points Discount', 'intersoccer-referral'), -$discount_amount, true, 'intersoccer_points');
+        }
+    }
+
+    /**
+     * Validate points redemption during checkout
+     */
+    public function validate_points_redemption() {
+        if (!is_user_logged_in()) {
+            return;
+        }
+
+        $user_id = get_current_user_id();
+        $points_to_redeem = WC()->session->get('intersoccer_points_to_redeem', 0);
+
+        if ($points_to_redeem <= 0) {
+            return;
+        }
+
+        // Check if user has enough points
+        $current_balance = $this->get_points_balance($user_id);
+        if ($points_to_redeem > $current_balance) {
+            wc_add_notice(__('Insufficient points balance.', 'intersoccer-referral'), 'error');
+            return;
+        }
+
+        // Validate redemption limits
+        if (!$this->can_redeem_points($user_id, $points_to_redeem)) {
+            wc_add_notice(__('Points redemption exceeds allowed limits.', 'intersoccer-referral'), 'error');
+            return;
+        }
+
+        $discount_amount = $this->calculate_discount_from_points($points_to_redeem);
+        $cart_total = WC()->cart->get_total('edit');
+
+        if ($discount_amount > $cart_total) {
+            wc_add_notice(__('Points discount cannot exceed order total.', 'intersoccer-referral'), 'error');
+            return;
+        }
+    }
+
+    /**
+     * Process points redemption when order is created
+     */
+    public function process_points_redemption($order, $data) {
+        $points_to_redeem = WC()->session->get('intersoccer_points_to_redeem', 0);
+
+        if ($points_to_redeem <= 0) {
+            return;
+        }
+
+        $user_id = $order->get_customer_id();
+        $discount_amount = $this->calculate_discount_from_points($points_to_redeem);
+
+        // Record the redemption
+        $this->add_points_transaction(
+            $user_id,
+            $order->get_id(),
+            'points_redemption',
+            -$points_to_redeem,
+            sprintf(__('Redeemed %d points for %.2f CHF discount', 'intersoccer-referral'), $points_to_redeem, $discount_amount),
+            [
+                'discount_amount' => $discount_amount,
+                'redemption_rate' => $this->get_redemption_rate()
+            ]
+        );
+
+        // Update user meta
+        $this->update_user_points_balance($user_id);
+
+        // Store redemption details in order meta
+        $order->update_meta_data('_intersoccer_points_redeemed', $points_to_redeem);
+        $order->update_meta_data('_intersoccer_discount_amount', $discount_amount);
+
+        // Clear session
+        WC()->session->set('intersoccer_points_to_redeem', 0);
+
+        error_log("InterSoccer: Redeemed {$points_to_redeem} points for order {$order->get_id()}");
+    }
+
+    /**
+     * Refund points when order is cancelled or failed
+     */
+    public function refund_points_on_cancellation($order_id) {
+        $this->refund_points_for_order($order_id, 'order_cancelled');
+    }
+
+    public function refund_points_on_failure($order_id) {
+        $this->refund_points_for_order($order_id, 'order_failed');
+    }
+
+    private function refund_points_for_order($order_id, $reason) {
+        $order = wc_get_order($order_id);
+        if (!$order) return;
+
+        $points_redeemed = $order->get_meta('_intersoccer_points_redeemed', true);
+        if (!$points_redeemed || $points_redeemed <= 0) return;
+
+        $user_id = $order->get_customer_id();
+        $discount_amount = $order->get_meta('_intersoccer_discount_amount', true);
+
+        // Refund the points
+        $this->add_points_transaction(
+            $user_id,
+            $order_id,
+            'points_refund',
+            $points_redeemed,
+            sprintf(__('Refunded %d points due to %s', 'intersoccer-referral'), $points_redeemed, $reason),
+            [
+                'original_discount' => $discount_amount,
+                'refund_reason' => $reason
+            ]
+        );
+
+        // Update user meta
+        $this->update_user_points_balance($user_id);
+
+        // Clear order meta
+        $order->delete_meta_data('_intersoccer_points_redeemed');
+        $order->delete_meta_data('_intersoccer_discount_amount');
+
+        error_log("InterSoccer: Refunded {$points_redeemed} points for {$reason} order {$order_id}");
+    }
+
+    /**
+     * Check if user can redeem points based on limits
+     */
+    public function can_redeem_points($user_id, $points_to_redeem) {
+        // Check balance
+        $current_balance = $this->get_points_balance($user_id);
+        if ($points_to_redeem > $current_balance) {
+            return false;
+        }
+
+        // Check redemption limits: max CHF 100 per CHF 1,000 spent
+        $total_spent = $this->get_customer_total_spent($user_id);
+        $max_discount = min(100, $total_spent / 10); // Max 100 CHF or 10% of total spent
+
+        $discount_amount = $this->calculate_discount_from_points($points_to_redeem);
+
+        return $discount_amount <= $max_discount;
+    }
+
+    /**
+     * Get customer's total spent amount
+     */
+    private function get_customer_total_spent($user_id) {
+        global $wpdb;
+
+        $total_spent = $wpdb->get_var($wpdb->prepare(
+            "SELECT SUM(pm.meta_value)
+             FROM {$wpdb->postmeta} pm
+             INNER JOIN {$wpdb->posts} p ON pm.post_id = p.ID
+             WHERE p.post_type = 'shop_order'
+             AND p.post_status IN ('wc_completed', 'wc_processing')
+             AND pm.meta_key = '_customer_user'
+             AND pm.meta_value = %d",
+            $user_id
+        ));
+
+        return floatval($total_spent);
+    }
+
+    /**
+     * Calculate discount amount from points
+     */
+    public function calculate_discount_from_points($points) {
+        $redemption_rate = $this->get_redemption_rate(); // CHF per point
+        return round($points * $redemption_rate, 2);
+    }
+
+    /**
+     * Get redemption rate (CHF per point)
+     */
+    private function get_redemption_rate() {
+        return 1.0; // 1 CHF per point redeemed
+    }
+
+    /**
+     * Calculate points from discount amount
+     */
+    public function calculate_points_from_discount($discount_amount) {
+        $redemption_rate = $this->get_redemption_rate();
+        return round($discount_amount / $redemption_rate, 2);
+    }
+
+    /**
+     * Get maximum redeemable points for user
+     */
+    public function get_max_redeemable_points($user_id) {
+        $total_spent = $this->get_customer_total_spent($user_id);
+        $max_discount = min(100, $total_spent / 10);
+        return $this->calculate_points_from_discount($max_discount);
+    }
+
+    /**
+     * Get redemption summary for user
+     */
+    public function get_redemption_summary($user_id) {
+        $total_spent = $this->get_customer_total_spent($user_id);
+        $max_discount = min(100, $total_spent / 10);
+        $max_points = $this->get_max_redeemable_points($user_id);
+        $current_balance = $this->get_points_balance($user_id);
+        $available_points = min($current_balance, $max_points);
+
+        return [
+            'total_spent' => $total_spent,
+            'max_discount' => $max_discount,
+            'max_points' => $max_points,
+            'current_balance' => $current_balance,
+            'available_points' => $available_points,
+            'available_discount' => $this->calculate_discount_from_points($available_points)
+        ];
     }
 }
