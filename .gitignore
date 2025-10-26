@@ -1,3 +1,9 @@
 *.txt
 *.log
 todo.list
+run-tests.php
+test-verification.php
+run-simple-test.php
+vendor/
+composer.lock
+run-tests.php
