@@ -57,6 +57,7 @@ class InterSoccer_Referral_Admin_Dashboard {
 
         // WooCommerce Points Integration
         if (class_exists('WooCommerce')) {
+            add_action('woocommerce_review_order_before_payment', [$this, 'add_referral_code_field']);
             add_action('woocommerce_review_order_before_payment', [$this, 'add_points_redemption_field']);
             add_action('woocommerce_checkout_process', [$this, 'validate_points_redemption']);
             add_action('woocommerce_checkout_create_order', [$this, 'apply_points_discount_to_order'], 10, 2);
@@ -64,6 +65,7 @@ class InterSoccer_Referral_Admin_Dashboard {
             add_action('woocommerce_my_account_my_orders_column_order-total', [$this, 'display_points_used_in_orders']);
             add_action('woocommerce_cart_calculate_fees', [$this, 'apply_points_discount_as_fee'], 10, 1);
             add_action('wp_ajax_update_points_session', [$this, 'update_points_session']);
+            add_action('wp_ajax_apply_referral_code', [$this, 'apply_referral_code_ajax']);
         }
     }
 
@@ -353,6 +355,29 @@ class InterSoccer_Referral_Admin_Dashboard {
     /**
      * Add points redemption field to checkout
      */
+    public function add_referral_code_field() {
+        // Add referral code input field before order review
+        if (!is_user_logged_in()) return;
+
+        $user_id = get_current_user_id();
+        $has_completed_orders = wc_get_customer_order_count($user_id) > 0;
+
+        // Only show referral code field for first-time customers
+        if (!$has_completed_orders) {
+            echo '<div class="intersoccer-referral-code-wrapper" style="width: 100%; clear: both; margin-bottom: 20px;">';
+            echo '<div class="intersoccer-referral-code" style="border: 1px solid #e1e5e9; border-radius: 8px; padding: 16px; margin: 0; background: #f0f9ff; width: 100%; box-sizing: border-box;">';
+            echo '<div style="margin-bottom: 12px;">';
+            echo '<label for="intersoccer_referral_code" style="font-weight: 600; color: #111827; margin: 0; display: block; margin-bottom: 8px;">' . __('Coach Referral Code (Optional)', 'intersoccer-referral') . '</label>';
+            echo '<p style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px;">' . __('Enter a coach referral code to receive an additional discount on your first order!', 'intersoccer-referral') . '</p>';
+            echo '<input type="text" name="intersoccer_referral_code" id="intersoccer_referral_code" placeholder="Enter referral code" style="width: 100%; max-width: 300px; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px;" />';
+            echo '<button type="button" id="apply_referral_code" class="button button-secondary" style="margin-left: 8px; padding: 8px 16px;">' . __('Apply Code', 'intersoccer-referral') . '</button>';
+            echo '</div>';
+            echo '<div id="referral_code_message" style="display: none; margin-top: 8px; padding: 8px; border-radius: 4px; font-size: 14px;"></div>';
+            echo '</div>';
+            echo '</div>';
+        }
+    }
+
     public function add_points_redemption_field() {
         // WooCommerce checkout integration
         if (!is_user_logged_in()) return;
@@ -396,93 +421,48 @@ class InterSoccer_Referral_Admin_Dashboard {
             echo '</div>';
             echo '</div>';
 
-            // Add JavaScript for interactivity
+            // Add JavaScript for referral code
             ?>
             <script>
             jQuery(document).ready(function($) {
-                var $usePoints = $('#intersoccer_use_points');
-                var $pointsDetails = $('.points-details');
-                var $pointsInput = $('#intersoccer_points_to_redeem');
-                var $appliedAmount = $('.applied-amount');
-                var $appliedText = $('.applied-text');
-                var availableCredits = <?php echo $available_credits; ?>;
-                var maxPerOrder = 100;
-                var updateTimeout;
+                $('#apply_referral_code').on('click', function() {
+                    var referralCode = $('#intersoccer_referral_code').val().trim();
+                    var $message = $('#referral_code_message');
+                    var $button = $(this);
 
-                // Toggle points section
-                $usePoints.on('change', function() {
-                    if ($(this).is(':checked')) {
-                        $pointsDetails.show();
-                        $pointsInput.val('').trigger('input');
-                    } else {
-                        $pointsDetails.hide();
-                        $pointsInput.val('0');
-                        $appliedAmount.hide();
-                        updatePointsSession(0);
-                    }
-                });
-
-                // Apply all points
-                $('.apply-all-points').on('click', function() {
-                    var amount = Math.min(availableCredits, maxPerOrder);
-                    $pointsInput.val(amount).trigger('input');
-                });
-
-                // Apply max points (100)
-                $('.apply-max-points').on('click', function() {
-                    var amount = Math.min(availableCredits, maxPerOrder);
-                    $pointsInput.val(amount).trigger('input');
-                });
-
-                // Update display when input changes
-                $pointsInput.on('input', function() {
-                    var amount = parseInt($(this).val()) || 0;
-                    var discountValue = amount; // 1:1 ratio for credits to CHF
-
-                    if (amount > 0) {
-                        $appliedText.html('<?php _e('Applying', 'intersoccer-referral'); ?> <strong>' + amount + ' <?php _e('points', 'intersoccer-referral'); ?></strong> (<?php _e('saving', 'intersoccer-referral'); ?> <strong>' + discountValue + ' CHF</strong>)');
-                        $appliedAmount.show();
-                    } else {
-                        $appliedAmount.hide();
+                    if (!referralCode) {
+                        $message.removeClass('success').addClass('error').html('<?php _e('Please enter a referral code', 'intersoccer-referral'); ?>').show();
+                        return;
                     }
 
-                    // Debounce the AJAX call
-                    clearTimeout(updateTimeout);
-                    updateTimeout = setTimeout(function() {
-                        updatePointsSession(amount);
-                    }, 500);
-                });
+                    $button.prop('disabled', true).text('<?php _e('Applying...', 'intersoccer-referral'); ?>');
 
-                // Ensure checkbox is checked when manually entering amount
-                $pointsInput.on('focus', function() {
-                    if (!$usePoints.is(':checked')) {
-                        $usePoints.prop('checked', true).trigger('change');
-                    }
-                });
-
-                function updatePointsSession(pointsAmount) {
                     $.ajax({
                         url: '<?php echo admin_url('admin-ajax.php'); ?>',
                         type: 'POST',
                         data: {
-                            action: 'update_points_session',
-                            points_to_redeem: pointsAmount,
+                            action: 'apply_referral_code',
+                            referral_code: referralCode,
                             nonce: '<?php echo wp_create_nonce('intersoccer_checkout_nonce'); ?>'
                         },
                         success: function(response) {
-                            console.log('Points session update response:', response);
                             if (response.success) {
-                                // Trigger WooCommerce checkout update
+                                $message.removeClass('error').addClass('success').html(response.data.message).show();
+                                $('#intersoccer_referral_code').prop('disabled', true);
+                                $button.prop('disabled', true).text('<?php _e('Applied', 'intersoccer-referral'); ?>');
+                                // Trigger checkout update to show discount
                                 $(document.body).trigger('update_checkout');
                             } else {
-                                console.log('Points session update failed:', response.data);
+                                $message.removeClass('success').addClass('error').html(response.data.message).show();
+                                $button.prop('disabled', false).text('<?php _e('Apply Code', 'intersoccer-referral'); ?>');
                             }
                         },
-                        error: function(xhr, status, error) {
-                            console.log('AJAX Error updating points session:', status, error);
+                        error: function() {
+                            $message.removeClass('success').addClass('error').html('<?php _e('Error applying referral code', 'intersoccer-referral'); ?>').show();
+                            $button.prop('disabled', false).text('<?php _e('Apply Code', 'intersoccer-referral'); ?>');
                         }
                     });
-                }
+                });
             });
             </script>
             <?php
@@ -605,6 +585,52 @@ class InterSoccer_Referral_Admin_Dashboard {
             // Add order note
             $order->add_order_note(sprintf(__('Deducted %d credits from customer balance. New balance: %d', 'intersoccer-referral'), $points_to_redeem, $new_credits));
         }
+
+        // Award points to coach for referral code usage
+        $referral_code = WC()->session->get('intersoccer_applied_referral_code');
+        $referral_coach_id = WC()->session->get('intersoccer_referral_coach_id');
+
+        if ($referral_code && $referral_coach_id) {
+            // Check if this is the customer's first completed order
+            $customer_orders = wc_get_orders([
+                'customer_id' => $order->get_customer_id(),
+                'status' => 'completed',
+                'limit' => 1
+            ]);
+
+            // If this is their first completed order, award points to coach
+            if (count($customer_orders) === 1 && $customer_orders[0]->get_id() === $order_id) {
+                $points_to_award = 50; // Award 50 points to coach for successful referral
+
+                // Get current coach points balance
+                $current_coach_points = get_user_meta($referral_coach_id, 'intersoccer_points_balance', true) ?: 0;
+                $new_coach_points = $current_coach_points + $points_to_award;
+                update_user_meta($referral_coach_id, 'intersoccer_points_balance', $new_coach_points);
+
+                // Record the referral reward
+                global $wpdb;
+                $wpdb->insert(
+                    $wpdb->prefix . 'intersoccer_referral_rewards',
+                    [
+                        'coach_id' => $referral_coach_id,
+                        'customer_id' => $order->get_customer_id(),
+                        'order_id' => $order_id,
+                        'referral_code' => $referral_code,
+                        'points_awarded' => $points_to_award,
+                        'created_at' => current_time('mysql')
+                    ]
+                );
+
+                // Add order note
+                $coach_info = get_userdata($referral_coach_id);
+                $order->add_order_note(sprintf(__('Awarded %d points to coach %s for referral code usage. New balance: %d', 'intersoccer-referral'),
+                    $points_to_award, $coach_info->display_name, $new_coach_points));
+
+                // Clear referral session data
+                WC()->session->set('intersoccer_applied_referral_code', null);
+                WC()->session->set('intersoccer_referral_coach_id', null);
+            }
+        }
     }
 
     /**
@@ -635,6 +661,54 @@ class InterSoccer_Referral_Admin_Dashboard {
         ]);
     }
 
+    public function apply_referral_code_ajax() {
+        check_ajax_referer('intersoccer_checkout_nonce', 'nonce');
+
+        if (!is_user_logged_in()) {
+            wp_send_json_error(['message' => 'Must be logged in to apply referral code']);
+        }
+
+        $user_id = get_current_user_id();
+        $referral_code = sanitize_text_field($_POST['referral_code']);
+
+        // Check if user has already completed orders
+        $has_completed_orders = wc_get_customer_order_count($user_id) > 0;
+        if ($has_completed_orders) {
+            wp_send_json_error(['message' => 'Referral codes can only be used on first orders']);
+        }
+
+        // Check if referral code is already applied to this session
+        $applied_code = WC()->session->get('intersoccer_applied_referral_code');
+        if ($applied_code) {
+            wp_send_json_error(['message' => 'Referral code already applied to this order']);
+        }
+
+        // Find coach with this referral code
+        $coaches = get_users([
+            'role' => 'coach',
+            'meta_key' => 'referral_code',
+            'meta_value' => $referral_code,
+            'number' => 1
+        ]);
+
+        if (empty($coaches)) {
+            wp_send_json_error(['message' => 'Invalid referral code']);
+        }
+
+        $coach = $coaches[0];
+        $coach_name = $coach->first_name . ' ' . $coach->last_name;
+
+        // Store referral code and coach info in session
+        WC()->session->set('intersoccer_applied_referral_code', $referral_code);
+        WC()->session->set('intersoccer_referral_coach_id', $coach->ID);
+
+        wp_send_json_success([
+            'message' => sprintf(__('Referral code applied! You will receive a discount from coach %s.', 'intersoccer-referral'), $coach_name),
+            'coach_name' => $coach_name,
+            'discount_amount' => 10 // 10 CHF discount for referral codes
+        ]);
+    }
+
     /**
      * Apply points discount to cart total
      */
@@ -643,11 +717,25 @@ class InterSoccer_Referral_Admin_Dashboard {
             return;
         }
 
+        // Apply referral code discount (only for first-time customers)
+        $referral_code = WC()->session->get('intersoccer_applied_referral_code');
+        if ($referral_code) {
+            $user_id = get_current_user_id();
+            $has_completed_orders = wc_get_customer_order_count($user_id) > 0;
+
+            if (!$has_completed_orders) {
+                $discount_amount = -10; // 10 CHF discount for referral codes
+                $cart->add_fee(__('Coach Referral Discount', 'intersoccer-referral'), $discount_amount, true, '');
+                error_log("Applying referral discount: code=$referral_code, discount=$discount_amount");
+            }
+        }
+
+        // Apply points discount
         $points_to_redeem = WC()->session->get('intersoccer_points_to_redeem', 0);
 
         if ($points_to_redeem > 0) {
             $discount_amount = -$points_to_redeem; // Negative fee for discount
-            $cart->add_fee(__('Points Discount', 'intersoccer-referral'), $discount_amount, true, '');
+            $cart->add_fee(__('Referral Credits Discount', 'intersoccer-referral'), $discount_amount, true, '');
             error_log("Applying points discount as fee: points=$points_to_redeem, discount=$discount_amount");
         }
     }

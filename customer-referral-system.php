@@ -312,12 +312,32 @@ class InterSoccer_Referral_System {
             KEY idx_created_at (created_at),
             KEY idx_reference (reference_type, reference_id)
         ) $charset_collate;";
-        
+
+        // Referral rewards table for tracking coach rewards from referral codes
+        $referral_rewards_table = $wpdb->prefix . 'intersoccer_referral_rewards';
+        $referral_rewards_sql = "CREATE TABLE $referral_rewards_table (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            coach_id bigint(20) unsigned NOT NULL,
+            customer_id bigint(20) unsigned NOT NULL,
+            order_id bigint(20) unsigned NOT NULL,
+            referral_code varchar(100) NOT NULL,
+            points_awarded decimal(10,2) NOT NULL DEFAULT '0.00',
+            discount_amount decimal(10,2) NOT NULL DEFAULT '0.00',
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY idx_coach_id (coach_id),
+            KEY idx_customer_id (customer_id),
+            KEY idx_order_id (order_id),
+            KEY idx_referral_code (referral_code),
+            KEY idx_created_at (created_at)
+        ) $charset_collate;";
+
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
         dbDelta($performance_sql);
         dbDelta($achievements_sql);
         dbDelta($partnerships_sql);
+        dbDelta($referral_rewards_sql);
         dbDelta($activities_sql);
         dbDelta($credits_sql);
         dbDelta($redemptions_sql);

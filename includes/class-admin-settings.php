@@ -1815,6 +1815,13 @@ class InterSoccer_Admin_Settings {
             error_log('InterSoccer: Coach role not found during import');
         }
 
+        // Generate referral code for coach if not exists
+        $existing_code = get_user_meta($user_id, 'referral_code', true);
+        if (empty($existing_code)) {
+            $referral_code = 'coach_' . $user_id . '_' . wp_generate_password(6, false);
+            update_user_meta($user_id, 'referral_code', $referral_code);
+        }
+
         return ['action' => $action, 'user_id' => $user_id];
     }
 
