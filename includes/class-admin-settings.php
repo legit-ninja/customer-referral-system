@@ -19,6 +19,19 @@ class InterSoccer_Admin_Settings {
         add_action('wp_ajax_get_sync_info', [$this, 'get_sync_info_ajax']);
         add_action('wp_ajax_get_sync_info_ajax', [$this, 'get_sync_info_ajax']);
         add_action('admin_init', [$this, 'register_settings']);
+
+        // Add AJAX handler for coach import
+        add_action('wp_ajax_import_coaches_from_csv', [$this, 'ajax_import_coaches_from_csv']);
+
+        // Add hook for the role migration action
+        add_action('admin_post_migrate_coach_roles', [$this, 'migrate_coach_roles']);
+
+        // Add points migration actions
+        add_action('wp_ajax_run_points_migration', [$this, 'run_points_migration_ajax']);
+        add_action('wp_ajax_get_migration_status', [$this, 'get_migration_status_ajax']);
+
+        // Add action for restoring coach roles
+        add_action('wp_ajax_restore_coach_roles', [$this, 'restore_coach_roles_ajax']);
     }
 
     public function render_settings_page() {
@@ -97,14 +110,54 @@ class InterSoccer_Admin_Settings {
                 <div class="settings-grid">
                     <div class="settings-card">
                         <h3>Import Coaches from CSV</h3>
-                        <p>Upload a CSV file to bulk import coaches. <a href="<?php echo INTERSOCCER_REFERRAL_URL; ?>assets/sample-coaches.csv" target="_blank">Download sample CSV</a></p>
-                        <form method="post" enctype="multipart/form-data" action="<?php echo admin_url('admin-post.php'); ?>">
-                            <?php wp_nonce_field('import_coaches_csv'); ?>
-                            <input type="hidden" name="action" value="import_coaches_from_csv">
-                            <input type="file" name="coaches_csv" accept=".csv" required>
-                            <button type="submit" class="button button-primary">
-                                <span class="dashicons dashicons-upload"></span> Import Coaches
-                            </button>
+                        <div class="csv-import-instructions">
+                            <p><strong>CSV Format Requirements:</strong></p>
+                            <ul>
+                                <li>First row must contain column headers</li>
+                                <li>Required columns: <code>first_name</code>, <code>last_name</code>, <code>email</code></li>
+                                <li>Optional columns: <code>phone</code>, <code>specialization</code>, <code>location</code>, <code>experience_years</code>, <code>bio</code></li>
+                                <li>Email addresses must be unique and valid</li>
+                            </ul>
+                            <p><a href="<?php echo INTERSOCCER_REFERRAL_URL; ?>assets/sample-coaches.csv" target="_blank" class="button button-small">📥 Download Sample CSV</a></p>
+                        </div>
+
+                        <div id="import-status" style="display: none;">
+                            <div class="import-progress">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progress-fill" style="width: 0%;"></div>
+                                </div>
+                                <div class="progress-text" id="progress-text">Preparing import...</div>
+                            </div>
+                        </div>
+
+                        <div id="import-results" style="display: none;">
+                            <div class="import-summary">
+                                <h4>Import Results</h4>
+                                <div id="import-summary-content"></div>
+                            </div>
+                        </div>
+
+                        <form id="coach-import-form" enctype="multipart/form-data" onsubmit="return false;">
+                            <?php wp_nonce_field('import_coaches_from_csv'); ?>
+                            <div class="form-row">
+                                <label for="coaches_csv">Select CSV File:</label>
+                                <input type="file" name="coaches_csv" id="coaches_csv" accept=".csv" required>
+                                <small class="file-info">Maximum file size: 10MB. Only CSV files are accepted.</small>
+                            </div>
+                            <div class="form-row">
+                                <label for="import_mode">
+                                    <input type="checkbox" name="update_existing" id="update_existing" value="1">
+                                    Update existing coaches (match by email)
+                                </label>
+                            </div>
+                            <div class="form-actions">
+                                <button type="submit" class="button button-primary" id="import-submit-btn">
+                                    <span class="dashicons dashicons-upload"></span> Import Coaches
+                                </button>
+                                <button type="button" class="button button-secondary" id="clear-import-results" style="display: none;">
+                                    Clear Results
+                                </button>
+                            </div>
                         </form>
                     </div>
 
@@ -290,6 +343,101 @@ class InterSoccer_Admin_Settings {
                             <p>Loading sync information...</p>
                         </div>
                         <button id="refresh-sync-info" class="button">Refresh Info</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Points Migration -->
+            <div class="intersoccer-settings-section">
+                <h2>Points System Migration</h2>
+                <div class="migration-notice">
+                    <div class="notice notice-warning">
+                        <p><strong>Important:</strong> This migration updates the points system from 1 CHF = 1 point to 10 CHF = 1 point ratio.</p>
+                        <p><strong>What it does:</strong></p>
+                        <ul>
+                            <li>Creates a backup of current points data</li>
+                            <li>Recalculates all point balances and transactions</li>
+                            <li>Updates user point balances</li>
+                            <li>This action cannot be easily undone</li>
+                        </ul>
+                        <p><strong>⚠️ Backup your database before proceeding!</strong></p>
+                    </div>
+                </div>
+
+                <div class="migration-controls">
+                    <div class="migration-card">
+                        <h3>Points Ratio Migration</h3>
+                        <p>Migrate from 1:1 to 10:1 points ratio (10 CHF = 1 point)</p>
+                        <div class="migration-status" id="migration-status">
+                            <span class="status-indicator status-ready">Ready to migrate</span>
+                        </div>
+                        <button id="run-points-migration" class="button button-primary button-hero">
+                            <span class="dashicons dashicons-update"></span>
+                            Run Points Migration
+                        </button>
+                        <div id="migration-progress" style="display: none; margin-top: 20px;">
+                            <div class="progress-container">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="migration-progress-fill" style="width: 0%"></div>
+                                </div>
+                                <div class="progress-text" id="migration-progress-text">Initializing migration...</div>
+                            </div>
+                            <div class="migration-details" id="migration-details" style="margin-top: 15px;">
+                                <div class="detail-item"><strong>Transactions Processed:</strong> <span id="transactions-processed">0</span></div>
+                                <div class="detail-item"><strong>Users Updated:</strong> <span id="users-updated">0</span></div>
+                                <div class="detail-item"><strong>Backup Created:</strong> <span id="backup-created">No</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="migration-card">
+                        <h3>Migration Status</h3>
+                        <div id="migration-info">
+                            <p>Loading migration status...</p>
+                        </div>
+                        <button id="refresh-migration-status" class="button">Refresh Status</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coach Role Restoration -->
+            <div class="intersoccer-settings-section">
+                <h2>Coach Role Restoration</h2>
+                <div class="role-restore-notice">
+                    <div class="notice notice-warning">
+                        <p><strong>Missing Coach Roles:</strong> If existing coaches are missing their "Coach" role assignment, use this tool to restore them based on referral data.</p>
+                        <p><strong>What it does:</strong></p>
+                        <ul>
+                            <li>Scans referral records to identify users who should have coach roles</li>
+                            <li>Restores the "Coach" role to users who have active referrals</li>
+                            <li>Does not affect users who already have the correct role</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="role-restore-controls">
+                    <div class="restore-card">
+                        <h3>Restore Missing Coach Roles</h3>
+                        <p>Restore coach roles based on existing referral data</p>
+                        <div class="restore-status" id="restore-status">
+                            <span class="status-indicator status-ready">Ready to restore</span>
+                        </div>
+                        <button id="restore-coach-roles" class="button button-primary">
+                            <span class="dashicons dashicons-admin-users"></span>
+                            Restore Coach Roles
+                        </button>
+                        <div id="restore-progress" style="display: none; margin-top: 20px;">
+                            <div class="progress-container">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="restore-progress-fill" style="width: 0%"></div>
+                                </div>
+                                <div class="progress-text" id="restore-progress-text">Scanning referral data...</div>
+                            </div>
+                            <div class="restore-details" id="restore-details" style="margin-top: 15px;">
+                                <div class="detail-item"><strong>Coaches Found:</strong> <span id="coaches-found">0</span></div>
+                                <div class="detail-item"><strong>Roles Restored:</strong> <span id="roles-restored">0</span></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -741,7 +889,240 @@ class InterSoccer_Admin_Settings {
                 window.open(intersoccer_admin.ajax_url + '?action=export_audit_log&nonce=' + intersoccer_admin.nonce, '_blank');
             });
 
-            $('#refresh-points-stats').on('click', loadPointsStats);
+            // Points migration functionality
+            $('#run-points-migration').on('click', function(e) {
+                e.preventDefault();
+
+                if (!confirm('This will migrate the points system from 1:1 to 10:1 ratio. A backup will be created, but this action cannot be easily undone. Continue?')) {
+                    return;
+                }
+
+                const $button = $(this);
+                const $progress = $('#migration-progress');
+                const $status = $('#migration-status');
+                const $progressFill = $('#migration-progress-fill');
+                const $progressText = $('#migration-progress-text');
+
+                // Update status
+                $status.html('<span class="status-indicator status-running">Running migration...</span>');
+                $button.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> Running Migration...');
+
+                $progress.show();
+                $progressFill.css('width', '0%');
+                $progressText.text('Initializing points migration...');
+
+                // Start the migration
+                runPointsMigration();
+            });
+
+            function runPointsMigration() {
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'run_points_migration',
+                        nonce: intersoccer_admin.nonce
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            $('#migration-progress-fill').css('width', '100%');
+                            $('#migration-progress-text').text('Migration completed successfully!');
+                            $('#migration-status').html('<span class="status-indicator status-success">Migration completed</span>');
+                            $('#run-points-migration').prop('disabled', false).html('<span class="dashicons dashicons-yes"></span> Migration Complete');
+
+                            // Update details
+                            $('#transactions-processed').text(response.data.transactions_processed || 0);
+                            $('#users-updated').text(response.data.users_updated || 0);
+                            $('#backup-created').text(response.data.backup_created ? 'Yes' : 'No');
+
+                            // Show success message
+                            setTimeout(() => {
+                                alert(response.data.message);
+                                loadMigrationStatus();
+                            }, 1000);
+                        } else {
+                            $('#migration-status').html('<span class="status-indicator status-error">Migration failed</span>');
+                            $('#run-points-migration').prop('disabled', false).html('<span class="dashicons dashicons-warning"></span> Retry Migration');
+                            alert('Migration failed: ' + (response.data?.message || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        $('#migration-status').html('<span class="status-indicator status-error">Migration error</span>');
+                        $('#run-points-migration').prop('disabled', false).html('<span class="dashicons dashicons-warning"></span> Retry Migration');
+                        $('#migration-progress-text').text('Error occurred during migration');
+                        alert('AJAX Error: ' + error);
+                    }
+                });
+            }
+
+            // Load migration status
+            function loadMigrationStatus() {
+                $('#migration-info').html('<p>Loading migration status...</p>');
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'get_migration_status',
+                        nonce: intersoccer_admin.nonce
+                    },
+                    success: function(response) {
+                        $('#migration-info').html(response.data.html);
+                    },
+                    error: function() {
+                        $('#migration-info').html('<p>Error loading migration status</p>');
+                    }
+                });
+            }
+
+            $('#refresh-migration-status').on('click', loadMigrationStatus);
+
+            // Coach Import Form Handler
+            $('#import-submit-btn').on('click', function(e) {
+                e.preventDefault();
+
+                const $button = $(this);
+                const $form = $('#coach-import-form');
+                const $status = $('#import-status');
+                const $results = $('#import-results');
+                const $progress = $('#import-status .progress-fill');
+                const $progressText = $('#import-status .progress-text');
+
+                // Get form data
+                const formData = new FormData($form[0]);
+                formData.append('action', 'import_coaches_from_csv');
+                formData.append('update_existing', $('#update_existing').is(':checked') ? '1' : '0');
+
+                // Show progress
+                $status.show();
+                $results.hide();
+                $progress.css('width', '0%');
+                $progressText.text('Uploading file...');
+                $button.prop('disabled', true).text('Importing...');
+
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        $progress.css('width', '100%');
+                        $progressText.text('Import completed!');
+
+                        if (response.success) {
+                            // Show results
+                            let resultsHtml = '<h4>Import Results</h4>';
+                            resultsHtml += '<p><strong>Created:</strong> ' + response.data.created.length + '</p>';
+                            resultsHtml += '<p><strong>Updated:</strong> ' + response.data.updated.length + '</p>';
+                            resultsHtml += '<p><strong>Skipped:</strong> ' + response.data.skipped.length + '</p>';
+                            resultsHtml += '<p><strong>Errors:</strong> ' + response.data.errors.length + '</p>';
+
+                            if (response.data.created.length > 0) {
+                                resultsHtml += '<h5>Created Coaches:</h5><ul>';
+                                response.data.created.forEach(function(coach) {
+                                    resultsHtml += '<li>' + coach.first_name + ' ' + coach.last_name + ' (' + coach.email + ')</li>';
+                                });
+                                resultsHtml += '</ul>';
+                            }
+
+                            if (response.data.errors.length > 0) {
+                                resultsHtml += '<h5>Errors:</h5><ul>';
+                                response.data.errors.forEach(function(error) {
+                                    resultsHtml += '<li>' + error + '</li>';
+                                });
+                                resultsHtml += '</ul>';
+                            }
+
+                            $('#import-summary-content').html(resultsHtml);
+                            $results.show();
+                            $('#clear-import-results').show();
+
+                            // Refresh coach stats
+                            loadCoachStats();
+                        } else {
+                            alert('Import failed: ' + (response.data?.message || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        $progressText.text('Error occurred during import');
+                        alert('AJAX Error: ' + error);
+                    },
+                    complete: function() {
+                        $button.prop('disabled', false).text('Import Coaches');
+                    }
+                });
+            });
+
+            $('#clear-import-results').on('click', function() {
+                $('#import-results').hide();
+                $('#import-status').hide();
+                $(this).hide();
+            });
+
+            // Coach Role Restoration
+            $('#restore-coach-roles').on('click', function(e) {
+                e.preventDefault();
+
+                if (!confirm('This will scan referral data and restore coach roles to users who should have them. Continue?')) {
+                    return;
+                }
+
+                const $button = $(this);
+                const $progress = $('#restore-progress');
+                const $status = $('#restore-status');
+                const $progressFill = $('#restore-progress-fill');
+                const $progressText = $('#restore-progress-text');
+
+                // Update status
+                $status.html('<span class="status-indicator status-running">Restoring roles...</span>');
+                $button.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> Restoring...');
+
+                $progress.show();
+                $progressFill.css('width', '0%');
+                $progressText.text('Scanning referral data...');
+
+                // Start the restoration
+                restoreCoachRoles();
+            });
+
+            function restoreCoachRoles() {
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'restore_coach_roles',
+                        nonce: intersoccer_admin.nonce
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            $('#restore-progress-fill').css('width', '100%');
+                            $('#restore-progress-text').text('Restoration completed successfully!');
+                            $('#restore-status').html('<span class="status-indicator status-success">Restoration completed</span>');
+                            $('#restore-coach-roles').prop('disabled', false).html('<span class="dashicons dashicons-yes"></span> Restoration Complete');
+
+                            // Update details
+                            $('#coaches-found').text(response.data.coaches_found || 0);
+                            $('#roles-restored').text(response.data.roles_restored || 0);
+
+                            // Show success message
+                            setTimeout(() => {
+                                alert(response.data.message);
+                                loadCoachStats();
+                            }, 1000);
+                        } else {
+                            $('#restore-status').html('<span class="status-indicator status-error">Restoration failed</span>');
+                            $('#restore-coach-roles').prop('disabled', false).html('<span class="dashicons dashicons-warning"></span> Retry Restoration');
+                            alert('Restoration failed: ' + (response.data?.message || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        $('#restore-status').html('<span class="status-indicator status-error">Restoration error</span>');
+                        $('#restore-coach-roles').prop('disabled', false).html('<span class="dashicons dashicons-warning"></span> Retry Restoration');
+                        $('#restore-progress-text').text('Error occurred during restoration');
+                        alert('AJAX Error: ' + error);
+                    }
+                });
+            }
 
             // Initialize
             loadCreditStats();
@@ -749,6 +1130,7 @@ class InterSoccer_Admin_Settings {
             loadAuditLog();
             loadPointsStats();
             loadSyncInfo();
+            loadMigrationStatus();
         });
         </script>
 
@@ -963,10 +1345,94 @@ class InterSoccer_Admin_Settings {
             100% { transform: rotate(360deg); }
         }
 
-        @media (max-width: 768px) {
-            .sync-controls {
-                grid-template-columns: 1fr;
-            }
+        .migration-notice {
+            margin-bottom: 25px;
+        }
+
+        .migration-controls {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 25px;
+        }
+
+        .migration-card {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 8px;
+            border: 1px solid #e1e1e1;
+        }
+
+        .migration-card h3 {
+            margin-top: 0;
+            color: #23282d;
+            margin-bottom: 15px;
+        }
+
+        .migration-status {
+            margin: 15px 0;
+        }
+
+        .migration-details {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+
+        .migration-details .detail-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .migration-details .detail-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .role-restore-notice {
+            margin-bottom: 25px;
+        }
+
+        .role-restore-controls {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 25px;
+        }
+
+        .restore-card {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 8px;
+            border: 1px solid #e1e1e1;
+        }
+
+        .restore-card h3 {
+            margin-top: 0;
+            color: #23282d;
+            margin-bottom: 15px;
+        }
+
+        .restore-status {
+            margin: 15px 0;
+        }
+
+        .restore-details {
+            background: white;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+
+        .restore-details .detail-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .restore-details .detail-item:last-child {
+            margin-bottom: 0;
         }
         </style>
         <?php
@@ -1110,6 +1576,13 @@ class InterSoccer_Admin_Settings {
      * Handle coach CSV import
      */
     public function import_coaches_from_csv() {
+        // Handle AJAX requests
+        if (wp_doing_ajax()) {
+            $this->ajax_import_coaches_from_csv();
+            return;
+        }
+
+        // Handle regular form submission (legacy support)
         if (!current_user_can('manage_options')) {
             wp_die('Unauthorized');
         }
@@ -1120,75 +1593,194 @@ class InterSoccer_Admin_Settings {
 
         $file = $_FILES['coaches_csv']['tmp_name'];
 
-        if (($handle = fopen($file, 'r')) === false) {
-            wp_die('Could not open uploaded file');
+        try {
+            $results = $this->process_coach_csv_import($file, false);
+            $imported = count($results['created']) + count($results['updated']);
+            $errors = count($results['errors']);
+
+            // Store import report
+            update_option('intersoccer_last_coach_import', [
+                'timestamp' => current_time('mysql'),
+                'results' => $results
+            ]);
+
+            wp_redirect(add_query_arg([
+                'page' => 'intersoccer-settings',
+                'imported' => $imported,
+                'errors' => $errors
+            ], admin_url('admin.php')));
+        } catch (Exception $e) {
+            wp_redirect(add_query_arg([
+                'page' => 'intersoccer-settings',
+                'error' => urlencode($e->getMessage())
+            ], admin_url('admin.php')));
+        }
+        exit;
+    }
+
+    /**
+     * AJAX handler for coach CSV import
+     */
+    public function ajax_import_coaches_from_csv() {
+        try {
+            // Debug logging
+            error_log('AJAX import called at ' . current_time('mysql'));
+            error_log('POST data: ' . print_r($_POST, true));
+            error_log('FILES data: ' . print_r($_FILES, true));
+
+            // Verify nonce and permissions
+            if (!wp_verify_nonce($_POST['_wpnonce'] ?? '', 'import_coaches_from_csv')) {
+                error_log('Nonce verification failed');
+                wp_send_json_error('Invalid nonce');
+                return;
+            }
+
+            if (!current_user_can('manage_options')) {
+                error_log('Permission check failed');
+                wp_send_json_error('Insufficient permissions');
+                return;
+            }
+
+            if (!isset($_FILES['coaches_csv']) || $_FILES['coaches_csv']['error'] !== UPLOAD_ERR_OK) {
+                $error_code = $_FILES['coaches_csv']['error'] ?? 'no file';
+                error_log('File upload error: ' . $error_code);
+                wp_send_json_error('File upload error: ' . $error_code);
+                return;
+            }
+
+            $file = $_FILES['coaches_csv']['tmp_name'];
+            $update_existing = isset($_POST['update_existing']) && $_POST['update_existing'] == '1';
+
+            error_log('Processing file: ' . $file . ', update_existing: ' . ($update_existing ? 'yes' : 'no'));
+
+            $results = $this->process_coach_csv_import($file, $update_existing);
+
+            error_log('Import completed successfully: ' . print_r($results, true));
+            wp_send_json_success($results);
+
+        } catch (Exception $e) {
+            error_log('Exception in AJAX import: ' . $e->getMessage());
+            error_log('Stack trace: ' . $e->getTraceAsString());
+            wp_send_json_error('Import failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Process coach CSV import
+     */
+    private function process_coach_csv_import($file_path, $update_existing = false) {
+        if (($handle = fopen($file_path, 'r')) === false) {
+            throw new Exception('Could not open uploaded file');
         }
 
-        $this->log_audit('coach_import', 'Starting coach CSV import');
+        $this->log_audit('coach_import', 'Starting coach CSV import (AJAX)');
 
         $header = fgetcsv($handle, 1000, ',');
-        $imported = 0;
-        $errors = [];
+        if (!$header) {
+            fclose($handle);
+            throw new Exception('Could not read CSV header');
+        }
 
+        // Validate required columns
+        $required_columns = ['first_name', 'last_name', 'email'];
+        $missing_columns = array_diff($required_columns, $header);
+        if (!empty($missing_columns)) {
+            fclose($handle);
+            throw new Exception('Missing required columns: ' . implode(', ', $missing_columns));
+        }
+
+        $results = [
+            'created' => [],
+            'updated' => [],
+            'skipped' => [],
+            'errors' => []
+        ];
+
+        $row_number = 1;
         while (($data = fgetcsv($handle, 1000, ',')) !== false) {
+            $row_number++;
+
             if (count($data) !== count($header)) {
-                $errors[] = 'Invalid row: ' . implode(', ', $data);
+                $results['errors'][] = "Row {$row_number}: Invalid number of columns";
                 continue;
             }
 
             $coach_data = array_combine($header, $data);
 
-            // Create or update coach user
-            $user_id = $this->create_or_update_coach($coach_data);
+            // Validate required fields
+            if (empty(trim($coach_data['email'])) || empty(trim($coach_data['first_name'])) || empty(trim($coach_data['last_name']))) {
+                $results['errors'][] = "Row {$row_number}: Missing required fields (email, first_name, last_name)";
+                continue;
+            }
 
-            if ($user_id) {
-                $imported++;
-            } else {
-                $errors[] = 'Failed to create coach: ' . $coach_data['email'];
+            if (!is_email($coach_data['email'])) {
+                $results['errors'][] = "Row {$row_number}: Invalid email address: {$coach_data['email']}";
+                continue;
+            }
+
+            try {
+                $result = $this->create_or_update_coach($coach_data, $update_existing);
+                $coach_info = [
+                    'first_name' => $coach_data['first_name'],
+                    'last_name' => $coach_data['last_name'],
+                    'email' => $coach_data['email']
+                ];
+
+                if ($result['action'] === 'created') {
+                    $results['created'][] = $coach_info;
+                } elseif ($result['action'] === 'updated') {
+                    $results['updated'][] = $coach_info;
+                } elseif ($result['action'] === 'skipped') {
+                    $coach_info['reason'] = $result['reason'];
+                    $results['skipped'][] = $coach_info;
+                }
+            } catch (Exception $e) {
+                $results['errors'][] = "Row {$row_number}: " . $e->getMessage();
             }
         }
 
         fclose($handle);
 
-        $this->log_audit('coach_import', "Coach import complete: {$imported} imported, " . count($errors) . " errors");
+        $this->log_audit('coach_import', sprintf(
+            'Coach import complete: %d created, %d updated, %d skipped, %d errors',
+            count($results['created']),
+            count($results['updated']),
+            count($results['skipped']),
+            count($results['errors'])
+        ));
 
-        // Store import report
-        update_option('intersoccer_last_coach_import', [
-            'timestamp' => current_time('mysql'),
-            'imported' => $imported,
-            'errors' => $errors
-        ]);
-
-        wp_redirect(add_query_arg([
-            'page' => 'intersoccer-settings',
-            'imported' => $imported,
-            'errors' => count($errors)
-        ], admin_url('admin.php')));
-        exit;
+        return $results;
     }
 
     /**
      * Create or update coach user
      */
-    private function create_or_update_coach($coach_data) {
+    private function create_or_update_coach($coach_data, $update_existing = false) {
         // Check if user exists
         $user = get_user_by('email', $coach_data['email']);
 
         if (!$user) {
-            // Create new user
-            $user_id = wp_create_user(
-                sanitize_user($coach_data['email']),
-                wp_generate_password(),
-                $coach_data['email']
-            );
+            // Create new user with coach role directly
+            $user_id = wp_insert_user([
+                'user_login' => sanitize_user($coach_data['email']),
+                'user_pass' => wp_generate_password(),
+                'user_email' => $coach_data['email'],
+                'role' => 'coach'
+            ]);
 
             if (is_wp_error($user_id)) {
-                return false;
+                throw new Exception('Failed to create user: ' . $user_id->get_error_message());
             }
 
             $user = get_user_by('ID', $user_id);
+            $action = 'created';
         } else {
+            // User exists
+            if (!$update_existing) {
+                return ['action' => 'skipped', 'reason' => 'User already exists'];
+            }
             $user_id = $user->ID;
+            $action = 'updated';
         }
 
         // Update user meta
@@ -1199,16 +1791,31 @@ class InterSoccer_Admin_Settings {
             'display_name' => $coach_data['first_name'] . ' ' . $coach_data['last_name']
         ]);
 
-        update_user_meta($user_id, 'intersoccer_coach_specialization', sanitize_text_field($coach_data['specialization']));
-        update_user_meta($user_id, 'intersoccer_coach_location', sanitize_text_field($coach_data['location']));
-        update_user_meta($user_id, 'intersoccer_coach_experience', intval($coach_data['experience_years']));
-        update_user_meta($user_id, 'intersoccer_coach_bio', sanitize_textarea_field($coach_data['bio']));
-        update_user_meta($user_id, 'intersoccer_coach_phone', sanitize_text_field($coach_data['phone']));
+        // Update coach-specific meta
+        if (isset($coach_data['specialization'])) {
+            update_user_meta($user_id, 'intersoccer_coach_specialization', sanitize_text_field($coach_data['specialization']));
+        }
+        if (isset($coach_data['location'])) {
+            update_user_meta($user_id, 'intersoccer_coach_location', sanitize_text_field($coach_data['location']));
+        }
+        if (isset($coach_data['experience_years'])) {
+            update_user_meta($user_id, 'intersoccer_coach_experience', intval($coach_data['experience_years']));
+        }
+        if (isset($coach_data['bio'])) {
+            update_user_meta($user_id, 'intersoccer_coach_bio', sanitize_textarea_field($coach_data['bio']));
+        }
+        if (isset($coach_data['phone'])) {
+            update_user_meta($user_id, 'intersoccer_coach_phone', sanitize_text_field($coach_data['phone']));
+        }
 
-        // Set coach role
-        $user->set_role('intersoccer_coach');
+        // Ensure coach role is set for all imported coaches
+        if (get_role('coach')) {
+            $user->set_role('coach');
+        } else {
+            error_log('InterSoccer: Coach role not found during import');
+        }
 
-        return $user_id;
+        return ['action' => $action, 'user_id' => $user_id];
     }
 
     /**
@@ -1328,8 +1935,7 @@ class InterSoccer_Admin_Settings {
             wp_send_json_error(['message' => 'Unauthorized']);
         }
 
-        $coach_role = get_role('intersoccer_coach');
-        $coach_users = get_users(['role' => 'intersoccer_coach']);
+        $coach_users = get_users(['role' => 'coach']);
 
         $total_coaches = count($coach_users);
         $active_coaches = 0;
@@ -1571,6 +2177,132 @@ class InterSoccer_Admin_Settings {
             'message' => 'Points sync completed successfully',
             'processed' => $result['processed'],
             'points_allocated' => $result['points_allocated']
+        ]);
+    }
+
+    /**
+     * Migrate users from old intersoccer_coach role to coach role
+     */
+    public function migrate_coach_roles() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Unauthorized');
+        }
+
+        $old_role_users = get_users(['role' => 'intersoccer_coach']);
+        $migrated = 0;
+
+        foreach ($old_role_users as $user) {
+            $user->remove_role('intersoccer_coach');
+            $user->add_role('coach');
+            $migrated++;
+        }
+
+        $this->log_audit('role_migration', "Migrated {$migrated} users from intersoccer_coach to coach role");
+
+        wp_redirect(add_query_arg([
+            'page' => 'intersoccer-settings',
+            'migrated' => $migrated
+        ], admin_url('admin.php')));
+        exit;
+    }
+
+    /**
+     * Run points migration via AJAX
+     */
+    public function run_points_migration_ajax() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        try {
+            $migration = new InterSoccer_Points_Migration();
+            $migration->run_migration();
+
+            $status = $migration->get_migration_status();
+
+            wp_send_json_success([
+                'message' => 'Points migration completed successfully!',
+                'transactions_processed' => 'All',
+                'users_updated' => 'All',
+                'backup_created' => !empty($status['backup_table'])
+            ]);
+        } catch (Exception $e) {
+            error_log('InterSoccer Migration Error: ' . $e->getMessage());
+            wp_send_json_error(['message' => 'Migration failed: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Get migration status via AJAX
+     */
+    public function get_migration_status_ajax() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $migration = new InterSoccer_Points_Migration();
+        $status = $migration->get_migration_status();
+
+        $html = "
+            <div class='migration-details'>
+                <div class='detail-item'>
+                    <strong>Migration Completed:</strong> " . ($status['completed'] ? date('Y-m-d H:i:s', strtotime($status['completed'])) : 'Not yet') . "
+                </div>
+                <div class='detail-item'>
+                    <strong>Current Version:</strong> " . $status['version'] . "
+                </div>
+                <div class='detail-item'>
+                    <strong>Backup Table:</strong> " . ($status['backup_table'] ?: 'None') . "
+                </div>
+            </div>
+        ";
+
+        wp_send_json_success(['html' => $html]);
+    }
+
+    /**
+     * Restore coach roles via AJAX
+     */
+    public function restore_coach_roles_ajax() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        global $wpdb;
+
+        $this->log_audit('role_restoration', 'Starting coach role restoration based on referral data');
+
+        // Find all users who have coach referrals but might not have the coach role
+        $coach_users = $wpdb->get_col(
+            "SELECT DISTINCT coach_id FROM {$wpdb->prefix}intersoccer_referrals
+             WHERE coach_id IS NOT NULL AND coach_id > 0"
+        );
+
+        $coaches_found = count($coach_users);
+        $roles_restored = 0;
+
+        foreach ($coach_users as $user_id) {
+            $user = get_user_by('ID', $user_id);
+            if (!$user) continue;
+
+            // Check if user already has coach role
+            if (!in_array('coach', $user->roles)) {
+                // Add coach role
+                $user->add_role('coach');
+                $roles_restored++;
+                error_log("InterSoccer: Restored coach role to user {$user_id} ({$user->user_email})");
+            }
+        }
+
+        $this->log_audit('role_restoration', "Coach role restoration complete: {$coaches_found} coaches found, {$roles_restored} roles restored");
+
+        wp_send_json_success([
+            'message' => "Role restoration completed! Found {$coaches_found} coaches, restored {$roles_restored} roles.",
+            'coaches_found' => $coaches_found,
+            'roles_restored' => $roles_restored
         ]);
     }
 }
