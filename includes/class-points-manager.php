@@ -43,6 +43,9 @@ class InterSoccer_Points_Manager {
         $points_to_allocate = $this->calculate_points_from_amount($order_total);
 
         if ($points_to_allocate > 0) {
+            // Log points earning for audit
+            do_action('intersoccer_points_earned', $customer_id, $points_to_allocate, 'order_purchase', $order_id);
+
             $this->add_points_transaction(
                 $customer_id,
                 $order_id,
@@ -567,6 +570,9 @@ class InterSoccer_Points_Manager {
                 'redemption_rate' => $this->get_redemption_rate()
             ]
         );
+
+        // Log points redemption for audit
+        do_action('intersoccer_points_redeemed', $user_id, $points_to_redeem, $discount_amount, $order->get_id());
 
         // Update user meta
         $this->update_user_points_balance($user_id);

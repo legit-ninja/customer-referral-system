@@ -145,6 +145,9 @@ class InterSoccer_Commission_Manager {
                 $current_credits + $commission_data['total_amount']
             );
 
+            // Log commission payment for audit
+            do_action('intersoccer_commission_paid', $referral->coach_id, $commission_data['total_amount'], $order_id);
+
             // Log commission payment
             error_log("Commission paid: Coach {$referral->coach_id} earned {$commission_data['total_amount']} CHF for order {$order_id}");
 

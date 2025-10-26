@@ -674,12 +674,16 @@ class InterSoccer_Referral_Admin_Dashboard {
         // Check if user has already completed orders
         $has_completed_orders = wc_get_customer_order_count($user_id) > 0;
         if ($has_completed_orders) {
+            // Log attempt to use referral code on non-first order
+            do_action('intersoccer_referral_code_invalid', $referral_code, 'not_first_order');
             wp_send_json_error(['message' => 'Referral codes can only be used on first orders']);
         }
 
         // Check if referral code is already applied to this session
         $applied_code = WC()->session->get('intersoccer_applied_referral_code');
         if ($applied_code) {
+            // Log attempt to apply multiple referral codes
+            do_action('intersoccer_referral_code_invalid', $referral_code, 'code_already_applied');
             wp_send_json_error(['message' => 'Referral code already applied to this order']);
         }
 
@@ -692,6 +696,8 @@ class InterSoccer_Referral_Admin_Dashboard {
         ]);
 
         if (empty($coaches)) {
+            // Log invalid referral code attempt
+            do_action('intersoccer_referral_code_invalid', $referral_code, 'code_not_found');
             wp_send_json_error(['message' => 'Invalid referral code']);
         }
 
@@ -701,6 +707,9 @@ class InterSoccer_Referral_Admin_Dashboard {
         // Store referral code and coach info in session
         WC()->session->set('intersoccer_applied_referral_code', $referral_code);
         WC()->session->set('intersoccer_referral_coach_id', $coach->ID);
+
+        // Log successful referral code usage
+        do_action('intersoccer_referral_code_used', $referral_code, $user_id, $coach->ID);
 
         wp_send_json_success([
             'message' => sprintf(__('Referral code applied! You will receive a discount from coach %s.', 'intersoccer-referral'), $coach_name),
