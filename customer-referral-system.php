@@ -38,9 +38,11 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-coaches.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-referrals.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-financial.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-settings.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-points.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-manager.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-dashboard.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-admin-dashboard.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-migration.php';
 error_log('All plugin files loaded, Referral Handler exists: ' . class_exists('InterSoccer_Referral_Handler'));
 
 // Main plugin class
@@ -132,6 +134,8 @@ class InterSoccer_Referral_System {
     public static function uninstall() {
         // Remove custom roles
         remove_role('coach');
+        remove_role('content_creator');
+        remove_role('partner');
         
         // Remove options
         delete_option('intersoccer_commission_first');
@@ -333,6 +337,32 @@ class InterSoccer_Referral_System {
         
         if (!get_role('coach')) {
             add_role('coach', __('Coach', 'intersoccer-referral'), $coach_capabilities);
+        }
+
+        // Add Content Creator role
+        $content_creator_capabilities = [
+            'read' => true,
+            'view_referral_dashboard' => true,
+            'create_content' => true,
+            'edit_own_content' => true,
+            'manage_content_referrals' => true,
+        ];
+
+        if (!get_role('content_creator')) {
+            add_role('content_creator', __('Content Creator', 'intersoccer-referral'), $content_creator_capabilities);
+        }
+
+        // Add Partner role
+        $partner_capabilities = [
+            'read' => true,
+            'view_referral_dashboard' => true,
+            'manage_partnerships' => true,
+            'view_partner_reports' => true,
+            'manage_partner_referrals' => true,
+        ];
+
+        if (!get_role('partner')) {
+            add_role('partner', __('Partner', 'intersoccer-referral'), $partner_capabilities);
         }
         
         // Add capabilities to existing roles
