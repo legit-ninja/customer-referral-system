@@ -40,6 +40,9 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-financial.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-settings.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-points.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-manager.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-commission-manager.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-audit-logger.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-audit.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-dashboard.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-admin-dashboard.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-migration.php';
@@ -75,6 +78,10 @@ class InterSoccer_Referral_System {
         new InterSoccer_Referral_Admin_Dashboard();
         new InterSoccer_Coach_Admin_Dashboard();
         new InterSoccer_Points_Manager();
+        new InterSoccer_Admin_Audit();
+
+        // Initialize audit logging system
+        InterSoccer_Audit_Logger::get_instance();
 
         // Add custom user roles
         $this->add_custom_roles();
