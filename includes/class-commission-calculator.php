@@ -12,8 +12,14 @@ class InterSoccer_Commission_Calculator {
     private $commission_manager;
 
     public function __construct() {
-        // Initialize the new commission manager
-        $this->commission_manager = new InterSoccer_Commission_Manager();
+        // Initialize the new commission manager if available
+        if (class_exists('InterSoccer_Commission_Manager')) {
+            $this->commission_manager = new InterSoccer_Commission_Manager();
+        } else {
+            // Fallback: log error but don't break the site
+            error_log('InterSoccer: Commission Manager class not found - using fallback mode');
+            $this->commission_manager = null;
+        }
 
         // Add deprecation notice
         add_action('admin_notices', [$this, 'deprecation_notice']);
@@ -36,7 +42,25 @@ class InterSoccer_Commission_Calculator {
      */
     public static function calculate_commission($order, $purchase_count) {
         _deprecated_function(__METHOD__, '1.0.0', 'InterSoccer_Commission_Manager::calculate_base_commission');
-        return InterSoccer_Commission_Manager::calculate_base_commission($order, $purchase_count);
+
+        if (class_exists('InterSoccer_Commission_Manager')) {
+            return InterSoccer_Commission_Manager::calculate_base_commission($order, $purchase_count);
+        }
+
+        // Fallback calculation
+        $total = $order->get_total() - $order->get_total_tax();
+        $first_rate = get_option('intersoccer_commission_first', 15) / 100;
+        $second_rate = get_option('intersoccer_commission_second', 7.5) / 100;
+        $third_rate = get_option('intersoccer_commission_third', 5) / 100;
+
+        switch ($purchase_count) {
+            case 1:
+                return $total * $first_rate;
+            case 2:
+                return $total * $second_rate;
+            default:
+                return $total * $third_rate;
+        }
     }
 
     /**
@@ -92,7 +116,30 @@ class InterSoccer_Commission_Calculator {
      */
     public static function calculate_total_commission($order, $coach_id, $customer_id, $purchase_count) {
         _deprecated_function(__METHOD__, '1.0.0', 'InterSoccer_Commission_Manager::calculate_total_commission');
-        return InterSoccer_Commission_Manager::calculate_total_commission($order, $coach_id, $customer_id, $purchase_count);
+
+        if (class_exists('InterSoccer_Commission_Manager')) {
+            return InterSoccer_Commission_Manager::calculate_total_commission($order, $coach_id, $customer_id, $purchase_count);
+        }
+
+        // Fallback calculation
+        $base_commission = self::calculate_commission($order, $purchase_count);
+        $loyalty_bonus = self::calculate_loyalty_bonus($order, $purchase_count);
+        $retention_bonus = self::calculate_retention_bonus($customer_id, date('Y'));
+        $network_bonus = self::calculate_network_effect_bonus($customer_id);
+        $tier_bonus = self::calculate_tier_bonus($coach_id, $base_commission);
+        $seasonal_bonus = self::calculate_seasonal_bonus($base_commission);
+        $weekend_bonus = self::calculate_weekend_bonus($base_commission);
+
+        return [
+            'base_commission' => round($base_commission, 2),
+            'loyalty_bonus' => round($loyalty_bonus, 2),
+            'retention_bonus' => round($retention_bonus, 2),
+            'network_bonus' => round($network_bonus, 2),
+            'tier_bonus' => round($tier_bonus, 2),
+            'seasonal_bonus' => round($seasonal_bonus, 2),
+            'weekend_bonus' => round($weekend_bonus, 2),
+            'total_amount' => round($base_commission + $loyalty_bonus + $retention_bonus + $network_bonus + $tier_bonus + $seasonal_bonus + $weekend_bonus, 2)
+        ];
     }
 
     /**

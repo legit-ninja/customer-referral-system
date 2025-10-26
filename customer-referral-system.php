@@ -30,6 +30,7 @@ if (!file_exists(INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.ph
 }
 // Include necessary files
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-commission-manager.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-commission-calculator.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-dashboard.php';
 // Include modular admin dashboard classes
@@ -40,7 +41,6 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-financial.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-settings.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-points.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-manager.php';
-require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-commission-manager.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-audit-logger.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-audit.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-dashboard.php';
