@@ -3,6 +3,12 @@
 
 class InterSoccer_Admin_Dashboard_Main {
 
+    public function __construct() {
+        // Add AJAX handlers for demo data
+        add_action('wp_ajax_intersoccer_populate_demo_data', [$this, 'populate_demo_data']);
+        add_action('wp_ajax_intersoccer_clear_demo_data', [$this, 'clear_demo_data']);
+    }
+
     public function render_main_dashboard() {
         $stats = $this->get_dashboard_stats();
         $credit_stats = $this->get_customer_credit_stats();
@@ -1175,5 +1181,185 @@ class InterSoccer_Admin_Dashboard_Main {
         });
 
         return array_slice($activities, 0, $limit);
+    }
+
+    /**
+     * Populate demo data for testing
+     */
+    public function populate_demo_data() {
+        // Security checks
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'intersoccer_admin_nonce')) {
+            wp_send_json_error('Invalid nonce');
+        }
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        global $wpdb;
+
+        try {
+            // Get existing users for demo data
+            $admin_user = get_user_by('ID', 1); // Admin user should exist
+            $coach_user = get_user_by('email', 'coach@example.com');
+            if (!$coach_user) {
+                // Create a demo coach user
+                $coach_id = wp_create_user('demo_coach', 'password123', 'coach@example.com');
+                if (!is_wp_error($coach_id)) {
+                    wp_update_user([
+                        'ID' => $coach_id,
+                        'first_name' => 'Demo',
+                        'last_name' => 'Coach',
+                        'role' => 'coach'
+                    ]);
+                    $coach_user = get_user_by('ID', $coach_id);
+                }
+            }
+
+            $customer_user = get_user_by('email', 'customer@example.com');
+            if (!$customer_user) {
+                // Create a demo customer user
+                $customer_id = wp_create_user('demo_customer', 'password123', 'customer@example.com');
+                if (!is_wp_error($customer_id)) {
+                    wp_update_user([
+                        'ID' => $customer_id,
+                        'first_name' => 'Demo',
+                        'last_name' => 'Customer'
+                    ]);
+                    $customer_user = get_user_by('ID', $customer_id);
+                }
+            }
+
+            // Use actual user IDs or fallback to admin
+            $coach_id = $coach_user ? $coach_user->ID : 1;
+            $customer_id = $customer_user ? $customer_user->ID : 1;
+
+            // Sample data for referrals
+            $sample_referrals = [
+                [
+                    'coach_id' => $coach_id,
+                    'customer_id' => $customer_id,
+                    'referrer_id' => $coach_id,
+                    'referrer_type' => 'coach',
+                    'order_id' => 1001,
+                    'commission_amount' => 100.00,
+                    'loyalty_bonus' => 10.00,
+                    'retention_bonus' => 5.00,
+                    'status' => 'completed',
+                    'purchase_count' => 1,
+                    'referral_code' => 'DEMO001',
+                    'conversion_date' => current_time('mysql'),
+                    'created_at' => current_time('mysql'),
+                    'updated_at' => current_time('mysql')
+                ]
+            ];
+
+            // Insert sample referrals
+            foreach ($sample_referrals as $referral) {
+                $wpdb->insert($wpdb->prefix . 'intersoccer_referrals', $referral);
+            }
+
+            // Sample data for referral credits
+            $sample_credits = [
+                [
+                    'referral_id' => $wpdb->insert_id, // Use the ID of the inserted referral
+                    'customer_id' => $customer_id,
+                    'coach_id' => $coach_id,
+                    'credit_amount' => 50.00,
+                    'credit_type' => 'referral',
+                    'status' => 'active',
+                    'expires_at' => null,
+                    'created_at' => current_time('mysql'),
+                    'updated_at' => current_time('mysql')
+                ]
+            ];
+
+            // Insert sample credits
+            foreach ($sample_credits as $credit) {
+                $wpdb->insert($wpdb->prefix . 'intersoccer_referral_credits', $credit);
+            }
+
+            // Sample data for credit redemptions
+            $sample_redemptions = [
+                [
+                    'customer_id' => $customer_id,
+                    'order_item_id' => null,
+                    'credit_amount' => 25.00,
+                    'order_total' => 100.00,
+                    'discount_applied' => 25.00,
+                    'created_at' => current_time('mysql')
+                ]
+            ];
+
+            // Insert sample redemptions
+            $redemption_ids = [];
+            foreach ($sample_redemptions as $redemption) {
+                $wpdb->insert($wpdb->prefix . 'intersoccer_credit_redemptions', $redemption);
+                $redemption_ids[] = $wpdb->insert_id;
+            }
+
+            // Sample data for points log
+            $sample_points = [
+                [
+                    'customer_id' => $customer_id,
+                    'order_id' => 1001,
+                    'transaction_type' => 'earned',
+                    'points_amount' => 10.00,
+                    'points_balance' => 10.00,
+                    'reference_type' => 'order',
+                    'reference_id' => 1001,
+                    'description' => 'Points earned from order #1001',
+                    'created_at' => current_time('mysql')
+                ],
+                [
+                    'customer_id' => $customer_id,
+                    'order_id' => 1001,
+                    'transaction_type' => 'redeemed',
+                    'points_amount' => -5.00,
+                    'points_balance' => 5.00,
+                    'reference_type' => 'redemption',
+                    'reference_id' => $redemption_ids[0] ?? null, // Use the first redemption ID
+                    'description' => 'Points redeemed for discount',
+                    'created_at' => current_time('mysql')
+                ]
+            ];
+
+            // Insert sample points
+            foreach ($sample_points as $point) {
+                $wpdb->insert($wpdb->prefix . 'intersoccer_points_log', $point);
+            }
+
+            wp_send_json_success('Demo data populated successfully.');
+        } catch (Exception $e) {
+            wp_send_json_error('Error populating demo data: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Clear demo data for testing
+     */
+    public function clear_demo_data() {
+        // Security checks
+        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'intersoccer_admin_nonce')) {
+            wp_send_json_error('Invalid nonce');
+        }
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('Insufficient permissions');
+        }
+
+        global $wpdb;
+
+        try {
+            // Clear tables (use DELETE FROM for safety)
+            $wpdb->query("DELETE FROM {$wpdb->prefix}intersoccer_referrals");
+            $wpdb->query("DELETE FROM {$wpdb->prefix}intersoccer_referral_credits");
+            $wpdb->query("DELETE FROM {$wpdb->prefix}intersoccer_credit_redemptions");
+            $wpdb->query("DELETE FROM {$wpdb->prefix}intersoccer_points_log");
+
+            wp_send_json_success('Demo data cleared successfully.');
+        } catch (Exception $e) {
+            wp_send_json_error('Error clearing demo data: ' . $e->getMessage());
+        }
     }
 }
