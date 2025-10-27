@@ -40,6 +40,7 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-referrals.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-financial.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-settings.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-points.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-coach-assignments.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-manager.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-audit-logger.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-audit.php';
@@ -192,6 +193,28 @@ class InterSoccer_Referral_System {
             KEY idx_created_at (created_at)
         ) $charset_collate;";
         
+        // Coach assignments table for venue/course access control
+        $assignments_table = $wpdb->prefix . 'intersoccer_coach_assignments';
+        $assignments_sql = "CREATE TABLE $assignments_table (
+            id int(11) NOT NULL AUTO_INCREMENT,
+            coach_id bigint(20) unsigned NOT NULL,
+            venue varchar(255) NOT NULL,
+            canton varchar(100) DEFAULT '',
+            assignment_type enum('venue','camp','course','event') DEFAULT 'venue',
+            active tinyint(1) DEFAULT 1,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY unique_coach_venue (coach_id, venue, assignment_type),
+            KEY idx_coach_id (coach_id),
+            KEY idx_venue (venue(100)),
+            KEY idx_canton (canton),
+            KEY idx_assignment_type (assignment_type),
+            KEY idx_active (active)
+        ) $charset_collate;";
+
+        dbDelta($assignments_sql);
+
         // Coach performance table
         $performance_table = $wpdb->prefix . 'intersoccer_coach_performance';
         $performance_sql = "CREATE TABLE $performance_table (
@@ -438,8 +461,31 @@ class InterSoccer_Referral_System {
     * enqueue frontend assets
     */
     public function enqueue_frontend_assets() {
-        // Coach dashboard assets (existing)
-        if (is_user_logged_in() && current_user_can('view_referral_dashboard') && !is_account_page()) {
+        // Modern coach dashboard assets
+        if (is_user_logged_in() && current_user_can('coach') && !is_account_page()) {
+            wp_enqueue_style('modern-dashboard-css', INTERSOCCER_REFERRAL_URL . 'assets/css/modern-dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
+            wp_enqueue_style('aos-css', 'https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css', [], '2.3.4');
+            wp_enqueue_script('aos-js', 'https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js', [], '2.3.4', true);
+            wp_enqueue_script('chart-js', 'https://cdn.jsdelivr.net/npm/chart.js', [], '4.4.0', true);
+            wp_enqueue_script('modern-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/modern-dashboard.js', ['jquery', 'aos-js', 'chart-js'], INTERSOCCER_REFERRAL_VERSION, true);
+
+            wp_localize_script('modern-dashboard-js', 'intersoccer_dashboard', [
+                'ajax_url' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('dashboard_nonce'),
+                'user_id' => get_current_user_id(),
+                'user_name' => wp_get_current_user()->display_name,
+                'referral_link' => InterSoccer_Referral_Handler::generate_coach_referral_link(get_current_user_id()),
+                'admin_url' => admin_url(),
+                'chart_data' => [
+                    'labels' => $this->get_chart_labels(30),
+                    'referrals' => $this->get_chart_data(get_current_user_id(), 30, 'referrals'),
+                    'credits' => $this->get_chart_data(get_current_user_id(), 30, 'credits')
+                ]
+            ]);
+        }
+
+        // Legacy coach dashboard assets (fallback)
+        elseif (is_user_logged_in() && current_user_can('view_referral_dashboard') && !is_account_page()) {
             wp_enqueue_style('intersoccer-dashboard-css', INTERSOCCER_REFERRAL_URL . 'assets/css/dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
             wp_enqueue_script('intersoccer-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/dashboard.js', ['jquery'], INTERSOCCER_REFERRAL_VERSION, true);
             wp_localize_script('intersoccer-dashboard-js', 'intersoccer_dashboard', [
@@ -585,6 +631,47 @@ class InterSoccer_Referral_System {
         }
         
         return false;
+    }
+
+    /**
+     * Get chart labels for dashboard
+     */
+    private function get_chart_labels($days) {
+        $labels = [];
+        for ($i = $days - 1; $i >= 0; $i--) {
+            $labels[] = date('M j', strtotime("-{$i} days"));
+        }
+        return $labels;
+    }
+
+    /**
+     * Get chart data for dashboard
+     */
+    private function get_chart_data($coach_id, $days, $type) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'intersoccer_referrals';
+
+        $data = [];
+        for ($i = $days - 1; $i >= 0; $i--) {
+            $date = date('Y-m-d', strtotime("-{$i} days"));
+            $next_date = date('Y-m-d', strtotime("-" . ($i - 1) . " days"));
+
+            if ($type === 'referrals') {
+                $value = $wpdb->get_var($wpdb->prepare(
+                    "SELECT COUNT(*) FROM $table_name WHERE coach_id = %d AND DATE(created_at) = %s",
+                    $coach_id, $date
+                ));
+            } else { // credits
+                $value = $wpdb->get_var($wpdb->prepare(
+                    "SELECT COALESCE(SUM(commission_amount), 0) FROM $table_name WHERE coach_id = %d AND DATE(created_at) = %s",
+                    $coach_id, $date
+                ));
+            }
+
+            $data[] = (float) $value;
+        }
+
+        return $data;
     }
 }
 
