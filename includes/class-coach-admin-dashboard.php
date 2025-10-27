@@ -19,6 +19,10 @@ class InterSoccer_Coach_Admin_Dashboard {
         // Enqueue coach-specific admin styles
         add_action('admin_enqueue_scripts', [$this, 'enqueue_coach_admin_styles']);
 
+        // Hide WordPress admin notices for coaches
+        add_action('admin_head', [$this, 'hide_admin_notices_for_coaches']);
+        add_action('admin_init', [$this, 'remove_admin_notices_for_coaches']);
+
         // Coach dashboard tour
         add_action('wp_ajax_complete_tour', [$this, 'complete_tour']);
     }
@@ -148,21 +152,37 @@ class InterSoccer_Coach_Admin_Dashboard {
             $wp_admin_bar->remove_node('comments');
             $wp_admin_bar->remove_node('new-content');
             $wp_admin_bar->remove_node('wpseo-menu');
+            $wp_admin_bar->remove_node('updates'); // Remove updates menu
             
             // Add coach-specific admin bar items
             $wp_admin_bar->add_node([
                 'id'    => 'coach-stats',
-                'title' => '💰 Credits: ' . number_format(intersoccer_get_coach_credits(), 0) . ' CHF',
+                'title' => '💰 Points: ' . number_format(intersoccer_get_coach_credits(), 0) . ' CHF',
                 'href'  => admin_url('admin.php?page=intersoccer-coach-dashboard'),
                 'meta'  => ['class' => 'coach-credits-display']
             ]);
-            
+
             $wp_admin_bar->add_node([
                 'id'    => 'coach-tier',
                 'title' => '🏆 ' . intersoccer_get_coach_tier(),
                 'href'  => admin_url('admin.php?page=intersoccer-coach-dashboard'),
                 'meta'  => ['class' => 'coach-tier-display']
             ]);
+
+            // Add venue assignments info
+            if (class_exists('InterSoccer_Admin_Coach_Assignments')) {
+                $assigned_venues = InterSoccer_Admin_Coach_Assignments::get_coach_accessible_venues(get_current_user_id());
+                if (!empty($assigned_venues)) {
+                    $venue_count = count($assigned_venues);
+                    $venue_text = $venue_count === 1 ? $assigned_venues[0] : $venue_count . ' venues';
+                    $wp_admin_bar->add_node([
+                        'id'    => 'coach-venues',
+                        'title' => '📍 ' . $venue_text,
+                        'href'  => admin_url('admin.php?page=intersoccer-coach-dashboard'),
+                        'meta'  => ['class' => 'coach-venues-display']
+                    ]);
+                }
+            }
         }
     }
     
@@ -211,42 +231,738 @@ class InterSoccer_Coach_Admin_Dashboard {
      */
     public function render_coach_admin_dashboard() {
         $user_id = get_current_user_id();
-        $credits = intersoccer_get_coach_credits($user_id);
-        $tier = intersoccer_get_coach_tier($user_id);
-        $referral_link = InterSoccer_Referral_Handler::generate_coach_referral_link($user_id);
-        error_log('Rendering coach dashboard, tour status: ' . get_user_meta($user_id, 'intersoccer_tour_completed', true));
+
+        // Get venue assignments
+        $venue_assignments = [];
+        if (class_exists('InterSoccer_Admin_Coach_Assignments')) {
+            $assignments = InterSoccer_Admin_Coach_Assignments::get_coach_assignments_static($user_id);
+            foreach ($assignments as $assignment) {
+                $venue_assignments[] = [
+                    'venue' => $assignment->venue,
+                    'assignment_type' => $assignment->assignment_type,
+                    'canton' => $assignment->canton
+                ];
+            }
+        }
+
+        // Get event participation stats
+        $event_stats = $this->get_coach_event_stats($user_id);
+
+        // Get dashboard data
+        $coach_data = [
+            'user_id' => $user_id,
+            'user_name' => wp_get_current_user()->display_name,
+            'user_email' => wp_get_current_user()->user_email,
+            'credits' => intersoccer_get_coach_credits($user_id),
+            'tier' => intersoccer_get_coach_tier($user_id),
+            'referral_link' => InterSoccer_Referral_Handler::generate_coach_referral_link($user_id),
+            'total_referrals' => $this->get_coach_referral_count($user_id),
+            'recent_referrals' => $this->get_recent_referrals($user_id, 5),
+            'earnings_data' => $this->get_earnings_data($user_id),
+            'chart_labels' => $this->get_chart_labels(30),
+            'chart_referrals' => $this->get_chart_data($user_id, 30, 'referrals'),
+            'chart_credits' => $this->get_chart_data($user_id, 30, 'credits'),
+            'venue_assignments' => $venue_assignments,
+            'event_stats' => $event_stats,
+            'is_admin_context' => true
+        ];
+
+        // Load the modern dashboard template
+        $template_path = INTERSOCCER_REFERRAL_PATH . 'templates/modern-coach-dashboard.php';
+        if (file_exists($template_path)) {
+            include $template_path;
+        } else {
+            // Fallback to enhanced dashboard if template doesn't exist
+            $this->render_enhanced_dashboard($coach_data);
+        }
+    }
+
+    /**
+     * Render enhanced dashboard with coach profile, venue assignments, and event participation
+     */
+    private function render_enhanced_dashboard($data) {
         ?>
         <div class="wrap coach-dashboard">
-            <h1>Welcome back, <?php echo wp_get_current_user()->display_name; ?>! 👋</h1>
-            <div class="coach-welcome-banner">
-                <div class="coach-stats-overview">
-                    <div class="stat-box" id="tour-credits">
-                        <span class="stat-number"><?php echo number_format($credits, 0); ?> CHF</span>
-                        <span class="stat-label">Total Credits</span>
+            <div class="coach-dashboard-header">
+                <h1>Welcome back, <?php echo esc_html($data['user_name']); ?>! 👋</h1>
+                <p class="coach-subtitle">Here's your coaching dashboard overview</p>
+            </div>
+
+            <!-- Profile & Assignment Section -->
+            <div class="coach-profile-section">
+                <div class="coach-profile-card">
+                    <h2>👤 Your Profile</h2>
+                    <div class="profile-details">
+                        <div class="profile-row">
+                            <span class="profile-label">Name:</span>
+                            <span class="profile-value"><?php echo esc_html($data['user_name']); ?></span>
+                        </div>
+                        <div class="profile-row">
+                            <span class="profile-label">Email:</span>
+                            <span class="profile-value"><?php echo esc_html($data['user_email']); ?></span>
+                        </div>
+                        <div class="profile-row">
+                            <span class="profile-label">Coach Tier:</span>
+                            <span class="profile-value tier-badge tier-<?php echo strtolower($data['tier']); ?>"><?php echo esc_html($data['tier']); ?></span>
+                        </div>
+                        <div class="profile-row">
+                            <span class="profile-label">Referral Points:</span>
+                            <span class="profile-value"><?php echo number_format($data['credits'], 0); ?> CHF</span>
+                        </div>
                     </div>
-                    <div class="stat-box" id="tour-tier">
-                        <span class="stat-number tier-<?php echo strtolower($tier); ?>"><?php echo $tier; ?></span>
-                        <span class="stat-label">Current Tier</span>
+                </div>
+
+                <div class="coach-assignments-card">
+                    <h2>📍 Your Venue Assignments</h2>
+                    <?php if (!empty($data['venue_assignments'])): ?>
+                        <div class="assignments-list">
+                            <?php foreach ($data['venue_assignments'] as $assignment): ?>
+                                <div class="assignment-item">
+                                    <div class="assignment-venue"><?php echo esc_html($assignment['venue']); ?></div>
+                                    <div class="assignment-details">
+                                        <span class="assignment-type"><?php echo esc_html(ucfirst($assignment['assignment_type'])); ?></span>
+                                        <?php if ($assignment['canton']): ?>
+                                            <span class="assignment-canton">• <?php echo esc_html($assignment['canton']); ?></span>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php else: ?>
+                        <p class="no-assignments">No venue assignments found. Contact an administrator to assign you to venues.</p>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Event Participation Stats -->
+            <div class="coach-stats-section">
+                <h2>📊 Event Participation Overview</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">📅</div>
+                        <div class="stat-content">
+                            <div class="stat-number"><?php echo number_format($data['event_stats']['total_events']); ?></div>
+                            <div class="stat-label">Total Events</div>
+                        </div>
                     </div>
-                    <div class="stat-box" id="tour-referrals">
-                        <span class="stat-number"><?php echo $this->get_coach_referral_count($user_id); ?></span>
-                        <span class="stat-label">Total Referrals</span>
+                    <div class="stat-card">
+                        <div class="stat-icon">🎯</div>
+                        <div class="stat-content">
+                            <div class="stat-number"><?php echo number_format($data['event_stats']['active_events']); ?></div>
+                            <div class="stat-label">Active Events</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">👥</div>
+                        <div class="stat-content">
+                            <div class="stat-number"><?php echo number_format($data['event_stats']['total_participants']); ?></div>
+                            <div class="stat-label">Total Participants</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">⏰</div>
+                        <div class="stat-content">
+                            <div class="stat-number"><?php echo number_format($data['event_stats']['upcoming_events']); ?></div>
+                            <div class="stat-label">Upcoming (30 days)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <?php if (!empty($data['event_stats']['event_types'])): ?>
+                    <div class="event-types-breakdown">
+                        <h3>Event Types</h3>
+                        <div class="event-types-list">
+                            <?php foreach ($data['event_stats']['event_types'] as $event_type): ?>
+                                <div class="event-type-item">
+                                    <span class="event-type-name"><?php echo esc_html($event_type['activity_type'] ?: 'Other'); ?></span>
+                                    <span class="event-type-count"><?php echo number_format($event_type['count']); ?> events</span>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <!-- Referral Performance -->
+            <div class="coach-referral-section">
+                <h2>💰 Referral Performance</h2>
+                <div class="referral-stats-grid">
+                    <div class="referral-stat-card">
+                        <div class="stat-number"><?php echo number_format($data['total_referrals']); ?></div>
+                        <div class="stat-label">Total Referrals</div>
+                    </div>
+                    <div class="referral-stat-card">
+                        <div class="stat-number"><?php echo number_format($data['credits'], 0); ?> CHF</div>
+                        <div class="stat-label">Referral Earnings</div>
+                    </div>
+                </div>
+
+                <div class="referral-link-section">
+                    <h3>Your Referral Link</h3>
+                    <div class="referral-link-container">
+                        <input type="text" value="<?php echo esc_attr($data['referral_link']); ?>" readonly id="referral-link-input">
+                        <button onclick="copyReferralLink()" class="copy-link-btn">📋 Copy Link</button>
                     </div>
                 </div>
             </div>
-            <div class="coach-quick-actions" id="tour-actions">
-                <a href="#" class="coach-action-btn primary" onclick="copyReferralLink()">📋 Copy Referral Link</a>
-                <a href="<?php echo admin_url('admin.php?page=intersoccer-coach-referrals'); ?>" class="coach-action-btn">👥 View My Referrals</a>
-                <a href="<?php echo admin_url('admin.php?page=intersoccer-coach-resources'); ?>" class="coach-action-btn" id="tour-resources">📚 Marketing Resources</a>
+
+            <!-- Recent Activity -->
+            <?php if (!empty($data['recent_referrals'])): ?>
+                <div class="coach-activity-section">
+                    <h2>📈 Recent Activity</h2>
+                    <div class="recent-referrals-list">
+                        <?php foreach ($data['recent_referrals'] as $referral): ?>
+                            <div class="referral-item">
+                                <div class="referral-info">
+                                    <span class="referral-customer"><?php echo esc_html($referral->customer_name ?: 'Unknown Customer'); ?></span>
+                                    <span class="referral-date"><?php echo date('M j, Y', strtotime($referral->created_at)); ?></span>
+                                </div>
+                                <div class="referral-status">
+                                    <span class="status-badge status-<?php echo esc_attr($referral->status); ?>">
+                                        <?php echo esc_html(ucfirst($referral->status)); ?>
+                                    </span>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <!-- Quick Actions -->
+            <div class="coach-actions-section">
+                <h2>🚀 Quick Actions</h2>
+                <div class="action-buttons">
+                    <a href="<?php echo admin_url('admin.php?page=intersoccer-coach-referrals'); ?>" class="action-btn">
+                        👥 View All Referrals
+                    </a>
+                    <a href="<?php echo admin_url('admin.php?page=intersoccer-coach-resources'); ?>" class="action-btn">
+                        📚 Marketing Resources
+                    </a>
+                    <a href="<?php echo admin_url('admin.php?page=intersoccer-reports-rosters'); ?>" class="action-btn">
+                        📊 View Rosters
+                    </a>
+                    <a href="<?php echo admin_url('admin.php?page=intersoccer-coach-profile'); ?>" class="action-btn">
+                        ⚙️ Edit Profile
+                    </a>
+                </div>
             </div>
-            <script>
-            function copyReferralLink() {
-                navigator.clipboard.writeText('<?php echo esc_js($referral_link); ?>');
-                alert('Referral link copied to clipboard!');
-            }
-            </script>
         </div>
+
+        <style>
+        .coach-dashboard {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .coach-dashboard-header {
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .coach-dashboard h1 {
+            color: #2c3338;
+            margin-bottom: 10px;
+        }
+
+        .coach-subtitle {
+            color: #666;
+            font-size: 16px;
+        }
+
+        .coach-profile-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .coach-profile-card,
+        .coach-assignments-card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border: 1px solid #e1e5e9;
+        }
+
+        .coach-profile-card h2,
+        .coach-assignments-card h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            color: #2c3338;
+            font-size: 18px;
+        }
+
+        .profile-details {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .profile-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .profile-row:last-child {
+            border-bottom: none;
+        }
+
+        .profile-label {
+            font-weight: 600;
+            color: #5f6368;
+        }
+
+        .profile-value {
+            color: #2c3338;
+        }
+
+        .tier-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .tier-bronze { background: #cd7f32; color: white; }
+        .tier-silver { background: #c0c0c0; color: #333; }
+        .tier-gold { background: #ffd700; color: #333; }
+        .tier-platinum { background: #e5e4e2; color: #333; }
+
+        .assignments-list {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .assignment-item {
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #0073aa;
+        }
+
+        .assignment-venue {
+            font-weight: 600;
+            color: #2c3338;
+            margin-bottom: 5px;
+        }
+
+        .assignment-details {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .assignment-type {
+            font-weight: 500;
+        }
+
+        .assignment-canton {
+            color: #0073aa;
+        }
+
+        .no-assignments {
+            color: #666;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .coach-stats-section {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border: 1px solid #e1e5e9;
+        }
+
+        .coach-stats-section h2 {
+            margin-top: 0;
+            margin-bottom: 25px;
+            color: #2c3338;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .stat-icon {
+            font-size: 24px;
+        }
+
+        .stat-content {
+            flex: 1;
+        }
+
+        .stat-number {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .event-types-breakdown h3 {
+            margin-bottom: 15px;
+            color: #2c3338;
+        }
+
+        .event-types-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .event-type-item {
+            background: #f0f4f8;
+            padding: 8px 12px;
+            border-radius: 20px;
+            font-size: 14px;
+            color: #2c3338;
+        }
+
+        .coach-referral-section,
+        .coach-activity-section,
+        .coach-actions-section {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border: 1px solid #e1e5e9;
+        }
+
+        .coach-referral-section h2,
+        .coach-activity-section h2,
+        .coach-actions-section h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            color: #2c3338;
+        }
+
+        .referral-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .referral-stat-card {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .referral-link-container {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        #referral-link-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .copy-link-btn {
+            background: #0073aa;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .copy-link-btn:hover {
+            background: #005a87;
+        }
+
+        .recent-referrals-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .referral-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .referral-info {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .referral-customer {
+            font-weight: 600;
+            color: #2c3338;
+        }
+
+        .referral-date {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-completed { background: #d4edda; color: #155724; }
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-cancelled { background: #f8d7da; color: #721c24; }
+
+        .action-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .action-btn {
+            display: inline-block;
+            padding: 12px 20px;
+            background: #0073aa;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 500;
+            transition: background 0.3s ease;
+        }
+
+        .action-btn:hover {
+            background: #005a87;
+            color: white;
+        }
+
+        @media (max-width: 768px) {
+            .coach-profile-section {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .action-buttons {
+                grid-template-columns: 1fr;
+            }
+
+            .referral-link-container {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+        </style>
+
+        <script>
+        function copyReferralLink() {
+            const input = document.getElementById('referral-link-input');
+            input.select();
+            document.execCommand('copy');
+
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = '✅ Copied!';
+            btn.style.background = '#28a745';
+
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.background = '#0073aa';
+            }, 2000);
+        }
+        </script>
         <?php
+    }
+
+    /**
+     * Get recent referrals for dashboard
+     */
+    private function get_recent_referrals($coach_id, $limit = 5) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'intersoccer_referrals';
+
+        return $wpdb->get_results($wpdb->prepare(
+            "SELECT r.*, u.display_name as customer_name
+             FROM $table_name r
+             LEFT JOIN {$wpdb->users} u ON r.customer_id = u.ID
+             WHERE r.coach_id = %d
+             ORDER BY r.created_at DESC
+             LIMIT %d",
+            $coach_id, $limit
+        ));
+    }
+
+    /**
+     * Get earnings data for dashboard
+     */
+    private function get_earnings_data($coach_id) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'intersoccer_referrals';
+
+        // Get monthly earnings for the last 6 months
+        $earnings = $wpdb->get_results($wpdb->prepare(
+            "SELECT
+                DATE_FORMAT(created_at, '%Y-%m') as month,
+                SUM(commission_amount) as total_earnings,
+                COUNT(*) as referral_count
+             FROM $table_name
+             WHERE coach_id = %d AND status = 'completed'
+             AND created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+             GROUP BY DATE_FORMAT(created_at, '%Y-%m')
+             ORDER BY month DESC",
+            $coach_id
+        ));
+
+        return $earnings;
+    }
+
+    /**
+     * Get chart labels for dashboard
+     */
+    private function get_chart_labels($days) {
+        $labels = [];
+        for ($i = $days - 1; $i >= 0; $i--) {
+            $labels[] = date('M j', strtotime("-{$i} days"));
+        }
+        return $labels;
+    }
+
+    /**
+     * Get chart data for dashboard
+     */
+    private function get_chart_data($coach_id, $days, $type) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'intersoccer_referrals';
+
+        $data = [];
+        for ($i = $days - 1; $i >= 0; $i--) {
+            $date = date('Y-m-d', strtotime("-{$i} days"));
+
+            if ($type === 'referrals') {
+                $value = $wpdb->get_var($wpdb->prepare(
+                    "SELECT COUNT(*) FROM $table_name WHERE coach_id = %d AND DATE(created_at) = %s",
+                    $coach_id, $date
+                ));
+            } else { // credits
+                $value = $wpdb->get_var($wpdb->prepare(
+                    "SELECT COALESCE(SUM(commission_amount), 0) FROM $table_name WHERE coach_id = %d AND DATE(created_at) = %s AND status = 'completed'",
+                    $coach_id, $date
+                ));
+            }
+
+            $data[] = (float) $value;
+        }
+
+        return $data;
+    }
+
+    /**
+     * Get coach event participation statistics
+     */
+    private function get_coach_event_stats($coach_id) {
+        global $wpdb;
+        $rosters_table = $wpdb->prefix . 'intersoccer_rosters';
+
+        // Get coach's assigned venues
+        $assigned_venues = [];
+        if (class_exists('InterSoccer_Admin_Coach_Assignments')) {
+            $assigned_venues = InterSoccer_Admin_Coach_Assignments::get_coach_accessible_venues($coach_id);
+        }
+
+        if (empty($assigned_venues)) {
+            return [
+                'total_events' => 0,
+                'active_events' => 0,
+                'total_participants' => 0,
+                'upcoming_events' => 0,
+                'event_types' => []
+            ];
+        }
+
+        // Build venue filter
+        $placeholders = implode(',', array_fill(0, count($assigned_venues), '%s'));
+        $venue_filter = $wpdb->prepare("venue IN ($placeholders)", $assigned_venues);
+
+        // Get total events
+        $total_events = $wpdb->get_var("
+            SELECT COUNT(DISTINCT event_signature)
+            FROM $rosters_table
+            WHERE $venue_filter
+        ");
+
+        // Get active events (current/future)
+        $active_events = $wpdb->get_var("
+            SELECT COUNT(DISTINCT event_signature)
+            FROM $rosters_table
+            WHERE $venue_filter AND end_date >= CURDATE()
+        ");
+
+        // Get total participants
+        $total_participants = $wpdb->get_var("
+            SELECT COUNT(DISTINCT order_item_id)
+            FROM $rosters_table
+            WHERE $venue_filter
+        ");
+
+        // Get upcoming events (next 30 days)
+        $upcoming_events = $wpdb->get_var("
+            SELECT COUNT(DISTINCT event_signature)
+            FROM $rosters_table
+            WHERE $venue_filter AND start_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+        ");
+
+        // Get event types breakdown
+        $event_types = $wpdb->get_results("
+            SELECT activity_type, COUNT(DISTINCT event_signature) as count
+            FROM $rosters_table
+            WHERE $venue_filter
+            GROUP BY activity_type
+            ORDER BY count DESC
+        ", ARRAY_A);
+
+        return [
+            'total_events' => (int) $total_events,
+            'active_events' => (int) $active_events,
+            'total_participants' => (int) $total_participants,
+            'upcoming_events' => (int) $upcoming_events,
+            'event_types' => $event_types
+        ];
     }
     
     /**
@@ -261,8 +977,340 @@ class InterSoccer_Coach_Admin_Dashboard {
      * Render coach profile page
      */
     public function render_coach_profile() {
-        // Implementation for coach profile editing
-        echo '<div class="wrap"><h1>My Profile</h1><p>Profile editing coming soon...</p></div>';
+        $user_id = get_current_user_id();
+        $user = wp_get_current_user();
+
+        // Get venue assignments
+        $venue_assignments = [];
+        if (class_exists('InterSoccer_Admin_Coach_Assignments')) {
+            $assignments = InterSoccer_Admin_Coach_Assignments::get_coach_assignments_static($user_id);
+            foreach ($assignments as $assignment) {
+                $venue_assignments[] = $assignment;
+            }
+        }
+
+        // Get event participation stats
+        $event_stats = $this->get_coach_event_stats($user_id);
+
+        ?>
+        <div class="wrap coach-profile-page">
+            <h1>👤 My Profile</h1>
+
+            <div class="profile-sections">
+                <!-- Basic Information -->
+                <div class="profile-section">
+                    <h2>Basic Information</h2>
+                    <div class="profile-info-grid">
+                        <div class="info-item">
+                            <label>Full Name:</label>
+                            <span><?php echo esc_html($user->display_name); ?></span>
+                        </div>
+                        <div class="info-item">
+                            <label>Email:</label>
+                            <span><?php echo esc_html($user->user_email); ?></span>
+                        </div>
+                        <div class="info-item">
+                            <label>Username:</label>
+                            <span><?php echo esc_html($user->user_login); ?></span>
+                        </div>
+                        <div class="info-item">
+                            <label>Member Since:</label>
+                            <span><?php echo date('F j, Y', strtotime($user->user_registered)); ?></span>
+                        </div>
+                        <div class="info-item">
+                            <label>Coach Tier:</label>
+                            <span class="tier-badge tier-<?php echo strtolower(intersoccer_get_coach_tier($user_id)); ?>">
+                                <?php echo esc_html(intersoccer_get_coach_tier($user_id)); ?>
+                            </span>
+                        </div>
+                        <div class="info-item">
+                            <label>Referral Points:</label>
+                            <span><?php echo number_format(intersoccer_get_coach_credits($user_id), 0); ?> CHF</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Venue Assignments -->
+                <div class="profile-section">
+                    <h2>📍 Venue Assignments</h2>
+                    <?php if (!empty($venue_assignments)): ?>
+                        <div class="assignments-table">
+                            <table class="wp-list-table widefat fixed striped">
+                                <thead>
+                                    <tr>
+                                        <th>Venue</th>
+                                        <th>Assignment Type</th>
+                                        <th>Canton</th>
+                                        <th>Assigned Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($venue_assignments as $assignment): ?>
+                                        <tr>
+                                            <td><?php echo esc_html($assignment->venue); ?></td>
+                                            <td><?php echo esc_html(ucfirst($assignment->assignment_type)); ?></td>
+                                            <td><?php echo esc_html($assignment->canton ?: 'N/A'); ?></td>
+                                            <td><?php echo date('M j, Y', strtotime($assignment->created_at)); ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="assignment-note">
+                            <strong>Note:</strong> You can only view rosters for events at your assigned venues.
+                            Contact an administrator if you need access to additional venues.
+                        </p>
+                    <?php else: ?>
+                        <div class="no-assignments-notice">
+                            <p>You don't have any venue assignments yet.</p>
+                            <p>Contact an administrator to assign you to specific venues, camps, or courses.</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Event Participation Summary -->
+                <div class="profile-section">
+                    <h2>📊 Event Participation Summary</h2>
+                    <div class="event-summary-grid">
+                        <div class="summary-card">
+                            <div class="summary-icon">📅</div>
+                            <div class="summary-content">
+                                <div class="summary-number"><?php echo number_format($event_stats['total_events']); ?></div>
+                                <div class="summary-label">Total Events</div>
+                            </div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-icon">🎯</div>
+                            <div class="summary-content">
+                                <div class="summary-number"><?php echo number_format($event_stats['active_events']); ?></div>
+                                <div class="summary-label">Active Events</div>
+                            </div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-icon">👥</div>
+                            <div class="summary-content">
+                                <div class="summary-number"><?php echo number_format($event_stats['total_participants']); ?></div>
+                                <div class="summary-label">Participants Coached</div>
+                            </div>
+                        </div>
+                        <div class="summary-card">
+                            <div class="summary-icon">⏰</div>
+                            <div class="summary-content">
+                                <div class="summary-number"><?php echo number_format($event_stats['upcoming_events']); ?></div>
+                                <div class="summary-label">Upcoming Events</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <?php if (!empty($event_stats['event_types'])): ?>
+                        <div class="event-types-section">
+                            <h3>Event Types You've Coached</h3>
+                            <div class="event-types-breakdown">
+                                <?php foreach ($event_stats['event_types'] as $event_type): ?>
+                                    <div class="event-type-stat">
+                                        <span class="event-type-name"><?php echo esc_html($event_type['activity_type'] ?: 'Other'); ?></span>
+                                        <span class="event-type-count"><?php echo number_format($event_type['count']); ?> events</span>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                </div>
+
+                <!-- Account Settings -->
+                <div class="profile-section">
+                    <h2>⚙️ Account Settings</h2>
+                    <div class="settings-notice">
+                        <p>To update your profile information or change your password, please contact an administrator.</p>
+                        <p>For questions about your venue assignments or event access, reach out to the InterSoccer team.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <style>
+        .coach-profile-page {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .profile-sections {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        .profile-section {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border: 1px solid #e1e5e9;
+        }
+
+        .profile-section h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            color: #2c3338;
+            border-bottom: 2px solid #0073aa;
+            padding-bottom: 10px;
+        }
+
+        .profile-info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+
+        .info-item label {
+            font-weight: 600;
+            color: #5f6368;
+        }
+
+        .info-item span {
+            color: #2c3338;
+        }
+
+        .tier-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .tier-bronze { background: #cd7f32; color: white; }
+        .tier-silver { background: #c0c0c0; color: #333; }
+        .tier-gold { background: #ffd700; color: #333; }
+        .tier-platinum { background: #e5e4e2; color: #333; }
+
+        .assignments-table table {
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .assignments-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #2c3338;
+        }
+
+        .assignment-note {
+            margin-top: 15px;
+            padding: 15px;
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            border-radius: 4px;
+        }
+
+        .no-assignments-notice {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .no-assignments-notice p {
+            margin: 10px 0;
+        }
+
+        .event-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .summary-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .summary-icon {
+            font-size: 24px;
+        }
+
+        .summary-content {
+            flex: 1;
+        }
+
+        .summary-number {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+
+        .summary-label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .event-types-section h3 {
+            margin-bottom: 15px;
+            color: #2c3338;
+        }
+
+        .event-types-breakdown {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .event-type-stat {
+            background: #f0f4f8;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            color: #2c3338;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            min-width: 150px;
+        }
+
+        .settings-notice {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .settings-notice p {
+            margin: 0 0 10px 0;
+        }
+
+        .settings-notice p:last-child {
+            margin-bottom: 0;
+        }
+
+        @media (max-width: 768px) {
+            .profile-info-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .event-summary-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .assignments-table {
+                overflow-x: auto;
+            }
+        }
+        </style>
+        <?php
     }
     
     /**
@@ -358,11 +1406,88 @@ class InterSoccer_Coach_Admin_Dashboard {
     }
     
     /**
+     * Remove admin notices for coaches using WordPress hooks
+     */
+    public function remove_admin_notices_for_coaches() {
+        if (current_user_can('coach') && !current_user_can('manage_options')) {
+            // Remove common admin notices
+            remove_action('admin_notices', 'update_nag', 3);
+            remove_action('admin_notices', 'maintenance_nag', 10);
+            remove_action('admin_notices', 'site_admin_notice', 10);
+            remove_action('admin_notices', 'user_admin_notice', 10);
+
+            // Remove update notifications
+            remove_action('admin_notices', 'wp_update_notice', 10);
+            remove_action('admin_notices', 'wp_plugin_update_rows', 10);
+            remove_action('admin_notices', 'wp_theme_update_rows', 10);
+
+            // Remove network admin notices if applicable
+            if (is_multisite()) {
+                remove_action('network_admin_notices', 'wp_update_notice', 10);
+            }
+        }
+    }
+
+    /**
+     * Hide WordPress admin notices for coaches
+     */
+    public function hide_admin_notices_for_coaches() {
+        if (current_user_can('coach') && !current_user_can('manage_options')) {
+            // Hide admin notices with CSS
+            echo '<style>
+                .notice, .update-nag, .updated, .error, .warning, .info,
+                #wp-admin-bar-updates, .wp-admin-bar-updates,
+                .plugin-update-triggers, .theme-update-triggers {
+                    display: none !important;
+                }
+                /* Hide specific WordPress notices */
+                .notice-info, .notice-warning, .notice-error, .notice-success {
+                    display: none !important;
+                }
+                /* Hide update notifications in admin bar */
+                #wp-admin-bar-updates .ab-item {
+                    display: none !important;
+                }
+                /* Hide plugin/theme update counts */
+                .plugin-count, .theme-count {
+                    display: none !important;
+                }
+            </style>';
+        }
+    }
+
+    /**
      * Enqueue coach-specific admin styles
      */
     public function enqueue_coach_admin_styles($hook) {
         if (current_user_can('coach') && !current_user_can('manage_options')) {
+            // Load modern dashboard assets for the coach dashboard page
+            if (isset($_GET['page']) && $_GET['page'] === 'intersoccer-coach-dashboard') {
+                wp_enqueue_style('modern-dashboard-css', INTERSOCCER_REFERRAL_URL . 'assets/css/modern-dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
+                wp_enqueue_style('aos-css', 'https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css', [], '2.3.4');
+                wp_enqueue_script('aos-js', 'https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js', [], '2.3.4', true);
+                wp_enqueue_script('chart-js', 'https://cdn.jsdelivr.net/npm/chart.js', [], '4.4.0', true);
+                wp_enqueue_script('modern-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/modern-dashboard.js', ['jquery', 'aos-js', 'chart-js'], INTERSOCCER_REFERRAL_VERSION, true);
+
+                wp_localize_script('modern-dashboard-js', 'intersoccer_dashboard', [
+                    'ajax_url' => admin_url('admin-ajax.php'),
+                    'nonce' => wp_create_nonce('dashboard_nonce'),
+                    'user_id' => get_current_user_id(),
+                    'user_name' => wp_get_current_user()->display_name,
+                    'referral_link' => InterSoccer_Referral_Handler::generate_coach_referral_link(get_current_user_id()),
+                    'admin_url' => admin_url(),
+                    'chart_data' => [
+                        'labels' => $this->get_chart_labels(30),
+                        'referrals' => $this->get_chart_data(get_current_user_id(), 30, 'referrals'),
+                        'credits' => $this->get_chart_data(get_current_user_id(), 30, 'credits')
+                    ]
+                ]);
+            }
+
+            // Load basic coach admin styles for other admin pages
             wp_enqueue_style('coach-admin-styles', INTERSOCCER_REFERRAL_URL . 'assets/css/coach-admin.css', [], INTERSOCCER_REFERRAL_VERSION);
+
+            // Load tour assets
             wp_enqueue_style('shepherd-css', 'https://cdn.jsdelivr.net/npm/shepherd.js@10.0.1/dist/css/shepherd.css', [], '10.0.1');
             wp_enqueue_script('shepherd-js', 'https://cdn.jsdelivr.net/npm/shepherd.js@10.0.1/dist/js/shepherd.min.js', [], '10.0.1', true);
             wp_enqueue_script('coach-tour-js', INTERSOCCER_REFERRAL_URL . 'assets/js/coach-tour.js', ['shepherd-js'], INTERSOCCER_REFERRAL_VERSION, true);
