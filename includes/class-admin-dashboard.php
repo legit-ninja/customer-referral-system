@@ -9,6 +9,7 @@ class InterSoccer_Referral_Admin_Dashboard {
     private $financial;
     private $settings;
     private $points;
+    private $coach_assignments;
 
       public function __construct() {
         // Initialize modular classes
@@ -18,6 +19,13 @@ class InterSoccer_Referral_Admin_Dashboard {
         $this->financial = new InterSoccer_Admin_Financial();
         $this->settings = new InterSoccer_Admin_Settings();
         $this->points = new InterSoccer_Admin_Points();
+
+        // Initialize coach assignments if class exists
+        if (class_exists('InterSoccer_Admin_Coach_Assignments')) {
+            $this->coach_assignments = new InterSoccer_Admin_Coach_Assignments();
+        } else {
+            $this->coach_assignments = null;
+        }
 
         add_action('admin_menu', [$this, 'add_admin_menus']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_admin_assets']);
@@ -144,6 +152,18 @@ class InterSoccer_Referral_Admin_Dashboard {
             'intersoccer-settings',
             [$this->settings, 'render_settings_page']
         );
+
+        // Only add coach assignments menu if class is available
+        if ($this->coach_assignments) {
+            add_submenu_page(
+                'intersoccer-referrals',
+                'Coach Assignments',
+                'Coach Assignments',
+                'manage_options',
+                'intersoccer-coach-assignments',
+                [$this->coach_assignments, 'render_page']
+            );
+        }
     }
 
     public function enqueue_admin_assets($hook) {
@@ -384,6 +404,7 @@ class InterSoccer_Referral_Admin_Dashboard {
 
         $user_id = get_current_user_id();
         $available_credits = get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0;
+        error_log("Checkout points field - User: $user_id, Available credits: $available_credits");
 
         if ($available_credits > 0) {
             // Get cart total for context
@@ -393,7 +414,7 @@ class InterSoccer_Referral_Admin_Dashboard {
             echo '<div class="intersoccer-points-redemption" style="border: 1px solid #e1e5e9; border-radius: 8px; padding: 16px; margin: 0; background: #f8fafc; width: 100%; box-sizing: border-box;">';
             echo '<div style="display: flex; align-items: center; margin-bottom: 12px;">';
             echo '<input type="checkbox" name="intersoccer_use_points" id="intersoccer_use_points" style="margin-right: 8px;" />';
-            echo '<label for="intersoccer_use_points" style="font-weight: 600; color: #111827; margin: 0;">' . __('Use Referral Points', 'intersoccer-referral') . '</label>';
+            echo '<label for="intersoccer_use_points" style="font-weight: 600; color: #111827; margin: 0;">' . __('Use Loyalty Points', 'intersoccer-referral') . '</label>';
             echo '</div>';
 
             echo '<div class="points-details" style="display: none; margin-left: 24px;">';
@@ -421,11 +442,18 @@ class InterSoccer_Referral_Admin_Dashboard {
             echo '</div>';
             echo '</div>';
 
-            // Add JavaScript for referral code
+            // Add JavaScript for referral code and points redemption
             ?>
             <script>
             jQuery(document).ready(function($) {
-                $('#apply_referral_code').on('click', function() {
+                console.log('InterSoccer checkout JavaScript loaded');
+
+                // Function to initialize points redemption handlers
+                function initPointsRedemptionHandlers() {
+                    console.log('Initializing points redemption handlers');
+
+                    // Handle referral code application
+                    $(document).off('click', '#apply_referral_code').on('click', '#apply_referral_code', function() {
                     var referralCode = $('#intersoccer_referral_code').val().trim();
                     var $message = $('#referral_code_message');
                     var $button = $(this);
@@ -463,6 +491,97 @@ class InterSoccer_Referral_Admin_Dashboard {
                         }
                     });
                 });
+
+                    // Handle points redemption checkbox
+                    $(document).off('change', '#intersoccer_use_points').on('change', '#intersoccer_use_points', function() {
+                        console.log('Points checkbox changed:', $(this).is(':checked'));
+                        var $pointsDetails = $(this).closest('.intersoccer-points-redemption').find('.points-details');
+                        if ($(this).is(':checked')) {
+                            $pointsDetails.slideDown();
+                        } else {
+                            $pointsDetails.slideUp();
+                            // Clear any applied points
+                            applyPointsAmount(0);
+                        }
+                    });
+
+                    // Handle apply all points button
+                    $(document).off('click', '.apply-all-points').on('click', '.apply-all-points', function() {
+                        var availablePoints = <?php echo $available_credits; ?>;
+                        applyPointsAmount(availablePoints);
+                    });
+
+                    // Handle apply max points button
+                    $(document).off('click', '.apply-max-points').on('click', '.apply-max-points', function() {
+                        var maxPoints = Math.min(<?php echo $available_credits; ?>, 100);
+                        applyPointsAmount(maxPoints);
+                    });
+
+                    // Handle custom amount input
+                    $(document).off('input', '#intersoccer_points_to_redeem').on('input', '#intersoccer_points_to_redeem', function() {
+                        var customAmount = parseInt($(this).val()) || 0;
+                        applyPointsAmount(customAmount);
+                    });
+                }
+
+                // Initialize handlers on page load
+                initPointsRedemptionHandlers();
+
+                // Re-initialize handlers after WooCommerce AJAX updates
+                $(document.body).on('updated_checkout', function() {
+                    console.log('Checkout updated, re-initializing handlers');
+                    initPointsRedemptionHandlers();
+                });
+
+                // Function to apply points amount
+                function applyPointsAmount(pointsAmount) {
+                    console.log('Applying points amount:', pointsAmount);
+                    var maxPoints = Math.min(<?php echo $available_credits; ?>, 100);
+
+                    // Validate points amount
+                    if (pointsAmount < 0) pointsAmount = 0;
+                    if (pointsAmount > maxPoints) pointsAmount = maxPoints;
+
+                    console.log('Validated points amount:', pointsAmount, 'max allowed:', maxPoints);
+
+                    // Update input field
+                    $('#intersoccer_points_to_redeem').val(pointsAmount);
+
+                    // Show applied amount
+                    var $appliedAmount = $('.applied-amount');
+                    var $appliedText = $('.applied-text');
+
+                    if (pointsAmount > 0) {
+                        $appliedText.text('<?php _e('Applied', 'intersoccer-referral'); ?> ' + pointsAmount + ' <?php _e('points discount', 'intersoccer-referral'); ?>');
+                        $appliedAmount.show();
+                    } else {
+                        $appliedAmount.hide();
+                    }
+
+                    // Update session via AJAX
+                    console.log('Making AJAX call to update points session');
+                    $.ajax({
+                        url: '<?php echo admin_url('admin-ajax.php'); ?>',
+                        type: 'POST',
+                        data: {
+                            action: 'update_points_session',
+                            points_to_redeem: pointsAmount,
+                            nonce: '<?php echo wp_create_nonce('intersoccer_checkout_nonce'); ?>'
+                        },
+                        success: function(response) {
+                            console.log('AJAX success:', response);
+                            if (response.success) {
+                                // Trigger checkout update to recalculate totals
+                                $(document.body).trigger('update_checkout');
+                            } else {
+                                console.error('Error updating points session:', response.data);
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            console.error('AJAX error updating points session:', error, xhr.responseText);
+                        }
+                    });
+                }
             });
             </script>
             <?php
@@ -649,6 +768,8 @@ class InterSoccer_Referral_Admin_Dashboard {
         $user_id = get_current_user_id();
         $available_points = get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0;
         $max_per_order = 100;
+
+        error_log("Points session update - User: $user_id, Requested: $points_to_redeem, Available: $available_points");
 
         $points_to_redeem = min($points_to_redeem, $available_points, $max_per_order);
 
