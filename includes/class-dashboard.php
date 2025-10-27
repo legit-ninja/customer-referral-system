@@ -1442,4 +1442,21 @@ class InterSoccer_Referral_Dashboard {
         $user = get_user_by('ID', $customer_id);
         return $user ? $user->display_name : 'Unknown Customer';
     }
+
+    /**
+     * Get count of customers linked to this coach
+     */
+    private function get_linked_customers_count($coach_id) {
+        global $wpdb;
+
+        // Count unique customers who have this coach as their preferred coach
+        $count = $wpdb->get_var($wpdb->prepare("
+            SELECT COUNT(DISTINCT user_id)
+            FROM {$wpdb->usermeta}
+            WHERE meta_key = 'intersoccer_preferred_coach'
+            AND meta_value = %d
+        ", $coach_id));
+
+        return (int) $count;
+    }
 }

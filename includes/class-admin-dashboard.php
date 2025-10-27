@@ -705,7 +705,10 @@ class InterSoccer_Referral_Admin_Dashboard {
             $order->add_order_note(sprintf(__('Deducted %d credits from customer balance. New balance: %d', 'intersoccer-referral'), $points_to_redeem, $new_credits));
         }
 
-        // Award points to coach for referral code usage
+        // Award points to coach for every purchase (CHF 10 spent = 1 point)
+        $this->award_purchase_points_to_coach($order);
+
+        // Award points to coach for referral code usage (one-time bonus)
         $referral_code = WC()->session->get('intersoccer_applied_referral_code');
         $referral_coach_id = WC()->session->get('intersoccer_referral_coach_id');
 
@@ -717,9 +720,9 @@ class InterSoccer_Referral_Admin_Dashboard {
                 'limit' => 1
             ]);
 
-            // If this is their first completed order, award points to coach
+            // If this is their first completed order, award bonus points to coach
             if (count($customer_orders) === 1 && $customer_orders[0]->get_id() === $order_id) {
-                $points_to_award = 50; // Award 50 points to coach for successful referral
+                $points_to_award = 50; // Award 50 bonus points to coach for successful referral
 
                 // Get current coach points balance
                 $current_coach_points = get_user_meta($referral_coach_id, 'intersoccer_points_balance', true) ?: 0;
@@ -742,7 +745,7 @@ class InterSoccer_Referral_Admin_Dashboard {
 
                 // Add order note
                 $coach_info = get_userdata($referral_coach_id);
-                $order->add_order_note(sprintf(__('Awarded %d points to coach %s for referral code usage. New balance: %d', 'intersoccer-referral'),
+                $order->add_order_note(sprintf(__('Awarded %d bonus points to coach %s for referral code usage. New balance: %d', 'intersoccer-referral'),
                     $points_to_award, $coach_info->display_name, $new_coach_points));
 
                 // Clear referral session data
@@ -750,6 +753,54 @@ class InterSoccer_Referral_Admin_Dashboard {
                 WC()->session->set('intersoccer_referral_coach_id', null);
             }
         }
+    }
+
+    /**
+     * Award points to coach for customer purchases (CHF 10 spent = 1 point)
+     */
+    private function award_purchase_points_to_coach($order) {
+        $customer_id = $order->get_customer_id();
+
+        // Get the customer's preferred coach
+        $coach_id = get_user_meta($customer_id, 'intersoccer_preferred_coach', true);
+
+        if (!$coach_id) {
+            return; // No linked coach
+        }
+
+        // Calculate points to award: CHF 10 spent = 1 point
+        $order_total = $order->get_total();
+        $points_to_award = floor($order_total / 10); // 1 point per CHF 10 spent
+
+        if ($points_to_award <= 0) {
+            return; // No points to award
+        }
+
+        // Get current coach points balance
+        $current_coach_points = get_user_meta($coach_id, 'intersoccer_points_balance', true) ?: 0;
+        $new_coach_points = $current_coach_points + $points_to_award;
+        update_user_meta($coach_id, 'intersoccer_points_balance', $new_coach_points);
+
+        // Record the purchase reward
+        global $wpdb;
+        $wpdb->insert(
+            $wpdb->prefix . 'intersoccer_purchase_rewards',
+            [
+                'coach_id' => $coach_id,
+                'customer_id' => $customer_id,
+                'order_id' => $order->get_id(),
+                'order_total' => $order_total,
+                'points_awarded' => $points_to_award,
+                'created_at' => current_time('mysql')
+            ]
+        );
+
+        // Add order note
+        $coach_info = get_userdata($coach_id);
+        $order->add_order_note(sprintf(__('Awarded %d points to coach %s for customer purchase (CHF %.2f). New balance: %d', 'intersoccer-referral'),
+            $points_to_award, $coach_info->display_name, $order_total, $new_coach_points));
+
+        error_log("Awarded $points_to_award points to coach $coach_id for customer $customer_id purchase of CHF $order_total");
     }
 
     /**
@@ -828,6 +879,9 @@ class InterSoccer_Referral_Admin_Dashboard {
         // Store referral code and coach info in session
         WC()->session->set('intersoccer_applied_referral_code', $referral_code);
         WC()->session->set('intersoccer_referral_coach_id', $coach->ID);
+
+        // Store the coach ID in customer metadata for ongoing commissions
+        update_user_meta($user_id, 'intersoccer_preferred_coach', $coach->ID);
 
         // Log successful referral code usage
         do_action('intersoccer_referral_code_used', $referral_code, $user_id, $coach->ID);

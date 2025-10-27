@@ -159,6 +159,25 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                 <canvas id="conversion-chart" width="60" height="30"></canvas>
             </div>
         </div>
+
+        <div class="stat-card customers-card" data-aos="fade-up" data-aos-delay="400">
+            <div class="stat-icon">
+                <i class="icon-customers"></i>
+            </div>
+            <div class="stat-content">
+                <div class="stat-value" data-counter="<?php echo $this->get_linked_customers_count($user_id); ?>">
+                    <?php echo $this->get_linked_customers_count($user_id); ?>
+                </div>
+                <div class="stat-label">Linked Customers</div>
+                <div class="stat-change positive">
+                    <i class="icon-trend-up"></i>
+                    Ongoing earnings
+                </div>
+            </div>
+            <div class="customer-chart">
+                <canvas id="customers-chart" width="60" height="30"></canvas>
+            </div>
+        </div>
     </div>
 
     <!-- Main Content Grid -->
