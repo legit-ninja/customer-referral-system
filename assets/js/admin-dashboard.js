@@ -405,6 +405,10 @@
      * Initialize demo data handlers
      */
     function initializeDemoDataHandlers() {
+        // Event handlers moved to bindEvents() for proper timing
+    }
+
+    function old_initializeDemoDataHandlers() {
         $('#populate-demo-data').on('click', function(e) {
             e.preventDefault();
 
@@ -531,7 +535,76 @@
      * Bind general event handlers
      */
     function bindEvents() {
-        // Add any additional event bindings here
+        // Bind demo data button events
+        $('#clear-demo-data').on('click', function(e) {
+            e.preventDefault();
+
+            if (!confirm('This will clear all demo data. Continue?')) {
+                return;
+            }
+
+            const $button = $(this);
+            const originalText = $button.html();
+
+            $button.html('<span class="dashicons dashicons-update spin"></span> Clearing...').prop('disabled', true);
+
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'intersoccer_clear_demo_data',
+                    nonce: intersoccer_admin.nonce
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert('Demo data cleared successfully!');
+                        location.reload();
+                    } else {
+                        alert('Error: ' + response.data);
+                        $button.html(originalText).prop('disabled', false);
+                    }
+                },
+                error: function() {
+                    alert('An error occurred while clearing demo data.');
+                    $button.html(originalText).prop('disabled', false);
+                }
+            });
+        });
+
+        $('#populate-demo-data').on('click', function(e) {
+            e.preventDefault();
+
+            if (!confirm('This will populate the database with demo data. Continue?')) {
+                return;
+            }
+
+            const $button = $(this);
+            const originalText = $button.html();
+
+            $button.html('<span class="dashicons dashicons-update spin"></span> Populating...').prop('disabled', true);
+
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'intersoccer_populate_demo_data',
+                    nonce: intersoccer_admin.nonce
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert('Demo data populated successfully!');
+                        location.reload();
+                    } else {
+                        alert('Error: ' + response.data);
+                        $button.html(originalText).prop('disabled', false);
+                    }
+                },
+                error: function() {
+                    alert('An error occurred while populating demo data.');
+                    $button.html(originalText).prop('disabled', false);
+                }
+            });
+        });
     }
 
     /**

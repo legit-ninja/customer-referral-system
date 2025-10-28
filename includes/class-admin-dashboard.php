@@ -68,7 +68,7 @@ class InterSoccer_Referral_Admin_Dashboard {
             add_action('woocommerce_review_order_before_payment', [$this, 'add_referral_code_field']);
             add_action('woocommerce_review_order_before_payment', [$this, 'add_points_redemption_field']);
             add_action('woocommerce_checkout_process', [$this, 'validate_points_redemption']);
-            add_action('woocommerce_checkout_create_order', [$this, 'apply_points_discount_to_order'], 10, 2);
+            // add_action('woocommerce_checkout_create_order', [$this, 'apply_points_discount_to_order'], 10, 2); // Disabled - cart fees are automatically converted to order items
             add_action('woocommerce_order_status_changed', [$this, 'deduct_points_on_order_completion'], 10, 4);
             add_action('woocommerce_my_account_my_orders_column_order-total', [$this, 'display_points_used_in_orders']);
             add_action('woocommerce_cart_calculate_fees', [$this, 'apply_points_discount_as_fee'], 10, 1);
@@ -379,23 +379,17 @@ class InterSoccer_Referral_Admin_Dashboard {
         // Add referral code input field before order review
         if (!is_user_logged_in()) return;
 
-        $user_id = get_current_user_id();
-        $has_completed_orders = wc_get_customer_order_count($user_id) > 0;
-
-        // Only show referral code field for first-time customers
-        if (!$has_completed_orders) {
-            echo '<div class="intersoccer-referral-code-wrapper" style="width: 100%; clear: both; margin-bottom: 20px;">';
-            echo '<div class="intersoccer-referral-code" style="border: 1px solid #e1e5e9; border-radius: 8px; padding: 16px; margin: 0; background: #f0f9ff; width: 100%; box-sizing: border-box;">';
-            echo '<div style="margin-bottom: 12px;">';
-            echo '<label for="intersoccer_referral_code" style="font-weight: 600; color: #111827; margin: 0; display: block; margin-bottom: 8px;">' . __('Coach Referral Code (Optional)', 'intersoccer-referral') . '</label>';
-            echo '<p style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px;">' . __('Enter a coach referral code to receive an additional discount on your first order!', 'intersoccer-referral') . '</p>';
-            echo '<input type="text" name="intersoccer_referral_code" id="intersoccer_referral_code" placeholder="Enter referral code" style="width: 100%; max-width: 300px; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px;" />';
-            echo '<button type="button" id="apply_referral_code" class="button button-secondary" style="margin-left: 8px; padding: 8px 16px;">' . __('Apply Code', 'intersoccer-referral') . '</button>';
-            echo '</div>';
-            echo '<div id="referral_code_message" style="display: none; margin-top: 8px; padding: 8px; border-radius: 4px; font-size: 14px;"></div>';
-            echo '</div>';
-            echo '</div>';
-        }
+        echo '<div class="intersoccer-referral-code-wrapper" style="width: 100%; clear: both; margin-bottom: 20px;">';
+        echo '<div class="intersoccer-referral-code" style="border: 1px solid #e1e5e9; border-radius: 8px; padding: 16px; margin: 0; background: #f0f9ff; width: 100%; box-sizing: border-box;">';
+        echo '<div style="margin-bottom: 12px;">';
+        echo '<label for="intersoccer_referral_code" style="font-weight: 600; color: #111827; margin: 0; display: block; margin-bottom: 8px;">' . __('Coach Referral Code (Optional)', 'intersoccer-referral') . '</label>';
+        echo '<p style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px;">' . __('Support your favorite coach! Enter their referral code to give them credit for this purchase.', 'intersoccer-referral') . '</p>';
+        echo '<input type="text" name="intersoccer_referral_code" id="intersoccer_referral_code" placeholder="Enter referral code" style="width: 100%; max-width: 300px; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px;" />';
+        echo '<button type="button" id="apply_referral_code" class="button button-secondary" style="margin-left: 8px; padding: 8px 16px;">' . __('Apply Code', 'intersoccer-referral') . '</button>';
+        echo '</div>';
+        echo '<div id="referral_code_message" style="display: none; margin-top: 8px; padding: 8px; border-radius: 4px; font-size: 14px;"></div>';
+        echo '</div>';
+        echo '</div>';
     }
 
     public function add_points_redemption_field() {
@@ -664,10 +658,10 @@ class InterSoccer_Referral_Admin_Dashboard {
     public function deduct_points_on_order_completion($order_id, $old_status, $new_status) {
         if ($new_status !== 'completed') return;
 
+        $order = wc_get_order($order_id);
         $points_to_redeem = WC()->session->get('intersoccer_points_to_redeem');
 
         if ($points_to_redeem > 0) {
-            $order = wc_get_order($order_id);
             $user_id = $order->get_customer_id();
 
             // Deduct points from user
@@ -711,6 +705,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         // Award points to coach for referral code usage (one-time bonus)
         $referral_code = WC()->session->get('intersoccer_applied_referral_code');
         $referral_coach_id = WC()->session->get('intersoccer_referral_coach_id');
+        error_log("Checking referral bonus: code=$referral_code, coach_id=$referral_coach_id");
 
         if ($referral_code && $referral_coach_id) {
             // Check if this is the customer's first completed order
@@ -719,9 +714,11 @@ class InterSoccer_Referral_Admin_Dashboard {
                 'status' => 'completed',
                 'limit' => 1
             ]);
+            error_log("Customer completed orders count: " . count($customer_orders));
 
             // If this is their first completed order, award bonus points to coach
             if (count($customer_orders) === 1 && $customer_orders[0]->get_id() === $order_id) {
+                error_log("Awarding referral bonus to coach $referral_coach_id");
                 $points_to_award = 50; // Award 50 bonus points to coach for successful referral
 
                 // Get current coach points balance
@@ -760,19 +757,24 @@ class InterSoccer_Referral_Admin_Dashboard {
      */
     private function award_purchase_points_to_coach($order) {
         $customer_id = $order->get_customer_id();
+        error_log("Awarding purchase points: customer_id=$customer_id, order_id=" . $order->get_id());
 
         // Get the customer's preferred coach
         $coach_id = get_user_meta($customer_id, 'intersoccer_preferred_coach', true);
+        error_log("Coach ID for customer $customer_id: $coach_id");
 
         if (!$coach_id) {
+            error_log("No coach linked to customer $customer_id");
             return; // No linked coach
         }
 
         // Calculate points to award: CHF 10 spent = 1 point
         $order_total = $order->get_total();
         $points_to_award = floor($order_total / 10); // 1 point per CHF 10 spent
+        error_log("Order total: $order_total, points to award: $points_to_award");
 
         if ($points_to_award <= 0) {
+            error_log("No points to award for order total $order_total");
             return; // No points to award
         }
 
@@ -780,10 +782,11 @@ class InterSoccer_Referral_Admin_Dashboard {
         $current_coach_points = get_user_meta($coach_id, 'intersoccer_points_balance', true) ?: 0;
         $new_coach_points = $current_coach_points + $points_to_award;
         update_user_meta($coach_id, 'intersoccer_points_balance', $new_coach_points);
+        error_log("Updated coach $coach_id points: $current_coach_points -> $new_coach_points");
 
         // Record the purchase reward
         global $wpdb;
-        $wpdb->insert(
+        $result = $wpdb->insert(
             $wpdb->prefix . 'intersoccer_purchase_rewards',
             [
                 'coach_id' => $coach_id,
@@ -794,6 +797,12 @@ class InterSoccer_Referral_Admin_Dashboard {
                 'created_at' => current_time('mysql')
             ]
         );
+
+        if ($result === false) {
+            error_log("Failed to insert purchase reward: " . $wpdb->last_error);
+        } else {
+            error_log("Successfully recorded purchase reward for coach $coach_id");
+        }
 
         // Add order note
         $coach_info = get_userdata($coach_id);
@@ -843,13 +852,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         $user_id = get_current_user_id();
         $referral_code = sanitize_text_field($_POST['referral_code']);
 
-        // Check if user has already completed orders
-        $has_completed_orders = wc_get_customer_order_count($user_id) > 0;
-        if ($has_completed_orders) {
-            // Log attempt to use referral code on non-first order
-            do_action('intersoccer_referral_code_invalid', $referral_code, 'not_first_order');
-            wp_send_json_error(['message' => 'Referral codes can only be used on first orders']);
-        }
+
 
         // Check if referral code is already applied to this session
         $applied_code = WC()->session->get('intersoccer_applied_referral_code');
@@ -901,17 +904,12 @@ class InterSoccer_Referral_Admin_Dashboard {
             return;
         }
 
-        // Apply referral code discount (only for first-time customers)
+        // Apply referral code discount
         $referral_code = WC()->session->get('intersoccer_applied_referral_code');
         if ($referral_code) {
-            $user_id = get_current_user_id();
-            $has_completed_orders = wc_get_customer_order_count($user_id) > 0;
-
-            if (!$has_completed_orders) {
-                $discount_amount = -10; // 10 CHF discount for referral codes
-                $cart->add_fee(__('Coach Referral Discount', 'intersoccer-referral'), $discount_amount, true, '');
-                error_log("Applying referral discount: code=$referral_code, discount=$discount_amount");
-            }
+            $discount_amount = -10; // 10 CHF discount for referral codes
+            $cart->add_fee(__('Coach Referral Discount', 'intersoccer-referral'), $discount_amount, true, '');
+            error_log("Applying referral discount: code=$referral_code, discount=$discount_amount");
         }
 
         // Apply points discount

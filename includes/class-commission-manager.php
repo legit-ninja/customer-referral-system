@@ -19,34 +19,60 @@ class InterSoccer_Commission_Manager {
     }
 
     /**
-     * Calculate base commission based on purchase count
+     * Calculate base commission based on coach tier (customer count)
      */
-    public static function calculate_base_commission($order, $purchase_count) {
+    public static function calculate_base_commission($order, $coach_id) {
         $total = $order->get_total() - $order->get_total_tax();
 
-        // Get commission rates from settings
-        $first_rate = get_option('intersoccer_commission_first', 15) / 100;
-        $second_rate = get_option('intersoccer_commission_second', 7.5) / 100;
-        $third_rate = get_option('intersoccer_commission_third', 5) / 100;
+        // Get coach's customer count to determine tier
+        $customer_count = self::get_coach_customer_count($coach_id);
 
-        switch ($purchase_count) {
-            case 1:
-                return $total * $first_rate;
-            case 2:
-                return $total * $second_rate;
-            default:
-                return $total * $third_rate;
+        // Tiered commission rates based on recruited customers
+        if ($customer_count >= 25) {
+            $commission_rate = 0.20; // 20% for 25+ customers
+        } elseif ($customer_count >= 11) {
+            $commission_rate = 0.15; // 15% for 11-24 customers
+        } else {
+            $commission_rate = 0.10; // 10% for 1-10 customers
         }
+
+        return $total * $commission_rate;
     }
 
     /**
-     * Calculate partnership commission (ongoing 5% commission)
+     * Get coach's total customer count
+     */
+    public static function get_coach_customer_count($coach_id) {
+        global $wpdb;
+        $referrals_table = $wpdb->prefix . 'intersoccer_referrals';
+
+        // Count unique customers referred by this coach
+        $customer_count = $wpdb->get_var($wpdb->prepare("
+            SELECT COUNT(DISTINCT customer_id)
+            FROM $referrals_table
+            WHERE coach_id = %d AND status = 'completed'
+        ", $coach_id));
+
+        return intval($customer_count);
+    }
+
+    /**
+     * Calculate partnership commission (ongoing commission based on coach tier)
      */
     public static function calculate_partnership_commission($order, $coach_id) {
         $total = $order->get_total() - $order->get_total_tax();
-        $base_rate = 0.05; // 5% base partnership commission
 
-        // Apply tier multiplier
+        // Use same tiered rates as regular commissions for partnerships
+        $customer_count = self::get_coach_customer_count($coach_id);
+        if ($customer_count >= 25) {
+            $base_rate = 0.20; // 20% for 25+ customers
+        } elseif ($customer_count >= 11) {
+            $base_rate = 0.15; // 15% for 11-24 customers
+        } else {
+            $base_rate = 0.10; // 10% for 1-10 customers
+        }
+
+        // Apply tier multiplier (additional bonus)
         $tier_bonus = self::calculate_tier_bonus($coach_id, $total * $base_rate);
 
         return [
@@ -296,7 +322,7 @@ class InterSoccer_Commission_Manager {
      * Calculate complete commission structure for an order
      */
     public static function calculate_total_commission($order, $coach_id, $customer_id, $purchase_count) {
-        $base_commission = self::calculate_base_commission($order, $purchase_count);
+        $base_commission = self::calculate_base_commission($order, $coach_id);
         $loyalty_bonus = self::calculate_loyalty_bonus($order, $purchase_count);
         $retention_bonus = self::calculate_retention_bonus($customer_id, date('Y'));
         $network_bonus = self::calculate_network_bonus($customer_id);

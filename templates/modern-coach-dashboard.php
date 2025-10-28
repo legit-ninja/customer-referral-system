@@ -10,6 +10,7 @@ if (isset($coach_data) && is_array($coach_data)) {
     $user_id = $coach_data['user_id'];
     $user = get_userdata($user_id);
     $credits = $coach_data['credits'];
+    $points_balance = $coach_data['points_balance'];
     $tier = $coach_data['tier'];
     $referral_link = $coach_data['referral_link'];
     $referral_count = $coach_data['total_referrals'];
@@ -23,6 +24,7 @@ if (isset($coach_data) && is_array($coach_data)) {
     $user_id = get_current_user_id();
     $user = get_userdata($user_id);
     $credits = (float) get_user_meta($user_id, 'intersoccer_credits', true);
+    $points_balance = (float) get_user_meta($user_id, 'intersoccer_points_balance', true);
     $tier = intersoccer_get_coach_tier($user_id);
     $referral_link = InterSoccer_Referral_Handler::generate_coach_referral_link($user_id);
     $referral_count = $this->get_coach_referral_count($user_id);
@@ -84,10 +86,10 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                 <i class="icon-credits"></i>
             </div>
             <div class="stat-content">
-                <div class="stat-value" data-counter="<?php echo number_format($credits, 0); ?>">
-                    <?php echo number_format($credits, 0); ?>
+                <div class="stat-value" data-counter="<?php echo number_format($points_balance, 0); ?>">
+                    <?php echo number_format($points_balance, 0); ?>
                 </div>
-                <div class="stat-label">Total Credits (CHF)</div>
+                <div class="stat-label">Points Balance</div>
                 <div class="stat-change positive">
                     <i class="icon-trend-up"></i>
                     +12% this month

@@ -2,7 +2,17 @@
 // Add this to your main plugin file or create a new class
 
 class InterSoccer_Coach_Admin_Dashboard {
-    
+
+    /**
+     * Get coach points balance
+     */
+    public static function get_coach_points_balance($coach_id = null) {
+        if (!$coach_id) {
+            $coach_id = get_current_user_id();
+        }
+        return (float) get_user_meta($coach_id, 'intersoccer_points_balance', true);
+    }
+
     public function __construct() {
         // Redirect coaches to custom dashboard
         add_action('admin_init', [$this, 'redirect_coach_dashboard']);
@@ -157,9 +167,9 @@ class InterSoccer_Coach_Admin_Dashboard {
             // Add coach-specific admin bar items
             $wp_admin_bar->add_node([
                 'id'    => 'coach-stats',
-                'title' => '💰 Points: ' . number_format(intersoccer_get_coach_credits(), 0) . ' CHF',
+                'title' => '💰 Points: ' . number_format(self::get_coach_points_balance(), 0),
                 'href'  => admin_url('admin.php?page=intersoccer-coach-dashboard'),
-                'meta'  => ['class' => 'coach-credits-display']
+                'meta'  => ['class' => 'coach-points-display']
             ]);
 
             $wp_admin_bar->add_node([
@@ -254,6 +264,7 @@ class InterSoccer_Coach_Admin_Dashboard {
             'user_name' => wp_get_current_user()->display_name,
             'user_email' => wp_get_current_user()->user_email,
             'credits' => intersoccer_get_coach_credits($user_id),
+            'points_balance' => self::get_coach_points_balance($user_id),
             'tier' => intersoccer_get_coach_tier($user_id),
             'referral_link' => InterSoccer_Referral_Handler::generate_coach_referral_link($user_id),
             'total_referrals' => $this->get_coach_referral_count($user_id),
@@ -1024,8 +1035,8 @@ class InterSoccer_Coach_Admin_Dashboard {
                             </span>
                         </div>
                         <div class="info-item">
-                            <label>Referral Points:</label>
-                            <span><?php echo number_format(intersoccer_get_coach_credits($user_id), 0); ?> CHF</span>
+                            <label>Points Balance:</label>
+                            <span><?php echo number_format(InterSoccer_Coach_Admin_Dashboard::get_coach_points_balance($user_id), 0); ?></span>
                         </div>
                     </div>
                 </div>

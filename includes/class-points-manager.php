@@ -16,10 +16,10 @@ class InterSoccer_Points_Manager {
         add_action('wp_ajax_get_points_balance', [$this, 'get_points_balance_ajax']);
         add_action('wp_ajax_get_points_history', [$this, 'get_points_history_ajax']);
 
-        // Add redemption hooks
-        add_action('woocommerce_cart_calculate_fees', [$this, 'apply_points_discount']);
-        add_action('woocommerce_checkout_process', [$this, 'validate_points_redemption']);
-        add_action('woocommerce_checkout_create_order', [$this, 'process_points_redemption'], 10, 2);
+        // Add redemption hooks - disabled to prevent conflicts with admin dashboard system
+        // add_action('woocommerce_cart_calculate_fees', [$this, 'apply_points_discount']);
+        // add_action('woocommerce_checkout_process', [$this, 'validate_points_redemption']);
+        // add_action('woocommerce_checkout_create_order', [$this, 'process_points_redemption'], 10, 2);
         add_action('woocommerce_order_status_cancelled', [$this, 'refund_points_on_cancellation'], 10, 1);
         add_action('woocommerce_order_status_failed', [$this, 'refund_points_on_failure'], 10, 1);
     }

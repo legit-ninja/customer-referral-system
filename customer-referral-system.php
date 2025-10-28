@@ -390,6 +390,7 @@ class InterSoccer_Referral_System {
         dbDelta($credits_sql);
         dbDelta($redemptions_sql);
         dbDelta($points_log_sql);
+        dbDelta($assignments_sql);
         // Update version
         update_option('intersoccer_version', INTERSOCCER_REFERRAL_VERSION);
     }

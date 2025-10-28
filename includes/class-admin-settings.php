@@ -244,10 +244,15 @@ class InterSoccer_Admin_Settings {
                             </td>
                         </tr>
                         <tr>
-                            <th scope="row">Referral Commission (%)</th>
+                            <th scope="row">Tiered Commission Rates (%)</th>
                             <td>
-                                <input type="number" name="intersoccer_referral_commission" value="<?php echo get_option('intersoccer_referral_commission', '10'); ?>" min="0" max="100" step="0.1">
-                                <p class="description">Percentage commission for coach referrals</p>
+                                <p><strong>Commission rates based on recruited customers:</strong></p>
+                                <ul style="margin: 10px 0;">
+                                    <li>1-10 customers: <strong>10%</strong> commission</li>
+                                    <li>11-24 customers: <strong>15%</strong> commission</li>
+                                    <li>25+ customers: <strong>20%</strong> commission</li>
+                                </ul>
+                                <p class="description">These rates are automatically applied based on each coach's total recruited customer count</p>
                             </td>
                         </tr>
                     </table>
@@ -2116,11 +2121,7 @@ class InterSoccer_Admin_Settings {
             'sanitize_callback' => 'boolval'
         ]);
 
-        register_setting('intersoccer_settings', 'intersoccer_referral_commission', [
-            'type' => 'number',
-            'default' => '10',
-            'sanitize_callback' => 'floatval'
-        ]);
+
     }
 
     /**

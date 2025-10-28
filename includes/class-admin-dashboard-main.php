@@ -1157,7 +1157,7 @@ class InterSoccer_Admin_Dashboard_Main {
 
         // Recent redemptions
         $redemptions = $wpdb->get_results($wpdb->prepare("
-            SELECT created_at, credit_amount as amount, user_id
+            SELECT created_at, credit_amount as amount, customer_id as user_id
             FROM {$wpdb->prefix}intersoccer_credit_redemptions
             ORDER BY created_at DESC
             LIMIT %d
@@ -1339,23 +1339,67 @@ class InterSoccer_Admin_Dashboard_Main {
      * Clear demo data for testing
      */
     public function clear_demo_data() {
+        error_log('Clear demo data function called');
+
         // Security checks
         if (!wp_verify_nonce($_POST['nonce'] ?? '', 'intersoccer_admin_nonce')) {
+            error_log('Invalid nonce in clear demo data');
             wp_send_json_error('Invalid nonce');
         }
 
         if (!current_user_can('manage_options')) {
+            error_log('Insufficient permissions in clear demo data');
             wp_send_json_error('Insufficient permissions');
         }
 
         global $wpdb;
 
         try {
-            // Clear tables (use DELETE FROM for safety)
-            $wpdb->query("DELETE FROM {$wpdb->prefix}intersoccer_referrals");
-            $wpdb->query("DELETE FROM {$wpdb->prefix}intersoccer_referral_credits");
-            $wpdb->query("DELETE FROM {$wpdb->prefix}intersoccer_credit_redemptions");
-            $wpdb->query("DELETE FROM {$wpdb->prefix}intersoccer_points_log");
+            // Clear tables (use DELETE FROM for safety) - check if tables exist first
+            $tables_to_clear = [
+                'intersoccer_referrals',
+                'intersoccer_referral_credits',
+                'intersoccer_credit_redemptions',
+                'intersoccer_points_log',
+                'intersoccer_referral_rewards',
+                'intersoccer_purchase_rewards',
+                'intersoccer_coach_achievements',
+                'intersoccer_coach_assignments',
+                'intersoccer_coach_commissions',
+                'intersoccer_coach_notes',
+                'intersoccer_coach_performance',
+                'intersoccer_customer_activities',
+                'intersoccer_customer_partnerships',
+                'intersoccer_player_events',
+                'intersoccer_referral_tracking'
+            ];
+
+            foreach ($tables_to_clear as $table_name) {
+                $full_table_name = $wpdb->prefix . $table_name;
+                $table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $full_table_name));
+                if ($table_exists) {
+                    $result = $wpdb->query("DELETE FROM $full_table_name");
+                    error_log("Cleared $table_name: $result rows deleted");
+                } else {
+                    error_log("Table $table_name does not exist, skipping");
+                }
+            }
+
+            // Clear user meta data
+            $meta_result = $wpdb->query("DELETE FROM {$wpdb->usermeta} WHERE meta_key LIKE 'intersoccer%'");
+            error_log("Cleared user meta data: $meta_result rows deleted");
+
+            // Clear options (be selective to avoid breaking core functionality)
+            $options_to_clear = [
+                'intersoccer_audit_log',
+                'intersoccer_points_sync_status',
+                'intersoccer_last_coach_import'
+            ];
+
+            foreach ($options_to_clear as $option_pattern) {
+                $option_result = $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", $option_pattern));
+                error_log("Cleared options matching '$option_pattern': $option_result rows deleted");
+            }
 
             wp_send_json_success('Demo data cleared successfully.');
         } catch (Exception $e) {
