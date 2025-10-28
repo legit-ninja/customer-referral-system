@@ -110,19 +110,22 @@ class InterSoccer_Referral_System {
     public function activate() {
         // Create database tables
         $this->create_database_tables();
-        
+
         // Add custom user roles and capabilities
         $this->add_custom_roles();
-        
+
         // Set default options
         $this->set_default_options();
 
+        // Migrate existing referral codes to new format
+        $this->migrate_referral_codes();
+
         // Initialize database optimization on plugin activation
         register_activation_hook(__FILE__, ['InterSoccer_Database_Optimizer', 'create_indexes']);
-        
+
         // Flush rewrite rules
         flush_rewrite_rules();
-        
+
         // Log activation
         error_log('InterSoccer Referral System activated successfully');
     }
@@ -449,31 +452,95 @@ class InterSoccer_Referral_System {
         add_option('intersoccer_commission_first', 15);
         add_option('intersoccer_commission_second', 7.5);
         add_option('intersoccer_commission_third', 5);
-        
+
         // Loyalty bonuses
         add_option('intersoccer_loyalty_bonus_first', 5);
         add_option('intersoccer_loyalty_bonus_second', 8);
         add_option('intersoccer_loyalty_bonus_third', 15);
-        
+
         // Retention bonuses
         add_option('intersoccer_retention_season_2', 25);
         add_option('intersoccer_retention_season_3', 50);
         add_option('intersoccer_network_effect_bonus', 15);
-        
+
         // Tier thresholds
         add_option('intersoccer_tier_silver', 5);
         add_option('intersoccer_tier_gold', 10);
         add_option('intersoccer_tier_platinum', 20);
-        
+
         // Customer incentives
         add_option('intersoccer_new_customer_discount', 10);
         add_option('intersoccer_new_customer_credits', 50);
         add_option('intersoccer_first_session_bonus', 200);
-        
+
         // System settings
         add_option('intersoccer_cookie_duration', 30);
         add_option('intersoccer_enable_gamification', 1);
         add_option('intersoccer_enable_email_notifications', 1);
+    }
+
+    /**
+     * Migrate existing referral codes to new uppercase format without underscores
+     */
+    private function migrate_referral_codes() {
+        global $wpdb;
+
+        // Get all users with referral codes
+        $users_with_codes = $wpdb->get_results("
+            SELECT user_id, meta_key, meta_value
+            FROM {$wpdb->usermeta}
+            WHERE meta_key IN ('referral_code', 'intersoccer_customer_referral_code')
+            AND meta_value LIKE '%_%'
+        ");
+
+        $migrated_count = 0;
+
+        foreach ($users_with_codes as $user_meta) {
+            $old_code = $user_meta->meta_value;
+            $new_code = strtoupper(str_replace('_', '', $old_code));
+
+            // Only update if the code actually changed
+            if ($old_code !== $new_code) {
+                update_user_meta($user_meta->user_id, $user_meta->meta_key, $new_code);
+                $migrated_count++;
+
+                error_log("Migrated referral code for user {$user_meta->user_id}: {$old_code} -> {$new_code}");
+            }
+        }
+
+        // Also update referral codes in the database tables
+        $tables_to_update = [
+            'intersoccer_referrals' => 'referral_code',
+            'intersoccer_referral_rewards' => 'referral_code'
+        ];
+
+        foreach ($tables_to_update as $table => $column) {
+            $table_name = $wpdb->prefix . $table;
+
+            if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") == $table_name) {
+                $codes_to_update = $wpdb->get_results($wpdb->prepare("
+                    SELECT id, {$column} as code
+                    FROM {$table_name}
+                    WHERE {$column} LIKE %s
+                ", '%_%'));
+
+                foreach ($codes_to_update as $row) {
+                    $new_code = strtoupper(str_replace('_', '', $row->code));
+                    if ($row->code !== $new_code) {
+                        $wpdb->update(
+                            $table_name,
+                            [$column => $new_code],
+                            ['id' => $row->id]
+                        );
+                        $migrated_count++;
+                    }
+                }
+            }
+        }
+
+        if ($migrated_count > 0) {
+            error_log("InterSoccer: Migrated {$migrated_count} referral codes to new format");
+        }
     }
     
     /**

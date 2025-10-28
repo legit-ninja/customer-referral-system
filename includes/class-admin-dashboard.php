@@ -850,7 +850,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         }
 
         $user_id = get_current_user_id();
-        $referral_code = sanitize_text_field($_POST['referral_code']);
+        $referral_code = strtoupper(sanitize_text_field($_POST['referral_code']));
 
 
 

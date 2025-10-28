@@ -1823,7 +1823,7 @@ class InterSoccer_Admin_Settings {
         // Generate referral code for coach if not exists
         $existing_code = get_user_meta($user_id, 'referral_code', true);
         if (empty($existing_code)) {
-            $referral_code = 'coach_' . $user_id . '_' . wp_generate_password(6, false);
+            $referral_code = 'COACH' . $user_id . strtoupper(str_replace('_', '', wp_generate_password(6, false)));
             update_user_meta($user_id, 'referral_code', $referral_code);
         }
 

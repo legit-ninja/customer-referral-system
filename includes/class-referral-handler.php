@@ -25,7 +25,7 @@ class InterSoccer_Referral_Handler {
     public static function generate_customer_referral_link($user_id) {
         $code = get_user_meta($user_id, 'intersoccer_customer_referral_code', true);
         if (!$code) {
-            $code = 'cust_' . $user_id . '_' . wp_generate_password(6, false);
+            $code = 'CUST' . $user_id . strtoupper(str_replace('_', '', wp_generate_password(6, false)));
             update_user_meta($user_id, 'intersoccer_customer_referral_code', $code);
         }
         return home_url('/?cust_ref=' . $code);
@@ -34,7 +34,7 @@ class InterSoccer_Referral_Handler {
     public static function generate_coach_referral_link($coach_id) {
         $code = get_user_meta($coach_id, 'referral_code', true);
         if (!$code) {
-            $code = 'coach_' . $coach_id . '_' . wp_generate_password(6, false);
+            $code = 'COACH' . $coach_id . strtoupper(str_replace('_', '', wp_generate_password(6, false)));
             update_user_meta($coach_id, 'referral_code', $code);
         }
         return home_url('/?ref=' . $code);
@@ -427,13 +427,25 @@ class InterSoccer_Referral_Handler {
      * Get referrer by code (enhanced to handle both coach and customer referrals)
      */
     private function get_referrer_by_code($code) {
-        // Check for coach referral code
+        // Normalize code to uppercase for case-insensitive matching
+        $normalized_code = strtoupper($code);
+
+        // Check for coach referral code (try normalized first, then original for backward compatibility)
         $coaches = get_users([
             'role' => 'coach',
             'meta_key' => 'referral_code',
-            'meta_value' => $code
+            'meta_value' => $normalized_code
         ]);
-        
+
+        if (empty($coaches)) {
+            // Fallback to original code format for backward compatibility
+            $coaches = get_users([
+                'role' => 'coach',
+                'meta_key' => 'referral_code',
+                'meta_value' => $code
+            ]);
+        }
+
         if (!empty($coaches)) {
             return [
                 'id' => $coaches[0]->ID,
@@ -441,13 +453,21 @@ class InterSoccer_Referral_Handler {
                 'user' => $coaches[0]
             ];
         }
-        
-        // Check for customer referral code
+
+        // Check for customer referral code (try normalized first, then original for backward compatibility)
         $customers = get_users([
             'meta_key' => 'intersoccer_customer_referral_code',
-            'meta_value' => $code
+            'meta_value' => $normalized_code
         ]);
-        
+
+        if (empty($customers)) {
+            // Fallback to original code format for backward compatibility
+            $customers = get_users([
+                'meta_key' => 'intersoccer_customer_referral_code',
+                'meta_value' => $code
+            ]);
+        }
+
         if (!empty($customers)) {
             return [
                 'id' => $customers[0]->ID,
@@ -455,11 +475,9 @@ class InterSoccer_Referral_Handler {
                 'user' => $customers[0]
             ];
         }
-        
-        return null;
-    }
 
-    // Get coach by referral code
+        return null;
+    }    // Get coach by referral code
     private function get_coach_by_code($code) {
         $coaches = get_users(['role' => 'coach', 'meta_key' => 'referral_code', 'meta_value' => $code]);
         return !empty($coaches) ? $coaches[0] : null;
