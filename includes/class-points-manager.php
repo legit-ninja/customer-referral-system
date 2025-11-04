@@ -208,9 +208,15 @@ class InterSoccer_Points_Manager {
 
     /**
      * Calculate points from currency amount
+     * Returns integer points only - no fractional points
+     * 
+     * @param float $amount The currency amount in CHF
+     * @return int The number of points earned (integer only)
      */
     private function calculate_points_from_amount($amount) {
-        return round($amount / 10, 2); // 10 CHF = 1 point
+        // Use floor() to ensure integer points (10 CHF = 1 point)
+        // floor() rounds down, so 95 CHF = 9 points (not 9.5)
+        return (int) floor($amount / 10);
     }
 
     /**
@@ -250,6 +256,9 @@ class InterSoccer_Points_Manager {
 
     /**
      * Get current points balance for a customer
+     * 
+     * @param int $customer_id The customer's user ID
+     * @return int The customer's current points balance (integer only)
      */
     public function get_points_balance($customer_id) {
         global $wpdb;
@@ -262,7 +271,7 @@ class InterSoccer_Points_Manager {
             $customer_id
         ));
 
-        return $balance ? floatval($balance) : 0.0;
+        return $balance ? intval($balance) : 0;
     }
 
     /**
@@ -351,8 +360,8 @@ class InterSoccer_Points_Manager {
                 'customer_id' => $transaction->customer_id,
                 'order_id' => $transaction->order_id,
                 'transaction_type' => $transaction->transaction_type,
-                'points_amount' => floatval($transaction->points_amount),
-                'points_balance' => floatval($transaction->points_balance),
+                'points_amount' => intval($transaction->points_amount),
+                'points_balance' => intval($transaction->points_balance),
                 'description' => $transaction->description,
                 'created_at' => $transaction->created_at,
                 'metadata' => json_decode($transaction->metadata, true)
@@ -408,16 +417,16 @@ class InterSoccer_Points_Manager {
              WHERE points_balance > 0"
         );
 
-        // Average points per customer
+        // Average points per customer (integer only)
         $avg_points_per_customer = $customers_with_points > 0 ?
-            $current_balance / $customers_with_points : 0;
+            intval($current_balance / $customers_with_points) : 0;
 
         return [
-            'total_earned' => floatval($total_earned),
-            'total_spent' => floatval($total_spent),
-            'current_balance' => floatval($current_balance),
+            'total_earned' => intval($total_earned),
+            'total_spent' => intval($total_spent),
+            'current_balance' => intval($current_balance),
             'customers_with_points' => intval($customers_with_points),
-            'avg_points_per_customer' => round($avg_points_per_customer, 2)
+            'avg_points_per_customer' => $avg_points_per_customer
         ];
     }
 
@@ -451,8 +460,8 @@ class InterSoccer_Points_Manager {
         foreach ($summary as $row) {
             $formatted_summary[$row->transaction_type] = [
                 'count' => intval($row->transaction_count),
-                'total_points' => floatval($row->total_points),
-                'avg_points' => round(floatval($row->avg_points), 2)
+                'total_points' => intval($row->total_points),
+                'avg_points' => intval($row->avg_points)
             ];
         }
 
@@ -633,21 +642,32 @@ class InterSoccer_Points_Manager {
 
     /**
      * Check if user can redeem points based on limits
+     * 
+     * Updated Phase 0: Removed 100-point limit and CHF 1,000 spent ratio
+     * Now only validates against available balance and cart total
+     * 
+     * @param int $user_id Customer user ID
+     * @param int $points_to_redeem Number of points to redeem
+     * @param float $cart_total Optional cart total (if available)
+     * @return bool True if redemption is allowed
      */
-    public function can_redeem_points($user_id, $points_to_redeem) {
+    public function can_redeem_points($user_id, $points_to_redeem, $cart_total = null) {
         // Check balance
         $current_balance = $this->get_points_balance($user_id);
         if ($points_to_redeem > $current_balance) {
             return false;
         }
 
-        // Check redemption limits: max CHF 100 per CHF 1,000 spent
-        $total_spent = $this->get_customer_total_spent($user_id);
-        $max_discount = min(100, $total_spent / 10); // Max 100 CHF or 10% of total spent
+        // If cart total provided, validate against it
+        if ($cart_total !== null) {
+            $discount_amount = $this->calculate_discount_from_points($points_to_redeem);
+            if ($discount_amount > $cart_total) {
+                return false;
+            }
+        }
 
-        $discount_amount = $this->calculate_discount_from_points($points_to_redeem);
-
-        return $discount_amount <= $max_discount;
+        // No other limits - customers can use all available points!
+        return true;
     }
 
     /**
@@ -695,30 +715,55 @@ class InterSoccer_Points_Manager {
 
     /**
      * Get maximum redeemable points for user
+     * 
+     * Updated Phase 0: No longer limited by spending ratio or 100-point cap
+     * Returns full available balance (limited only by cart total at checkout)
+     * 
+     * @param int $user_id Customer user ID
+     * @param float $cart_total Optional cart total to calculate against
+     * @return int Maximum redeemable points
      */
-    public function get_max_redeemable_points($user_id) {
-        $total_spent = $this->get_customer_total_spent($user_id);
-        $max_discount = min(100, $total_spent / 10);
-        return $this->calculate_points_from_discount($max_discount);
+    public function get_max_redeemable_points($user_id, $cart_total = null) {
+        $current_balance = $this->get_points_balance($user_id);
+        
+        // If cart total provided, limit to that
+        if ($cart_total !== null) {
+            $max_by_cart = intval($cart_total); // 1 point = 1 CHF
+            return min($current_balance, $max_by_cart);
+        }
+        
+        // Otherwise return full balance (no arbitrary limits)
+        return $current_balance;
     }
 
     /**
      * Get redemption summary for user
+     * 
+     * Updated Phase 0: No longer includes old spending ratio limits
+     * 
+     * @param int $user_id Customer user ID
+     * @param float $cart_total Optional current cart total
+     * @return array Redemption summary
      */
-    public function get_redemption_summary($user_id) {
-        $total_spent = $this->get_customer_total_spent($user_id);
-        $max_discount = min(100, $total_spent / 10);
-        $max_points = $this->get_max_redeemable_points($user_id);
+    public function get_redemption_summary($user_id, $cart_total = null) {
         $current_balance = $this->get_points_balance($user_id);
-        $available_points = min($current_balance, $max_points);
+        $total_spent = $this->get_customer_total_spent($user_id);
+        
+        // Calculate maximum redeemable based on cart total (if provided)
+        if ($cart_total !== null) {
+            $max_by_cart = intval($cart_total);
+            $available_points = min($current_balance, $max_by_cart);
+        } else {
+            $available_points = $current_balance;
+        }
 
         return [
             'total_spent' => $total_spent,
-            'max_discount' => $max_discount,
-            'max_points' => $max_points,
             'current_balance' => $current_balance,
             'available_points' => $available_points,
-            'available_discount' => $this->calculate_discount_from_points($available_points)
+            'available_discount' => $this->calculate_discount_from_points($available_points),
+            'cart_total' => $cart_total,
+            'can_fully_cover' => ($cart_total !== null && $available_points >= $cart_total)
         ];
     }
 }

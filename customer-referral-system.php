@@ -47,6 +47,7 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-audit.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-dashboard.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-admin-dashboard.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-migration.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-migration-integers.php';
 error_log('All plugin files loaded, Referral Handler exists: ' . class_exists('InterSoccer_Referral_Handler'));
 
 // Main plugin class
@@ -351,8 +352,8 @@ class InterSoccer_Referral_System {
             customer_id bigint(20) unsigned NOT NULL,
             order_id bigint(20) unsigned,
             transaction_type varchar(50) NOT NULL,
-            points_amount decimal(10,2) NOT NULL,
-            points_balance decimal(10,2) NOT NULL,
+            points_amount int(11) NOT NULL COMMENT 'Integer points only - no fractional points',
+            points_balance int(11) NOT NULL COMMENT 'Integer balance - updated Nov 4, 2025',
             reference_type varchar(50),
             reference_id bigint(20) unsigned,
             description text,
@@ -374,7 +375,7 @@ class InterSoccer_Referral_System {
             customer_id bigint(20) unsigned NOT NULL,
             order_id bigint(20) unsigned NOT NULL,
             referral_code varchar(100) NOT NULL,
-            points_awarded decimal(10,2) NOT NULL DEFAULT '0.00',
+            points_awarded int(11) NOT NULL DEFAULT 0 COMMENT 'Integer points only - updated Nov 4, 2025',
             discount_amount decimal(10,2) NOT NULL DEFAULT '0.00',
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
