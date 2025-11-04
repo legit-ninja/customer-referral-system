@@ -13,7 +13,7 @@ class PointsManagerTest extends TestCase {
     }
 
     /**
-     * Test points calculation from currency amount
+     * Test points calculation from currency amount (INTEGER ONLY - NO FRACTIONAL POINTS)
      */
     public function testCalculatePointsFromAmount() {
         $points_manager = new InterSoccer_Points_Manager();
@@ -21,14 +21,37 @@ class PointsManagerTest extends TestCase {
         // Test 10 CHF = 1 point
         $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [10]);
         $this->assertEquals(1, $points);
+        $this->assertIsInt($points, 'Points must be integer only');
 
-        // Test 25 CHF = 2.5 points
+        // Test 25 CHF = 2 points (floor of 2.5, NO fractional points)
         $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [25]);
-        $this->assertEquals(2.5, $points);
+        $this->assertEquals(2, $points);
+        $this->assertIsInt($points, 'Points must be integer only');
+
+        // Test 95 CHF = 9 points (floor of 9.5, NO fractional points)
+        $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [95]);
+        $this->assertEquals(9, $points);
+        $this->assertIsInt($points, 'Points must be integer only');
+
+        // Test 100 CHF = 10 points
+        $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [100]);
+        $this->assertEquals(10, $points);
+        $this->assertIsInt($points, 'Points must be integer only');
 
         // Test 0 CHF = 0 points
         $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [0]);
         $this->assertEquals(0, $points);
+        $this->assertIsInt($points, 'Points must be integer only');
+
+        // Test edge case: 9.99 CHF = 0 points
+        $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [9.99]);
+        $this->assertEquals(0, $points);
+        $this->assertIsInt($points, 'Points must be integer only');
+
+        // Test: 150 CHF = 15 points
+        $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [150]);
+        $this->assertEquals(15, $points);
+        $this->assertIsInt($points, 'Points must be integer only');
     }
 
     /**
@@ -106,7 +129,7 @@ class PointsManagerTest extends TestCase {
     }
 
     /**
-     * Test points balance retrieval
+     * Test points balance retrieval (MUST RETURN INTEGERS ONLY)
      */
     public function testGetPointsBalance() {
         $points_manager = new InterSoccer_Points_Manager();
@@ -114,6 +137,7 @@ class PointsManagerTest extends TestCase {
         // Test empty balance
         $balance = $points_manager->get_points_balance(1);
         $this->assertEquals(0, $balance);
+        $this->assertIsInt($balance, 'Balance must be integer only');
 
         // Add some points
         $points_manager->add_points_transaction(1, 123, 'test', 10, 'Test points');
@@ -121,6 +145,34 @@ class PointsManagerTest extends TestCase {
         // Test balance after adding points
         $balance = $points_manager->get_points_balance(1);
         $this->assertEquals(10, $balance);
+        $this->assertIsInt($balance, 'Balance must be integer only');
+
+        // Add more points to test accumulation
+        $points_manager->add_points_transaction(1, 124, 'test', 25, 'More test points');
+        $balance = $points_manager->get_points_balance(1);
+        $this->assertEquals(35, $balance);
+        $this->assertIsInt($balance, 'Balance must be integer only');
+    }
+
+    /**
+     * Test that all point operations return integers (NO FRACTIONAL POINTS)
+     */
+    public function testIntegerPointsOnly() {
+        $points_manager = new InterSoccer_Points_Manager();
+
+        // Test various amounts that would have caused fractional points
+        $test_amounts = [15, 25, 35, 45, 55, 65, 75, 85, 95, 105, 115];
+
+        foreach ($test_amounts as $amount) {
+            $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [$amount]);
+            $this->assertIsInt($points, "Points for CHF {$amount} must be integer");
+            
+            // Verify floor behavior: 
+            // 15 CHF = 1 point (not 1.5)
+            // 95 CHF = 9 points (not 9.5)
+            $expected = (int) floor($amount / 10);
+            $this->assertEquals($expected, $points, "CHF {$amount} should give {$expected} points");
+        }
     }
 
     /**
