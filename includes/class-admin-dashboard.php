@@ -416,16 +416,18 @@ class InterSoccer_Referral_Admin_Dashboard {
 
             // Quick apply buttons
             echo '<div class="points-quick-apply" style="margin: 12px 0;">';
-            echo '<button type="button" class="apply-all-points button button-secondary" style="margin-right: 8px; padding: 6px 12px; font-size: 12px;">' . __('Apply All', 'intersoccer-referral') . '</button>';
-            echo '<button type="button" class="apply-max-points button button-secondary" style="padding: 6px 12px; font-size: 12px;">' . __('Apply Max (100)', 'intersoccer-referral') . '</button>';
+            echo '<button type="button" class="apply-all-points button button-secondary" style="margin-right: 8px; padding: 6px 12px; font-size: 12px;">' . __('Apply All Available', 'intersoccer-referral') . '</button>';
             echo '</div>';
 
             // Custom amount input
             echo '<div class="custom-amount" style="margin: 12px 0;">';
             echo '<label for="intersoccer_points_to_redeem" style="display: block; margin-bottom: 4px; font-size: 14px; color: #374151;">' . __('Or enter custom amount:', 'intersoccer-referral') . '</label>';
-            echo '<input type="number" name="intersoccer_points_to_redeem" id="intersoccer_points_to_redeem" min="0" max="' . min($available_credits, 100) . '" step="1" placeholder="0" style="width: 120px; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px;" />';
+            echo '<input type="number" name="intersoccer_points_to_redeem" id="intersoccer_points_to_redeem" min="0" max="' . $available_credits . '" step="1" placeholder="0" style="width: 120px; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px;" />';
             echo '<span style="margin-left: 8px; color: #6b7280; font-size: 14px;">points</span>';
             echo '</div>';
+            
+            // Help text explaining the limit
+            echo '<p style="margin: 8px 0; color: #6b7280; font-size: 12px; font-style: italic;">' . __('You can redeem up to your cart total or available points, whichever is less.', 'intersoccer-referral') . '</p>';
 
             // Applied amount display
             echo '<div class="applied-amount" style="margin: 8px 0; padding: 8px; background: #ecfdf5; border: 1px solid #d1fae5; border-radius: 4px; display: none;">';
@@ -505,12 +507,6 @@ class InterSoccer_Referral_Admin_Dashboard {
                         applyPointsAmount(availablePoints);
                     });
 
-                    // Handle apply max points button
-                    $(document).off('click', '.apply-max-points').on('click', '.apply-max-points', function() {
-                        var maxPoints = Math.min(<?php echo $available_credits; ?>, 100);
-                        applyPointsAmount(maxPoints);
-                    });
-
                     // Handle custom amount input
                     $(document).off('input', '#intersoccer_points_to_redeem').on('input', '#intersoccer_points_to_redeem', function() {
                         var customAmount = parseInt($(this).val()) || 0;
@@ -530,13 +526,13 @@ class InterSoccer_Referral_Admin_Dashboard {
                 // Function to apply points amount
                 function applyPointsAmount(pointsAmount) {
                     console.log('Applying points amount:', pointsAmount);
-                    var maxPoints = Math.min(<?php echo $available_credits; ?>, 100);
+                    var availablePoints = <?php echo $available_credits; ?>;
 
-                    // Validate points amount
+                    // Validate points amount (no 100-point limit, only available points limit)
                     if (pointsAmount < 0) pointsAmount = 0;
-                    if (pointsAmount > maxPoints) pointsAmount = maxPoints;
+                    if (pointsAmount > availablePoints) pointsAmount = availablePoints;
 
-                    console.log('Validated points amount:', pointsAmount, 'max allowed:', maxPoints);
+                    console.log('Validated points amount:', pointsAmount, 'max allowed:', availablePoints);
 
                     // Update input field
                     $('#intersoccer_points_to_redeem').val(pointsAmount);
@@ -598,16 +594,18 @@ class InterSoccer_Referral_Admin_Dashboard {
             return;
         }
 
-        if ($points_to_redeem > 100) {
-            wc_add_notice(__('You can redeem a maximum of 100 credits per order.', 'intersoccer-referral'), 'error');
-            return;
-        }
-
         $user_id = get_current_user_id();
         $available_credits = get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0;
 
         if ($points_to_redeem > $available_credits) {
             wc_add_notice(__('You don\'t have enough points available.', 'intersoccer-referral'), 'error');
+            return;
+        }
+
+        // Validate against cart total (not against arbitrary 100-point limit)
+        $cart_total = WC()->cart->get_total('edit');
+        if ($points_to_redeem > $cart_total) {
+            wc_add_notice(__('Points redemption cannot exceed your cart total.', 'intersoccer-referral'), 'error');
             return;
         }
 
@@ -827,11 +825,14 @@ class InterSoccer_Referral_Admin_Dashboard {
 
         $user_id = get_current_user_id();
         $available_points = get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0;
-        $max_per_order = 100;
+        
+        // Get cart total to limit redemption
+        $cart_total = WC()->cart ? WC()->cart->get_total('edit') : 0;
 
-        error_log("Points session update - User: $user_id, Requested: $points_to_redeem, Available: $available_points");
+        error_log("Points session update - User: $user_id, Requested: $points_to_redeem, Available: $available_points, Cart Total: $cart_total");
 
-        $points_to_redeem = min($points_to_redeem, $available_points, $max_per_order);
+        // Limit to available points AND cart total (no 100-point limit)
+        $points_to_redeem = min($points_to_redeem, $available_points, $cart_total);
 
         // Update session
         WC()->session->set('intersoccer_points_to_redeem', $points_to_redeem);

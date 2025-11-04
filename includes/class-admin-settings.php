@@ -32,6 +32,12 @@ class InterSoccer_Admin_Settings {
 
         // Add action for restoring coach roles
         add_action('wp_ajax_restore_coach_roles', [$this, 'restore_coach_roles_ajax']);
+        
+        // Add actions for integer migration (Phase 0)
+        add_action('wp_ajax_run_integer_migration', [$this, 'run_integer_migration_ajax']);
+        add_action('wp_ajax_get_integer_migration_status', [$this, 'get_integer_migration_status_ajax']);
+        add_action('wp_ajax_verify_integer_migration', [$this, 'verify_integer_migration_ajax']);
+        add_action('wp_ajax_rollback_integer_migration', [$this, 'rollback_integer_migration_ajax']);
     }
 
     public function render_settings_page() {
@@ -401,6 +407,70 @@ class InterSoccer_Admin_Settings {
                             <p>Loading migration status...</p>
                         </div>
                         <button id="refresh-migration-status" class="button">Refresh Status</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phase 0: Integer Points Migration -->
+            <div class="intersoccer-settings-section">
+                <h2>⭐ Phase 0: Integer Points Migration (CRITICAL)</h2>
+                <div class="migration-notice">
+                    <div class="notice notice-error">
+                        <p><strong>🚨 CRITICAL - Required Before Production!</strong></p>
+                        <p><strong>What this does:</strong></p>
+                        <ul>
+                            <li>Converts all points from DECIMAL to INT (95.50 points → 95 points)</li>
+                            <li>Updates database schema: DECIMAL(10,2) → INT(11)</li>
+                            <li>Creates timestamped backup tables before changes</li>
+                            <li>Uses floor() logic: 95 CHF = 9 points (not 9.5)</li>
+                            <li>Updates 3 tables: points_log, referral_rewards, user_meta</li>
+                            <li>Can be rolled back if issues occur</li>
+                        </ul>
+                        <p><strong>⚠️ Backup your database before proceeding!</strong></p>
+                        <p><strong>Why this is needed:</strong> Fractional points cause accounting issues and user confusion.</p>
+                    </div>
+                </div>
+
+                <div class="migration-controls">
+                    <div class="migration-card">
+                        <h3>Convert Points to Integers</h3>
+                        <p>Migrate from fractional points to integer-only points</p>
+                        <div class="migration-status" id="integer-migration-status">
+                            <span class="status-indicator status-ready">Ready to migrate</span>
+                        </div>
+                        <button id="run-integer-migration" class="button button-primary button-hero" style="background: #dc3545; border-color: #dc3545;">
+                            <span class="dashicons dashicons-update"></span>
+                            Run Integer Migration
+                        </button>
+                        <button id="verify-integer-migration" class="button button-secondary" style="margin-left: 10px; display: none;">
+                            <span class="dashicons dashicons-yes-alt"></span>
+                            Verify Migration
+                        </button>
+                        <button id="rollback-integer-migration" class="button button-secondary" style="margin-left: 10px; display: none; background: #856404; border-color: #856404; color: white;">
+                            <span class="dashicons dashicons-undo"></span>
+                            Rollback Migration
+                        </button>
+                        <div id="integer-migration-progress" style="display: none; margin-top: 20px;">
+                            <div class="progress-container">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="integer-migration-progress-fill" style="width: 0%"></div>
+                                </div>
+                                <div class="progress-text" id="integer-migration-progress-text">Initializing migration...</div>
+                            </div>
+                            <div class="migration-details" id="integer-migration-details" style="margin-top: 15px;">
+                                <div class="detail-item"><strong>Records Converted:</strong> <span id="integer-records-converted">0</span></div>
+                                <div class="detail-item"><strong>Backup Tables:</strong> <span id="integer-backup-tables">None</span></div>
+                                <div class="detail-item"><strong>Status:</strong> <span id="integer-status">Pending</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="migration-card">
+                        <h3>Integer Migration Status</h3>
+                        <div id="integer-migration-info">
+                            <p>Loading migration status...</p>
+                        </div>
+                        <button id="refresh-integer-migration-status" class="button">Refresh Status</button>
                     </div>
                 </div>
             </div>
@@ -980,6 +1050,169 @@ class InterSoccer_Admin_Settings {
             }
 
             $('#refresh-migration-status').on('click', loadMigrationStatus);
+
+            // ============================================================
+            // Phase 0: Integer Points Migration Handlers
+            // ============================================================
+
+            // Run integer migration
+            $('#run-integer-migration').on('click', function(e) {
+                e.preventDefault();
+
+                if (!confirm('⚠️ CRITICAL MIGRATION\n\nThis will convert all points to integers (95.5 → 95).\n\nA backup will be created, but you should backup your database first!\n\nContinue?')) {
+                    return;
+                }
+
+                const $button = $(this);
+                const $progress = $('#integer-migration-progress');
+                const $status = $('#integer-migration-status');
+                const $progressFill = $('#integer-migration-progress-fill');
+                const $progressText = $('#integer-migration-progress-text');
+
+                $status.html('<span class="status-indicator status-running">Running migration...</span>');
+                $button.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> Running...');
+
+                $progress.show();
+                $progressFill.css('width', '0%');
+                $progressText.text('Creating backups...');
+
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'run_integer_migration',
+                        nonce: intersoccer_admin.nonce
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            $('#integer-migration-progress-fill').css('width', '100%');
+                            $('#integer-migration-progress-text').text('Migration completed successfully!');
+                            $('#integer-migration-status').html('<span class="status-indicator status-success">Migration completed</span>');
+                            $button.hide();
+
+                            // Show verify and rollback buttons
+                            $('#verify-integer-migration').show();
+                            $('#rollback-integer-migration').show();
+
+                            // Update details
+                            $('#integer-records-converted').text(response.data.records_converted || 0);
+                            $('#integer-backup-tables').text((response.data.backup_tables || []).join(', '));
+                            $('#integer-status').text('Completed');
+
+                            setTimeout(() => {
+                                alert('✅ ' + response.data.message);
+                                loadIntegerMigrationStatus();
+                            }, 1000);
+                        } else {
+                            $('#integer-migration-status').html('<span class="status-indicator status-error">Migration failed</span>');
+                            $button.prop('disabled', false).html('<span class="dashicons dashicons-warning"></span> Retry Migration');
+                            alert('❌ Migration failed: ' + (response.data?.message || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        $('#integer-migration-status').html('<span class="status-indicator status-error">Migration error</span>');
+                        $button.prop('disabled', false).html('<span class="dashicons dashicons-warning"></span> Retry Migration');
+                        alert('❌ AJAX Error: ' + error);
+                    }
+                });
+            });
+
+            // Verify integer migration
+            $('#verify-integer-migration').on('click', function(e) {
+                e.preventDefault();
+
+                const $button = $(this);
+                $button.prop('disabled', true).text('Verifying...');
+
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'verify_integer_migration',
+                        nonce: intersoccer_admin.nonce
+                    },
+                    success: function(response) {
+                        if (response.success && response.data.success) {
+                            alert('✅ Verification passed!\n\n' + response.data.message + '\n\nIssues: ' + (response.data.issues.length || 0));
+                        } else {
+                            alert('⚠️ Verification found issues:\n\n' + (response.data.issues || []).join('\n'));
+                        }
+                        $button.prop('disabled', false).text('Verify Migration');
+                    },
+                    error: function() {
+                        alert('Error verifying migration');
+                        $button.prop('disabled', false).text('Verify Migration');
+                    }
+                });
+            });
+
+            // Rollback integer migration
+            $('#rollback-integer-migration').on('click', function(e) {
+                e.preventDefault();
+
+                if (!confirm('⚠️ ROLLBACK MIGRATION\n\nThis will restore from backup and undo all integer migration changes.\n\nContinue?')) {
+                    return;
+                }
+
+                const $button = $(this);
+                $button.prop('disabled', true).text('Rolling back...');
+
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'rollback_integer_migration',
+                        nonce: intersoccer_admin.nonce
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            alert('✅ ' + response.data.message);
+                            location.reload();
+                        } else {
+                            alert('❌ Rollback failed: ' + (response.data?.message || 'Unknown error'));
+                            $button.prop('disabled', false).text('Rollback Migration');
+                        }
+                    },
+                    error: function() {
+                        alert('Error during rollback');
+                        $button.prop('disabled', false).text('Rollback Migration');
+                    }
+                });
+            });
+
+            // Load integer migration status
+            function loadIntegerMigrationStatus() {
+                $('#integer-migration-info').html('<p>Loading status...</p>');
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'get_integer_migration_status',
+                        nonce: intersoccer_admin.nonce
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            $('#integer-migration-info').html(response.data.html);
+                            
+                            // Update button visibility based on status
+                            if (response.data.status === 'completed') {
+                                $('#run-integer-migration').hide();
+                                $('#verify-integer-migration').show();
+                                $('#rollback-integer-migration').show();
+                                $('#integer-migration-status').html('<span class="status-indicator status-success">Completed</span>');
+                            }
+                        }
+                    },
+                    error: function() {
+                        $('#integer-migration-info').html('<p>Error loading status</p>');
+                    }
+                });
+            }
+
+            $('#refresh-integer-migration-status').on('click', loadIntegerMigrationStatus);
+
+            // Initialize integer migration status on page load
+            loadIntegerMigrationStatus();
 
             // Coach Import Form Handler
             $('#import-submit-btn').on('click', function(e) {
@@ -1680,19 +1913,119 @@ class InterSoccer_Admin_Settings {
 
         $this->log_audit('coach_import', 'Starting coach CSV import (AJAX)');
 
-        $header = fgetcsv($handle, 1000, ',');
+        // Read header row - skip empty/title rows
+        $header = null;
+        $max_rows_to_check = 5; // Check up to 5 rows for valid headers
+        $rows_checked = 0;
+        
+        while (($potential_header = fgetcsv($handle, 1000, ',')) !== false && $rows_checked < $max_rows_to_check) {
+            $rows_checked++;
+            
+            // Skip completely empty rows
+            if (empty(array_filter($potential_header, function($cell) { return !empty(trim($cell)); }))) {
+                error_log("Skipping empty row {$rows_checked}");
+                continue;
+            }
+            
+            // Skip rows that are likely titles (have only 1-2 non-empty cells)
+            $non_empty_count = count(array_filter($potential_header, function($cell) { return !empty(trim($cell)); }));
+            if ($non_empty_count < 3) {
+                error_log("Skipping likely title row {$rows_checked}: " . implode(', ', $potential_header));
+                continue;
+            }
+            
+            // This looks like a valid header row
+            $header = $potential_header;
+            error_log("Found valid header row at line {$rows_checked}: " . implode(', ', $header));
+            break;
+        }
+        
         if (!$header) {
             fclose($handle);
-            throw new Exception('Could not read CSV header');
+            throw new Exception('Could not find valid CSV headers. Check that your CSV has a header row with at least 3 columns (First Name, Last Name, Email). Checked ' . $rows_checked . ' rows.');
         }
 
-        // Validate required columns
+        // Normalize headers (lowercase, trim, replace spaces with underscores)
+        $normalized_header = array_map(function($col) {
+            return strtolower(str_replace(' ', '_', trim($col)));
+        }, $header);
+
+        // Log the headers we found
+        error_log('CSV Headers found: ' . implode(', ', $header));
+        error_log('Normalized headers: ' . implode(', ', $normalized_header));
+
+        // Map common column name variations to standard names
+        $column_mapping = [
+            // First name variations
+            'first_name' => 'first_name',
+            'firstname' => 'first_name',
+            'given_name' => 'first_name',
+            'forename' => 'first_name',
+            'name' => 'first_name', // If only one "name" column, use it as first_name
+            
+            // Last name variations
+            'last_name' => 'last_name',
+            'lastname' => 'last_name',
+            'surname' => 'last_name',
+            'family_name' => 'last_name',
+            
+            // Email variations
+            'email' => 'email',
+            'e-mail' => 'email',
+            'email_address' => 'email',
+            'mail' => 'email',
+            
+            // Optional fields
+            'phone' => 'phone',
+            'telephone' => 'phone',
+            'phone_number' => 'phone',
+            'mobile' => 'phone',
+            
+            'specialization' => 'specialization',
+            'specialty' => 'specialization',
+            'focus' => 'specialization',
+            
+            'location' => 'location',
+            'city' => 'location',
+            'region' => 'location',
+            
+            'experience_years' => 'experience_years',
+            'experience' => 'experience_years',
+            'years_experience' => 'experience_years',
+            
+            'bio' => 'bio',
+            'biography' => 'bio',
+            'description' => 'bio',
+            'about' => 'bio'
+        ];
+
+        // Map the normalized headers to standard field names
+        $field_map = [];
+        foreach ($normalized_header as $index => $norm_col) {
+            if (isset($column_mapping[$norm_col])) {
+                $standard_name = $column_mapping[$norm_col];
+                $field_map[$standard_name] = $index;
+            }
+        }
+
+        // Validate required columns are present
         $required_columns = ['first_name', 'last_name', 'email'];
-        $missing_columns = array_diff($required_columns, $header);
+        $missing_columns = [];
+        foreach ($required_columns as $required) {
+            if (!isset($field_map[$required])) {
+                $missing_columns[] = $required;
+            }
+        }
+
         if (!empty($missing_columns)) {
             fclose($handle);
-            throw new Exception('Missing required columns: ' . implode(', ', $missing_columns));
+            $error_msg = 'Missing required columns: ' . implode(', ', $missing_columns) . "\n";
+            $error_msg .= 'Found columns: ' . implode(', ', $header) . "\n";
+            $error_msg .= 'Supported variations: first_name/firstname/given_name, last_name/lastname/surname, email/e-mail/email_address';
+            throw new Exception($error_msg);
         }
+
+        error_log('Field mapping: ' . json_encode($field_map));
 
         $results = [
             'created' => [],
@@ -1710,7 +2043,11 @@ class InterSoccer_Admin_Settings {
                 continue;
             }
 
-            $coach_data = array_combine($header, $data);
+            // Map data to standard field names using field_map
+            $coach_data = [];
+            foreach ($field_map as $standard_name => $column_index) {
+                $coach_data[$standard_name] = isset($data[$column_index]) ? $data[$column_index] : '';
+            }
 
             // Validate required fields
             if (empty(trim($coach_data['email'])) || empty(trim($coach_data['first_name'])) || empty(trim($coach_data['last_name']))) {
@@ -2025,9 +2362,9 @@ class InterSoccer_Admin_Settings {
         $html = "
             <p><strong>Total Points Earned:</strong> " . number_format($stats['total_earned'], 2) . "</p>
             <p><strong>Total Points Spent:</strong> " . number_format($stats['total_spent'], 2) . "</p>
-            <p><strong>Current Balance:</strong> " . number_format($stats['current_balance'], 2) . "</p>
+            <p><strong>Current Balance:</strong> " . number_format($stats['current_balance'], 0) . "</p>
             <p><strong>Customers with Points:</strong> " . number_format($stats['customers_with_points']) . "</p>
-            <p><strong>Avg Points per Customer:</strong> " . number_format($stats['avg_points_per_customer'], 2) . "</p>
+            <p><strong>Avg Points per Customer:</strong> " . number_format($stats['avg_points_per_customer'], 0) . "</p>
         ";
 
         wp_send_json_success(['html' => $html]);
@@ -2087,8 +2424,8 @@ class InterSoccer_Admin_Settings {
                     esc_html($transaction->user_email ?: $transaction->customer_id),
                     esc_html($transaction->transaction_type),
                     $amount_class,
-                    ($transaction->points_amount >= 0 ? '+' : '') . number_format($transaction->points_amount, 2),
-                    floatval($transaction->points_balance),
+                    ($transaction->points_amount >= 0 ? '+' : '') . number_format($transaction->points_amount, 0),
+                    number_format(intval($transaction->points_balance), 0),
                     esc_html($transaction->description)
                 );
             }
@@ -2152,7 +2489,7 @@ class InterSoccer_Admin_Settings {
                     <strong>Orders Processed:</strong> " . number_format($sync_status['total_processed']) . "
                 </div>
                 <div class='detail-item'>
-                    <strong>Total Points Allocated:</strong> " . number_format($sync_status['total_points'], 2) . "
+                    <strong>Total Points Allocated:</strong> " . number_format($sync_status['total_points'], 0) . "
                 </div>
                 <div class='detail-item'>
                     <strong>Current Status:</strong> " . ucfirst($sync_status['status']) . "
@@ -2161,7 +2498,7 @@ class InterSoccer_Admin_Settings {
                     <strong>Total Customers with Points:</strong> " . number_format($stats['customers_with_points']) . "
                 </div>
                 <div class='detail-item'>
-                    <strong>Total Points in System:</strong> " . number_format($stats['total_points_earned'], 2) . "
+                    <strong>Total Points in System:</strong> " . number_format($stats['total_points_earned'], 0) . "
                 </div>
             </div>
         ";
@@ -2312,5 +2649,119 @@ class InterSoccer_Admin_Settings {
             'coaches_found' => $coaches_found,
             'roles_restored' => $roles_restored
         ]);
+    }
+
+    /**
+     * Run integer migration via AJAX (Phase 0)
+     */
+    public function run_integer_migration_ajax() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        try {
+            $migration = new InterSoccer_Points_Migration_Integers();
+            $result = $migration->run_migration();
+
+            if ($result['success']) {
+                $this->log_audit('integer_migration', 'Successfully completed integer points migration');
+                wp_send_json_success($result);
+            } else {
+                $this->log_audit('integer_migration', 'Integer migration failed: ' . $result['message']);
+                wp_send_json_error($result);
+            }
+        } catch (Exception $e) {
+            error_log('InterSoccer Integer Migration Error: ' . $e->getMessage());
+            $this->log_audit('integer_migration', 'Integer migration exception: ' . $e->getMessage());
+            wp_send_json_error(['message' => 'Migration failed: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Get integer migration status via AJAX
+     */
+    public function get_integer_migration_status_ajax() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        $migration = new InterSoccer_Points_Migration_Integers();
+        $status = $migration->get_migration_status();
+
+        $html = "
+            <div class='migration-details'>
+                <div class='detail-item'>
+                    <strong>Status:</strong> " . ucfirst($status['status']) . "
+                </div>
+                <div class='detail-item'>
+                    <strong>Started:</strong> " . ($status['started_at'] ?: 'Not started') . "
+                </div>
+                <div class='detail-item'>
+                    <strong>Completed:</strong> " . ($status['completed_at'] ?: 'Not completed') . "
+                </div>
+                <div class='detail-item'>
+                    <strong>Records Converted:</strong> " . ($status['records_converted'] ?: 0) . "
+                </div>
+                <div class='detail-item'>
+                    <strong>Backup Tables:</strong> " . (is_array($status['backup_tables']) ? implode(', ', $status['backup_tables']) : 'None') . "
+                </div>
+                <div class='detail-item'>
+                    <strong>Errors:</strong> " . (is_array($status['errors']) && !empty($status['errors']) ? implode(', ', $status['errors']) : 'None') . "
+                </div>
+            </div>
+        ";
+
+        wp_send_json_success([
+            'html' => $html,
+            'status' => $status['status']
+        ]);
+    }
+
+    /**
+     * Verify integer migration via AJAX
+     */
+    public function verify_integer_migration_ajax() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        try {
+            $migration = new InterSoccer_Points_Migration_Integers();
+            $result = $migration->verify_migration();
+            
+            $this->log_audit('integer_migration_verify', 'Verification: ' . $result['message']);
+            wp_send_json_success($result);
+        } catch (Exception $e) {
+            error_log('InterSoccer Integer Migration Verification Error: ' . $e->getMessage());
+            wp_send_json_error(['message' => 'Verification failed: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Rollback integer migration via AJAX
+     */
+    public function rollback_integer_migration_ajax() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => 'Unauthorized']);
+        }
+
+        if (!confirm('Are you absolutely sure you want to rollback the integer migration? This will restore decimal points.')) {
+            wp_send_json_error(['message' => 'Rollback cancelled']);
+        }
+
+        try {
+            $migration = new InterSoccer_Points_Migration_Integers();
+            $result = $migration->rollback_migration();
+            
+            $this->log_audit('integer_migration_rollback', 'Rollback: ' . $result['message']);
+            wp_send_json_success($result);
+        } catch (Exception $e) {
+            error_log('InterSoccer Integer Migration Rollback Error: ' . $e->getMessage());
+            wp_send_json_error(['message' => 'Rollback failed: ' . $e->getMessage()]);
+        }
     }
 }

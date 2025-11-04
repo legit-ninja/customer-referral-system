@@ -49,7 +49,7 @@ class InterSoccer_Coach_List_Table extends WP_List_Table {
             case 'referrals':
                 return esc_html($item->referral_count);
             case 'credits':
-                return number_format($item->credits, 2);
+                return number_format($item->credits, 0);
             case 'tier':
                 return esc_html(intersoccer_get_coach_tier($item->ID));
             case 'venues':

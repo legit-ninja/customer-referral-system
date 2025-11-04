@@ -30,11 +30,11 @@ class InterSoccer_Admin_Financial {
                 </div>
                 <div class="financial-card">
                     <h3>Points Balance</h3>
-                    <div class="amount"><?php echo number_format($financial_data['points_balance'], 2); ?> PTS</div>
+                    <div class="amount"><?php echo number_format($financial_data['points_balance'], 0); ?> PTS</div>
                 </div>
                 <div class="financial-card">
                     <h3>Points Earned</h3>
-                    <div class="amount"><?php echo number_format($financial_data['points_earned'], 2); ?> PTS</div>
+                    <div class="amount"><?php echo number_format($financial_data['points_earned'], 0); ?> PTS</div>
                 </div>
             </div>
 
@@ -202,8 +202,8 @@ class InterSoccer_Admin_Financial {
                     <td class="<?php echo ($data->revenue - $data->costs) >= 0 ? 'positive' : 'negative'; ?>">
                         <?php echo number_format($data->revenue - $data->costs, 0); ?> CHF
                     </td>
-                    <td><?php echo number_format($data->points_earned, 2); ?> PTS</td>
-                    <td><?php echo number_format($data->points_spent, 2); ?> PTS</td>
+                    <td><?php echo number_format($data->points_earned, 0); ?> PTS</td>
+                    <td><?php echo number_format($data->points_spent, 0); ?> PTS</td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>

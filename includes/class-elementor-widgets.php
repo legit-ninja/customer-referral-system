@@ -443,7 +443,7 @@ class InterSoccer_Customer_Dashboard_Widget extends \Elementor\Widget_Base {
         echo '<div class="stat-card credits-card" data-credits="' . $credits . '">';
         echo '<div class="stat-icon">💰</div>';
         echo '<div class="stat-content">';
-        echo '<span class="stat-number" id="credits-display">' . number_format($credits, 2) . '</span>';
+        echo '<span class="stat-number" id="credits-display">' . number_format($credits, 0) . '</span>';
         echo '<span class="stat-label">CHF Credits</span>';
         if ($credits > 0) {
             echo '<div class="credit-pulse"></div>';
@@ -845,7 +845,7 @@ class InterSoccer_Coach_Dashboard_Widget extends \Elementor\Widget_Base {
         echo '<div class="stat-card">';
         echo '<div class="stat-icon">💰</div>';
         echo '<div class="stat-content">';
-        echo '<span class="stat-number">' . number_format($credits, 2) . '</span>';
+        echo '<span class="stat-number">' . number_format($credits, 0) . '</span>';
         echo '<span class="stat-label">CHF Credits</span>';
         echo '</div></div>';
         
@@ -863,7 +863,7 @@ class InterSoccer_Coach_Dashboard_Widget extends \Elementor\Widget_Base {
         echo '<div class="earnings-section">';
         echo '<h3>Earnings Overview</h3>';
         echo '<div class="earnings-summary">';
-        echo '<p>Total Credits: <strong>' . number_format($credits, 2) . ' CHF</strong></p>';
+        echo '<p>Total Credits: <strong>' . number_format($credits, 0) . ' CHF</strong></p>';
         echo '</div></div>';
     }
     
@@ -1035,9 +1035,9 @@ class InterSoccer_Referral_Stats_Widget extends \Elementor\Widget_Base {
         switch ($type) {
             case 'credits':
                 if (current_user_can('view_referral_dashboard')) {
-                    return number_format(get_user_meta($user_id, 'intersoccer_credits', true) ?: 0, 2);
+                    return number_format(get_user_meta($user_id, 'intersoccer_credits', true) ?: 0, 0);
                 } else {
-                    return number_format(get_user_meta($user_id, 'intersoccer_customer_credits', true) ?: 0, 2);
+                    return number_format(get_user_meta($user_id, 'intersoccer_customer_credits', true) ?: 0, 0);
                 }
             case 'referrals':
                 $referrals = get_user_meta($user_id, 'intersoccer_referrals_made', true) ?: [];
@@ -1311,7 +1311,7 @@ class InterSoccer_Customer_Progress_Widget extends \Elementor\Widget_Base {
         echo '<div class="progress-fill" style="width: ' . $progress_percentage . '%"></div>';
         echo '</div>';
         echo '<div class="progress-info">';
-        echo '<span>' . number_format($credits, 2) . ' / ' . $next_milestone . ' CHF</span>';
+        echo '<span>' . number_format($credits, 0) . ' / ' . $next_milestone . ' CHF</span>';
         echo '<span>' . round($progress_percentage) . '%</span>';
         echo '</div>';
         echo '</div>';

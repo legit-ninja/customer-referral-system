@@ -82,7 +82,8 @@ class InterSoccer_Admin_Points {
                             </div>
                             <div class="form-row">
                                 <label for="points-amount">Points Amount:</label>
-                                <input type="number" id="points-amount" name="points_amount" step="0.01" min="0" required>
+                                <input type="number" id="points-amount" name="points_amount" step="1" min="0" required>
+                                <small style="color: #666; font-style: italic;">Integer values only (no decimals)</small>
                             </div>
                             <div class="form-row">
                                 <label for="adjustment-reason">Reason:</label>
@@ -536,11 +537,22 @@ class InterSoccer_Admin_Points {
 
         $user_id = intval($_POST['user_id']);
         $adjustment_type = sanitize_text_field($_POST['adjustment_type']);
-        $points_amount = floatval($_POST['points_amount']);
+        $points_amount_raw = sanitize_text_field($_POST['points_amount']);
         $reason = sanitize_textarea_field($_POST['reason']);
+
+        // Phase 0: Validate integer-only points (reject fractional values)
+        if (strpos($points_amount_raw, '.') !== false || strpos($points_amount_raw, ',') !== false) {
+            wp_send_json_error(['message' => 'Points must be whole numbers only. Fractional values are not allowed.']);
+        }
+
+        $points_amount = intval($points_amount_raw);
 
         if (!$user_id || empty($reason)) {
             wp_send_json_error(['message' => 'Invalid data provided']);
+        }
+
+        if ($points_amount < 0) {
+            wp_send_json_error(['message' => 'Points amount must be a positive integer']);
         }
 
         $points_manager = new InterSoccer_Points_Manager();

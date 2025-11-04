@@ -62,7 +62,7 @@ class InterSoccer_Referral_Dashboard {
                     <div class="stat-card credits-card" data-credits="<?php echo $credits; ?>">
                         <div class="stat-icon">💰</div>
                         <div class="stat-content">
-                            <span class="stat-number" id="credits-display"><?php echo number_format($credits, 2); ?></span>
+                            <span class="stat-number" id="credits-display"><?php echo number_format($credits, 0); ?></span>
                             <span class="stat-label">CHF Credits</span>
                             <?php if ($credits > 0): ?>
                                 <div class="credit-pulse"></div>
