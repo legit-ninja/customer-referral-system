@@ -243,6 +243,35 @@ customer-referral-system/
 - Translation ready with `load_plugin_textdomain()`
 - Supports RTL languages
 
+## Documentation
+
+### 📚 Complete documentation available in `/docs/` folder:
+
+**Quick Start:**
+- [docs/TEST-QUICK-REFERENCE.md](docs/TEST-QUICK-REFERENCE.md) - Quick test commands
+- [docs/TESTING.md](docs/TESTING.md) - Comprehensive testing guide
+- [docs/DEV-TESTING-GUIDE.md](docs/DEV-TESTING-GUIDE.md) - Dev server testing guide
+
+**Phase 0 (Current):**
+- [docs/PHASE0-PROGRESS.md](docs/PHASE0-PROGRESS.md) - Current implementation progress
+- [docs/SESSION-SUMMARY.md](docs/SESSION-SUMMARY.md) - Latest session summary
+- [docs/DEPLOYMENT-READY-CHECKLIST.md](docs/DEPLOYMENT-READY-CHECKLIST.md) - Pre-deployment checklist
+
+**Deployment:**
+- [docs/DEPLOYMENT-TEST-FLOW.md](docs/DEPLOYMENT-TEST-FLOW.md) - Visual deployment flow
+- [docs/VERIFICATION-TESTS-RUN-FIRST.md](docs/VERIFICATION-TESTS-RUN-FIRST.md) - Test execution proof
+
+**Testing & Coverage:**
+- [docs/TEST-COVERAGE-REPORT.md](docs/TEST-COVERAGE-REPORT.md) - Detailed coverage analysis
+- [docs/ANSWER-TEST-COVERAGE.md](docs/ANSWER-TEST-COVERAGE.md) - Coverage Q&A
+
+**System Documentation:**
+- [docs/Customer-referral-plan.md](docs/Customer-referral-plan.md) - Original proposal
+- [docs/FINANCIAL-MODEL-ANALYSIS.md](docs/FINANCIAL-MODEL-ANALYSIS.md) - Financial model
+- [docs/PERFORMANCE-OPTIMIZATIONS.md](docs/PERFORMANCE-OPTIMIZATIONS.md) - Performance guide
+
+**📖 Full Index:** [docs/INDEX.md](docs/INDEX.md) - Complete documentation catalog
+
 ## Security Features
 
 - **Nonce Verification**: All AJAX requests protected
