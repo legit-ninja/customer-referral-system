@@ -69,8 +69,28 @@ class InterSoccer_Referral_System {
     }
     
     public function init() {
-        // Load text domain (move to avoid early loading issues)
-        load_plugin_textdomain('intersoccer-referral', false, dirname(INTERSOCCER_REFERRAL_BASENAME) . '/languages');
+        // Load text domain with explicit path priority
+        // Try plugin's languages/ directory first, then wp-content/languages/plugins/
+        $plugin_rel_path = dirname(INTERSOCCER_REFERRAL_BASENAME);
+        $plugin_lang_dir = WP_PLUGIN_DIR . '/' . $plugin_rel_path . '/languages/';
+        
+        $locale = determine_locale();
+        $mofile = 'intersoccer-referral-' . $locale . '.mo';
+        
+        // Load from plugin directory first
+        $loaded = load_textdomain('intersoccer-referral', $plugin_lang_dir . $mofile);
+        
+        if ($loaded && defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('InterSoccer Referral: Loaded translations from plugin directory: ' . $plugin_lang_dir . $mofile);
+        }
+        
+        // Fallback to global directory (WPML may place files here)
+        if (!$loaded) {
+            load_plugin_textdomain('intersoccer-referral', false, $plugin_rel_path . '/languages');
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('InterSoccer Referral: Attempted fallback translation loading for locale: ' . $locale);
+            }
+        }
 
         // Initialize core classes
         new InterSoccer_Referral_Handler();

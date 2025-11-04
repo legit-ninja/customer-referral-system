@@ -47,6 +47,7 @@ A comprehensive WordPress plugin that implements an advanced coach referral prog
 - **MySQL**: 5.6 or higher
 - **WooCommerce**: Required for e-commerce integration
 - **Elementor**: Optional, for enhanced page building
+- **WPML**: Optional, for multilingual support (English, French, German)
 
 ## Installation
 
@@ -54,6 +55,71 @@ A comprehensive WordPress plugin that implements an advanced coach referral prog
 2. Upload the `customer-referral-system` folder to `/wp-content/plugins/`
 3. Activate the plugin through the WordPress admin dashboard
 4. Configure settings in **InterSoccer > Referral Settings**
+
+## Deployment
+
+### Quick Deployment to Server
+
+```bash
+# First time setup
+cp deploy.local.sh.example deploy.local.sh
+nano deploy.local.sh  # Set your server credentials
+
+# Deploy to dev server
+./deploy.sh
+
+# Deploy with cache clearing (recommended)
+./deploy.sh --clear-cache
+
+# Preview before deploying
+./deploy.sh --dry-run
+
+# Run tests before deploying (when configured)
+./deploy.sh --test
+```
+
+### What Gets Deployed
+The deployment script uploads only production-ready files:
+- ✅ PHP code (`*.php`)
+- ✅ Assets (CSS, JS)
+- ✅ Translation files (`languages/*.mo`)
+- ✅ Templates
+- ✅ README.md
+
+### What Stays Private
+Development files are automatically excluded:
+- 🔒 `docs/` folder (internal documentation)
+- 🔒 `*.sh` files (deployment scripts with server paths)
+- 🔒 `vendor/` (Composer dependencies)
+- 🔒 `tests/` (PHPUnit tests)
+- 🔒 `*.log` files (debug logs)
+- 🔒 Development configs (`composer.json`, `phpunit.xml`)
+
+**Result**: Clean, secure production deployment
+
+## Multilingual Support (WPML)
+
+### Supported Languages
+- 🇬🇧 **English** (default)
+- 🇫🇷 **French (Switzerland)** - fr_CH
+- 🇩🇪 **German (Switzerland)** - de_CH
+
+### Translation Coverage
+All customer-facing features are fully translated:
+- ✅ Checkout page (referral code input, loyalty points)
+- ✅ Cart fees and discounts
+- ✅ Validation messages
+- ✅ Success/error notifications
+- ✅ Email notifications
+- ✅ Order notes
+
+### Setup WPML
+1. Ensure WPML and WPML String Translation are active
+2. Deploy plugin: `./deploy.sh --clear-cache`
+3. Translations automatically load based on customer's language
+4. Test in each language via WPML language switcher
+
+See `docs/WPML-SETUP.md` for detailed configuration guide (repository only).
 
 ## Configuration
 

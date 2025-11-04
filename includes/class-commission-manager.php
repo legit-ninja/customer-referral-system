@@ -174,8 +174,10 @@ class InterSoccer_Commission_Manager {
             // Log commission payment for audit
             do_action('intersoccer_commission_paid', $referral->coach_id, $commission_data['total_amount'], $order_id);
 
-            // Log commission payment
-            error_log("Commission paid: Coach {$referral->coach_id} earned {$commission_data['total_amount']} CHF for order {$order_id}");
+            // Log commission payment (debug mode only)
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log("InterSoccer Referral: Commission paid - Coach {$referral->coach_id} earned {$commission_data['total_amount']} CHF for order {$order_id}");
+            }
 
             // Notify coach
             $this->notify_coach_of_commission($referral->coach_id, $order_id, $commission_data);
@@ -245,7 +247,9 @@ class InterSoccer_Commission_Manager {
                 WC()->session->set('intersoccer_applied_referral_code', null);
                 WC()->session->set('intersoccer_referral_coach_id', null);
 
-                error_log("Referral reward: Coach {$referral_coach_id} earned {$points_to_award} points for referral code usage on order {$order_id}");
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log("InterSoccer Referral: Referral reward - Coach {$referral_coach_id} earned {$points_to_award} points for referral code usage on order {$order_id}");
+                }
             }
         }
     }
@@ -311,8 +315,10 @@ class InterSoccer_Commission_Manager {
         $partnership_orders = (int) get_user_meta($customer_id, 'intersoccer_partnership_order_count', true);
         update_user_meta($customer_id, 'intersoccer_partnership_order_count', $partnership_orders + 1);
 
-        // Log partnership commission
-        error_log("Partnership commission: Customer {$customer_id}, Coach {$partnership_coach_id}, Amount {$total_commission} CHF");
+        // Log partnership commission (debug mode only)
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log("InterSoccer Referral: Partnership commission - Customer {$customer_id}, Coach {$partnership_coach_id}, Amount {$total_commission} CHF");
+        }
 
         // Notify coach
         $this->notify_coach_of_partnership_commission($partnership_coach_id, $order_id, $partnership_commission, $commission_type);

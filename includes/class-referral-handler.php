@@ -78,9 +78,13 @@ class InterSoccer_Referral_Handler {
             $cooldown_end_date = date('Y-m-d H:i:s', time() + (7 * 24 * 3600)); // 7 days
             update_user_meta($customer_id, 'intersoccer_partnership_switch_cooldown', $cooldown_end_date);
             
-            error_log('Coach partnership switched - Customer: ' . $customer_id . ', From: ' . $current_coach_id . ', To: ' . $coach_id . ', Cooldown until: ' . $cooldown_end_date);
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('InterSoccer Referral: Coach partnership switched - Customer: ' . $customer_id . ', From: ' . $current_coach_id . ', To: ' . $coach_id . ', Cooldown until: ' . $cooldown_end_date);
+            }
         } else {
-            error_log('Coach partnership selected - Customer: ' . $customer_id . ', Coach: ' . $coach_id);
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('InterSoccer Referral: Coach partnership selected - Customer: ' . $customer_id . ', Coach: ' . $coach_id);
+            }
         }
         
         // Send notification emails
@@ -134,7 +138,11 @@ class InterSoccer_Referral_Handler {
             update_user_meta($sender_id, 'intersoccer_customer_credits', $sender_credits - $amount);
             update_user_meta($recipient->ID, 'intersoccer_customer_credits', intersoccer_get_customer_credits($recipient->ID) + $amount);
             update_user_meta($sender_id, 'intersoccer_customer_credits', $sender_credits - $amount + 20); // Reciprocity bonus
-            error_log('Credits gifted: ' . $amount . ' from user ' . $sender_id . ' to ' . $recipient->ID);
+            
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log('InterSoccer Referral: Credits gifted - ' . $amount . ' from user ' . $sender_id . ' to ' . $recipient->ID);
+            }
+            
             wp_send_json_success(['message' => 'Credits gifted! You earned a 20-point bonus!']);
         }
         wp_send_json_error(['message' => 'Invalid gift request']);
@@ -198,7 +206,9 @@ class InterSoccer_Referral_Handler {
                 update_user_meta($customer_id, 'intersoccer_partnership_coach_id', $referrer['id']);
                 update_user_meta($customer_id, 'intersoccer_partnership_start_date', current_time('mysql'));
                 
-                error_log('Auto-assigned partnership - Customer: ' . $customer_id . ', Coach: ' . $referrer['id']);
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('InterSoccer Referral: Auto-assigned partnership - Customer: ' . $customer_id . ', Coach: ' . $referrer['id']);
+                }
                 
                 // Notify customer about auto-assignment
                 $coach = get_user_by('ID', $referrer['id']);
@@ -251,7 +261,9 @@ class InterSoccer_Referral_Handler {
             wp_mail($order->get_billing_email(), 'Welcome to InterSoccer!', 'Thanks for joining! You have 50 CHF credits and are connected with your coach partner.');
         }
 
-        error_log('Processed referral order #' . $order_id . ', referrer_type: ' . $referrer['type'] . ', credits: ' . $credits);
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('InterSoccer Referral: Processed referral order #' . $order_id . ' - referrer_type: ' . $referrer['type'] . ', credits: ' . $credits);
+        }
         
         // Clear referral session
         WC()->session->__unset('intersoccer_referral');

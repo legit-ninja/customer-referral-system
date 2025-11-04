@@ -1,0 +1,157 @@
+# French (Switzerland) translations for InterSoccer Referral System
+# Copyright (C) 2025 InterSoccer
+# This file is distributed under the GPL-2.0+.
+msgid ""
+msgstr ""
+"Project-Id-Version: InterSoccer Referral System 1.0.0\n"
+"Report-Msgid-Bugs-To: https://intersoccer.ch\n"
+"POT-Creation-Date: 2025-11-03 18:30:00+00:00\n"
+"PO-Revision-Date: 2025-11-03 18:30:00+00:00\n"
+"Last-Translator: InterSoccer Team <info@intersoccer.ch>\n"
+"Language-Team: French <fr@li.org>\n"
+"Language: fr_CH\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"X-Generator: Poedit 3.0\n"
+"X-Poedit-KeywordsList: __;_e;_n:1,2;_x:1,2c;_ex:1,2c;_nx:4c,1,2;esc_attr__;esc_attr_e;esc_attr_x:1,2c;esc_html__;esc_html_e;esc_html_x:1,2c;_n_noop:1,2;_nx_noop:3c,1,2;__ngettext_noop:1,2\n"
+"X-Poedit-Basepath: ..\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+"X-Poedit-SearchPath-0: .\n"
+"X-Poedit-SearchPathExcluded-0: vendor\n"
+"X-Poedit-SearchPathExcluded-1: node_modules\n"
+"X-Poedit-SearchPathExcluded-2: tests\n"
+
+# User Roles
+msgid "Coach"
+msgstr "Entraîneur"
+
+msgid "Content Creator"
+msgstr "Créateur de contenu"
+
+msgid "Partner"
+msgstr "Partenaire"
+
+# Frontend Messages
+msgid "Link copied!"
+msgstr "Lien copié !"
+
+msgid "Error occurred"
+msgstr "Une erreur s'est produite"
+
+msgid "Failed to copy"
+msgstr "Échec de la copie"
+
+msgid "Loading..."
+msgstr "Chargement..."
+
+# Demo Data
+msgid "Are you sure you want to clear all demo data? This action cannot be undone."
+msgstr "Êtes-vous sûr de vouloir effacer toutes les données de démonstration ? Cette action ne peut pas être annulée."
+
+msgid "Demo data populated successfully!"
+msgstr "Données de démonstration ajoutées avec succès !"
+
+msgid "Demo data cleared successfully!"
+msgstr "Données de démonstration supprimées avec succès !"
+
+msgid "An error occurred. Please try again."
+msgstr "Une erreur s'est produite. Veuillez réessayer."
+
+# Email
+#, php-format
+msgid "Your Weekly InterSoccer Report - %s"
+msgstr "Votre rapport hebdomadaire InterSoccer - %s"
+
+msgid "New Partnership Connection!"
+msgstr "Nouvelle connexion de partenariat !"
+
+msgid "Partnership Update"
+msgstr "Mise à jour du partenariat"
+
+# Checkout - Referral Code
+msgid "Coach Referral Code (Optional)"
+msgstr "Code de parrainage de l'entraîneur (Facultatif)"
+
+msgid "Support your favorite coach! Enter their referral code to give them credit for this purchase."
+msgstr "Soutenez votre entraîneur préféré ! Entrez son code de parrainage pour lui accorder un crédit pour cet achat."
+
+msgid "Apply Code"
+msgstr "Appliquer le code"
+
+# Checkout - Loyalty Points
+msgid "Use Loyalty Points"
+msgstr "Utiliser les points de fidélité"
+
+#, php-format
+msgid "You have %s points available"
+msgstr "Vous avez %s points disponibles"
+
+msgid "Apply All"
+msgstr "Appliquer tout"
+
+msgid "Apply Max (100)"
+msgstr "Appliquer le max (100)"
+
+msgid "Or enter custom amount:"
+msgstr "Ou entrez un montant personnalisé :"
+
+# Points Validation
+msgid "Invalid points amount."
+msgstr "Montant de points invalide."
+
+msgid "You can redeem a maximum of 100 credits per order."
+msgstr "Vous pouvez échanger un maximum de 100 crédits par commande."
+
+msgid "You don't have enough points available."
+msgstr "Vous n'avez pas assez de points disponibles."
+
+msgid "Please enter the number of credits to redeem."
+msgstr "Veuillez entrer le nombre de crédits à échanger."
+
+# Order Notes
+#, php-format
+msgid "Customer redeemed %d referral credits."
+msgstr "Le client a échangé %d crédits de parrainage."
+
+msgid "Referral Credits Discount"
+msgstr "Réduction de crédits de parrainage"
+
+#, php-format
+msgid "Deducted %d credits from customer balance. New balance: %d"
+msgstr "%d crédits déduits du solde du client. Nouveau solde : %d"
+
+#, php-format
+msgid "Awarded %d bonus points to coach %s for referral code usage. New balance: %d"
+msgstr "%d points bonus attribués à l'entraîneur %s pour l'utilisation du code de parrainage. Nouveau solde : %d"
+
+#, php-format
+msgid "Awarded %d points to coach %s for customer purchase (CHF %.2f). New balance: %d"
+msgstr "%d points attribués à l'entraîneur %s pour l'achat du client (CHF %.2f). Nouveau solde : %d"
+
+# Cart Fees
+#, php-format
+msgid "Referral code applied! You will receive a discount from coach %s."
+msgstr "Code de parrainage appliqué ! Vous recevrez une réduction de l'entraîneur %s."
+
+msgid "Coach Referral Discount"
+msgstr "Réduction de parrainage d'entraîneur"
+
+msgid "Points Discount"
+msgstr "Réduction de points"
+
+# Points Manager
+msgid "Insufficient points balance."
+msgstr "Solde de points insuffisant."
+
+msgid "Points redemption exceeds allowed limits."
+msgstr "L'échange de points dépasse les limites autorisées."
+
+msgid "Points discount cannot exceed order total."
+msgstr "La réduction de points ne peut pas dépasser le total de la commande."
+
+#, php-format
+msgid "Redeemed %d points for %.2f CHF discount"
+msgstr "%d points échangés pour %.2f CHF de réduction"
+

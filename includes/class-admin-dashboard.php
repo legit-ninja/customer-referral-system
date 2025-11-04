@@ -909,7 +909,11 @@ class InterSoccer_Referral_Admin_Dashboard {
         if ($referral_code) {
             $discount_amount = -10; // 10 CHF discount for referral codes
             $cart->add_fee(__('Coach Referral Discount', 'intersoccer-referral'), $discount_amount, true, '');
-            error_log("Applying referral discount: code=$referral_code, discount=$discount_amount");
+            
+            // Debug logging (only in debug mode to prevent excessive disk I/O)
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log("InterSoccer Referral: Applying referral discount - code=$referral_code, discount=$discount_amount");
+            }
         }
 
         // Apply points discount
@@ -918,7 +922,11 @@ class InterSoccer_Referral_Admin_Dashboard {
         if ($points_to_redeem > 0) {
             $discount_amount = -$points_to_redeem; // Negative fee for discount
             $cart->add_fee(__('Referral Credits Discount', 'intersoccer-referral'), $discount_amount, true, '');
-            error_log("Applying points discount as fee: points=$points_to_redeem, discount=$discount_amount");
+            
+            // Debug logging (only in debug mode to prevent excessive disk I/O)
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                error_log("InterSoccer Referral: Applying points discount as fee - points=$points_to_redeem, discount=$discount_amount");
+            }
         }
     }
 
