@@ -209,7 +209,8 @@ class DatabaseSchemaTest extends TestCase {
             'intersoccer_referral_rewards',
             'intersoccer_purchase_rewards',
             'intersoccer_referrals',
-            'intersoccer_credit_redemptions'
+            'intersoccer_credit_redemptions',
+            'intersoccer_coach_events'
         ];
         
         foreach ($required_tables as $table) {
@@ -219,6 +220,20 @@ class DatabaseSchemaTest extends TestCase {
                 "Required table {$table} must be in schema"
             );
         }
+    }
+
+    /**
+     * Test coach events table schema includes unique key
+     */
+    public function testCoachEventsTableHasUniqueKey() {
+        $plugin_file = __DIR__ . '/../customer-referral-system.php';
+        $content = file_get_contents($plugin_file);
+
+        $this->assertStringContainsString(
+            'unique_coach_event (coach_id, event_id, event_type)',
+            $content,
+            'Coach events table must enforce unique coach/event combinations'
+        );
     }
 }
 

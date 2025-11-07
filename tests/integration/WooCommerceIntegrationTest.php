@@ -104,7 +104,7 @@ class WooCommerceIntegrationTest extends TestCase {
         $customer_id = 1;
 
         // Allocate initial points
-        $points_manager->add_points_transaction($customer_id, null, 'test', 100, 'Initial points');
+        $points_manager->add_points_transaction($customer_id, 'test', 100, null, 'Initial points');
 
         // Set up redemption session
         global $mock_session;
@@ -160,7 +160,7 @@ class WooCommerceIntegrationTest extends TestCase {
         $customer_id = 1;
 
         // Set up points redemption
-        $points_manager->add_points_transaction($customer_id, null, 'test', 100, 'Test points');
+        $points_manager->add_points_transaction($customer_id, 'test', 100, null, 'Test points');
         global $mock_session;
         $mock_session['intersoccer_points_to_redeem'] = 50;
 
@@ -188,7 +188,7 @@ class WooCommerceIntegrationTest extends TestCase {
         $order_id = 123;
 
         // Allocate points for order
-        $points_manager->add_points_transaction($customer_id, $order_id, 'order_purchase', 20, 'Order points');
+        $points_manager->add_points_transaction($customer_id, 'order_purchase', 20, $order_id, 'Order points');
 
         // Redeem some points
         global $mock_session;
@@ -224,7 +224,7 @@ class WooCommerceIntegrationTest extends TestCase {
             $order_id = $order_ids[$index];
 
             // Allocate points
-            $points_manager->add_points_transaction($customer_id, $order_id, 'order_purchase', 10, 'Concurrent test');
+            $points_manager->add_points_transaction($customer_id, 'order_purchase', 10, $order_id, 'Concurrent test');
 
             // Verify each customer has correct balance
             $balance = $points_manager->get_points_balance($customer_id);
