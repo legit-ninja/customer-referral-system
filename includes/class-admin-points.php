@@ -559,17 +559,17 @@ class InterSoccer_Admin_Points {
 
         switch ($adjustment_type) {
             case 'add':
-                $result = $points_manager->add_points_transaction($user_id, null, 'admin_adjustment', $points_amount, $reason);
+                $result = $points_manager->add_points_transaction($user_id, 'admin_adjustment', $points_amount, null, $reason);
                 break;
             case 'subtract':
-                $result = $points_manager->add_points_transaction($user_id, null, 'admin_adjustment', -$points_amount, $reason);
+                $result = $points_manager->add_points_transaction($user_id, 'admin_adjustment', -$points_amount, null, $reason);
                 break;
             case 'set':
                 // For setting balance, we need to calculate the difference
                 $current_balance = $points_manager->get_points_balance($user_id);
                 $difference = $points_amount - $current_balance;
                 if ($difference != 0) {
-                    $result = $points_manager->add_points_transaction($user_id, null, 'admin_balance_set', $difference, $reason . " (Balance set to {$points_amount})");
+                    $result = $points_manager->add_points_transaction($user_id, 'admin_balance_set', $difference, null, $reason . " (Balance set to {$points_amount})");
                 } else {
                     wp_send_json_success(['message' => 'Balance already at target amount']);
                     return;

@@ -267,6 +267,7 @@ class InterSoccer_Coach_Admin_Dashboard {
             'points_balance' => self::get_coach_points_balance($user_id),
             'tier' => intersoccer_get_coach_tier($user_id),
             'referral_link' => InterSoccer_Referral_Handler::generate_coach_referral_link($user_id),
+            'referral_code' => InterSoccer_Referral_Handler::get_coach_referral_code($user_id),
             'total_referrals' => $this->get_coach_referral_count($user_id),
             'recent_referrals' => $this->get_recent_referrals($user_id, 5),
             'earnings_data' => $this->get_earnings_data($user_id),
@@ -275,7 +276,10 @@ class InterSoccer_Coach_Admin_Dashboard {
             'chart_credits' => $this->get_chart_data($user_id, 30, 'credits'),
             'venue_assignments' => $venue_assignments,
             'event_stats' => $event_stats,
-            'is_admin_context' => true
+            'coach_events' => InterSoccer_Coach_Events_Manager::get_coach_events($user_id),
+            'coach_events_nonce' => wp_create_nonce('intersoccer_coach_events_nonce'),
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'is_admin_context' => current_user_can('manage_options')
         ];
 
         // Load the modern dashboard template
@@ -1483,14 +1487,23 @@ class InterSoccer_Coach_Admin_Dashboard {
                 wp_localize_script('modern-dashboard-js', 'intersoccer_dashboard', [
                     'ajax_url' => admin_url('admin-ajax.php'),
                     'nonce' => wp_create_nonce('dashboard_nonce'),
+                    'coach_events_nonce' => wp_create_nonce('intersoccer_coach_events_nonce'),
                     'user_id' => get_current_user_id(),
                     'user_name' => wp_get_current_user()->display_name,
                     'referral_link' => InterSoccer_Referral_Handler::generate_coach_referral_link(get_current_user_id()),
+                    'referral_code' => InterSoccer_Referral_Handler::get_coach_referral_code(get_current_user_id()),
                     'admin_url' => admin_url(),
                     'chart_data' => [
                         'labels' => $this->get_chart_labels(30),
                         'referrals' => $this->get_chart_data(get_current_user_id(), 30, 'referrals'),
                         'credits' => $this->get_chart_data(get_current_user_id(), 30, 'credits')
+                    ],
+                    'i18n' => [
+                        'no_events_title' => __('No events added yet', 'intersoccer-referral'),
+                        'no_events_description' => __('Add the events you coach so we can generate direct referral links for customers.', 'intersoccer-referral'),
+                        'copy' => __('Copy', 'intersoccer-referral'),
+                        'open' => __('Open', 'intersoccer-referral'),
+                        'remove' => __('Remove', 'intersoccer-referral')
                     ]
                 ]);
             }
@@ -1521,6 +1534,116 @@ class InterSoccer_Coach_Admin_Dashboard {
             "SELECT COUNT(*) FROM $table_name WHERE coach_id = %d",
             $coach_id
         ));
+    }
+
+    /**
+     * Count the number of active customers linked to this coach.
+     */
+    private function get_linked_customers_count($coach_id) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'intersoccer_customer_partnerships';
+
+        return (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $table_name WHERE coach_id = %d AND status = 'active'",
+            $coach_id
+        ));
+    }
+
+    /**
+     * Fetch recent achievements for the coach (limited for display).
+     */
+    private function get_coach_achievements($coach_id, $limit = 5) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'intersoccer_coach_achievements';
+
+        $results = $wpdb->get_results($wpdb->prepare(
+            "SELECT achievement_name, description, points, earned_at
+             FROM $table
+             WHERE coach_id = %d
+             ORDER BY earned_at DESC
+             LIMIT %d",
+            $coach_id,
+            $limit
+        ));
+
+        return $results ?: [];
+    }
+
+    /**
+     * Calculate progress towards the next tier.
+     */
+    private function get_tier_progress($tier, $referral_count) {
+        $thresholds = $this->get_tier_thresholds();
+        $tier_key = ucfirst(strtolower($tier));
+
+        if (!isset($thresholds[$tier_key])) {
+            return 0;
+        }
+
+        $current = $thresholds[$tier_key];
+        $current_min = $current['min'];
+        $next_max = $current['max'];
+
+        if ($next_max === null) {
+            return 100;
+        }
+
+        $span = max($next_max - $current_min, 1);
+        $progress = ($referral_count - $current_min) / $span * 100;
+
+        return max(0, min(100, round($progress)));
+    }
+
+    /**
+     * Provide messaging for requirements to reach the next tier.
+     */
+    private function get_next_tier_requirements($tier, $referral_count) {
+        $order = [
+            'Bronze' => 'Silver',
+            'Silver' => 'Gold',
+            'Gold' => 'Platinum',
+            'Platinum' => null,
+        ];
+
+        $tier_key = ucfirst(strtolower($tier));
+        if (!array_key_exists($tier_key, $order)) {
+            return '';
+        }
+
+        $next_tier = $order[$tier_key];
+        if ($next_tier === null) {
+            return __('You have reached the highest tier. Fantastic work!', 'intersoccer-referral');
+        }
+
+        $thresholds = $this->get_tier_thresholds();
+        $target = $thresholds[$next_tier]['min'];
+        $remaining = max(0, $target - $referral_count);
+
+        if ($remaining <= 0) {
+            return sprintf(__('Ready to move into %s tier—keep up the momentum!', 'intersoccer-referral'), $next_tier);
+        }
+
+        return sprintf(
+            _n('%d referral until %s tier', '%d referrals until %s tier', $remaining, 'intersoccer-referral'),
+            $remaining,
+            $next_tier
+        );
+    }
+
+    /**
+     * Fetch tier thresholds from options.
+     */
+    private function get_tier_thresholds() {
+        $silver = (int) get_option('intersoccer_tier_silver', 5);
+        $gold = (int) get_option('intersoccer_tier_gold', 10);
+        $platinum = (int) get_option('intersoccer_tier_platinum', 20);
+
+        return [
+            'Bronze' => ['min' => 0, 'max' => $silver],
+            'Silver' => ['min' => $silver, 'max' => $gold],
+            'Gold' => ['min' => $gold, 'max' => $platinum],
+            'Platinum' => ['min' => $platinum, 'max' => null],
+        ];
     }
 
     public function complete_tour() {

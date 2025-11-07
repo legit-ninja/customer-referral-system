@@ -10,8 +10,9 @@ class InterSoccer_Referral_Admin_Dashboard {
     private $settings;
     private $points;
     private $coach_assignments;
+    private $coach_events;
 
-      public function __construct() {
+    public function __construct() {
         // Initialize modular classes
         $this->main_dashboard = new InterSoccer_Admin_Dashboard_Main();
         $this->coaches = new InterSoccer_Admin_Coaches();
@@ -25,6 +26,12 @@ class InterSoccer_Referral_Admin_Dashboard {
             $this->coach_assignments = new InterSoccer_Admin_Coach_Assignments();
         } else {
             $this->coach_assignments = null;
+        }
+
+        if (class_exists('InterSoccer_Admin_Coach_Events')) {
+            $this->coach_events = new InterSoccer_Admin_Coach_Events();
+        } else {
+            $this->coach_events = null;
         }
 
         add_action('admin_menu', [$this, 'add_admin_menus']);
@@ -53,9 +60,6 @@ class InterSoccer_Referral_Admin_Dashboard {
         add_action('wp_ajax_bulk_credit_adjustment', [$this->settings, 'bulk_credit_adjustment']);
         add_action('wp_ajax_get_points_statistics', [$this->settings, 'get_points_statistics_ajax']);
         add_action('wp_ajax_get_points_ledger', [$this->settings, 'get_points_ledger_ajax']);
-        add_action('wp_ajax_run_points_sync', [$this->settings, 'run_points_sync_ajax']);
-        add_action('wp_ajax_get_sync_info', [$this->settings, 'get_sync_info_ajax']);
-        add_action('wp_ajax_get_sync_info_ajax', [$this->settings, 'get_sync_info_ajax']);
         add_action('wp_ajax_get_points_users', [$this->points, 'get_points_users_ajax']);
         add_action('wp_ajax_adjust_user_points', [$this->points, 'adjust_user_points_ajax']);
         add_action('wp_ajax_export_points_report', [$this->points, 'export_points_report_ajax']);
@@ -162,6 +166,17 @@ class InterSoccer_Referral_Admin_Dashboard {
                 'manage_options',
                 'intersoccer-coach-assignments',
                 [$this->coach_assignments, 'render_page']
+            );
+        }
+
+        if ($this->coach_events) {
+            add_submenu_page(
+                'intersoccer-referrals',
+                __('Coach Events', 'intersoccer-referral'),
+                __('Coach Events', 'intersoccer-referral'),
+                'manage_options',
+                'intersoccer-coach-events',
+                [$this->coach_events, 'render_page']
             );
         }
     }

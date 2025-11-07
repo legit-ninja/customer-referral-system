@@ -61,10 +61,10 @@ class InterSoccer_Points_Migration {
     private function migrate_points_log() {
         global $wpdb;
 
-        // Get all transactions that need migration (order_purchase and order_purchase_backfill)
+        // Get all transactions that need migration (order_purchase only)
         $transactions = $wpdb->get_results(
             "SELECT * FROM {$this->points_log_table}
-             WHERE transaction_type IN ('order_purchase', 'order_purchase_backfill')
+             WHERE transaction_type = 'order_purchase'
              AND (metadata LIKE '%\"points_rate\":\"1\"%' OR metadata LIKE '%\"points_rate\":1%')
              ORDER BY created_at ASC"
         );

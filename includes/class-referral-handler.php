@@ -41,6 +41,23 @@ class InterSoccer_Referral_Handler {
     }
 
     /**
+     * Retrieve the coach referral code, generating it if needed
+     *
+     * @param int $coach_id
+     * @return string
+     */
+    public static function get_coach_referral_code($coach_id) {
+        $code = get_user_meta($coach_id, 'referral_code', true);
+
+        if (!$code) {
+            self::generate_coach_referral_link($coach_id);
+            $code = get_user_meta($coach_id, 'referral_code', true);
+        }
+
+        return $code ?: '';
+    }
+
+    /**
      * Handle coach partnership selection AJAX
      */
     public function handle_coach_partnership_selection() {
@@ -165,7 +182,30 @@ class InterSoccer_Referral_Handler {
     public function handle_referral_cookie() {
         if (isset($_GET['ref']) && !empty($_GET['ref'])) {
             $ref_code = sanitize_text_field($_GET['ref']);
-            setcookie('intersoccer_referral', $ref_code, time() + (30 * DAY_IN_SECONDS), '/'); // 30 days
+            $event_id = isset($_GET['event']) ? absint($_GET['event']) : null;
+            $assignment_id = isset($_GET['coach_event']) ? absint($_GET['coach_event']) : null;
+
+            if ($assignment_id && class_exists('InterSoccer_Coach_Events_Manager')) {
+                $assignment = InterSoccer_Coach_Events_Manager::get_assignment($assignment_id);
+                if ($assignment) {
+                    $event_id = $assignment->event_id ?: $event_id;
+                } else {
+                    $assignment_id = null;
+                }
+            }
+
+            $payload = [
+                'code' => $ref_code,
+                'event_id' => $event_id ?: null,
+                'coach_event_id' => $assignment_id ?: null,
+                'set_at' => time(),
+            ];
+
+            if (function_exists('WC') && WC()->session) {
+                WC()->session->set('intersoccer_referral', $payload);
+            }
+
+            $this->set_referral_cookie($payload);
         }
     }
 
@@ -173,8 +213,15 @@ class InterSoccer_Referral_Handler {
     public function process_referral_order($order_id) {
         $order = wc_get_order($order_id);
         $customer_id = $order->get_customer_id();
-        $ref_code = WC()->session->get('intersoccer_referral') ?: ($_COOKIE['intersoccer_referral'] ?? '');
-        if (!$ref_code) return;
+        $referral_payload = $this->get_referral_payload();
+
+        if (empty($referral_payload['code'])) {
+            return;
+        }
+
+        $ref_code = $referral_payload['code'];
+        $event_id = $referral_payload['event_id'] ?? null;
+        $coach_event_id = $referral_payload['coach_event_id'] ?? null;
 
         global $wpdb;
         $table_name = $wpdb->prefix . 'intersoccer_referrals';
@@ -198,6 +245,14 @@ class InterSoccer_Referral_Handler {
             'referral_code' => $ref_code,
             'conversion_date' => current_time('mysql')
         ]);
+
+        if ($event_id) {
+            update_post_meta($order_id, '_intersoccer_ref_event_id', $event_id);
+        }
+
+        if ($coach_event_id) {
+            update_post_meta($order_id, '_intersoccer_coach_event_id', $coach_event_id);
+        }
 
         // Auto-assign partnership if referred by coach and customer doesn't have one
         if ($referrer['type'] === 'coach' && $is_first_purchase) {
@@ -267,7 +322,122 @@ class InterSoccer_Referral_Handler {
         
         // Clear referral session
         WC()->session->__unset('intersoccer_referral');
-        setcookie('intersoccer_referral', '', time() - 3600, '/');
+        $this->clear_referral_cookie();
+    }
+
+    /**
+     * Retrieve referral payload from session or cookie (legacy compatible)
+     *
+     * @return array{code:string,event_id:?int,coach_event_id:?int,set_at:?int}
+     */
+    private function get_referral_payload() {
+        $session_payload = null;
+        if (function_exists('WC') && WC()->session) {
+            $session_payload = WC()->session->get('intersoccer_referral');
+        }
+
+        $normalized = $this->normalize_referral_payload($session_payload);
+        if (!empty($normalized['code'])) {
+            return $normalized;
+        }
+
+        $cookie_value = $_COOKIE['intersoccer_referral'] ?? '';
+        return $this->normalize_referral_payload($cookie_value);
+    }
+
+    /**
+     * Normalize referral payload from mixed sources (array or legacy string)
+     *
+     * @param mixed $source
+     * @return array{code:string,event_id:?int,coach_event_id:?int,set_at:?int}
+     */
+    private function normalize_referral_payload($source) {
+        $empty = [
+            'code' => '',
+            'event_id' => null,
+            'coach_event_id' => null,
+            'set_at' => null,
+        ];
+
+        if (empty($source)) {
+            return $empty;
+        }
+
+        if (is_array($source)) {
+            $code = sanitize_text_field($source['code'] ?? '');
+            $event_id = isset($source['event_id']) ? absint($source['event_id']) : null;
+            $coach_event_id = isset($source['coach_event_id']) ? absint($source['coach_event_id']) : null;
+            $set_at = isset($source['set_at']) ? intval($source['set_at']) : time();
+
+            return [
+                'code' => $code,
+                'event_id' => $event_id ?: null,
+                'coach_event_id' => $coach_event_id ?: null,
+                'set_at' => $set_at ?: time(),
+            ];
+        }
+
+        if (is_string($source)) {
+            $decoded = json_decode(stripslashes($source), true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $this->normalize_referral_payload($decoded);
+            }
+
+            return [
+                'code' => sanitize_text_field($source),
+                'event_id' => null,
+                'coach_event_id' => null,
+                'set_at' => null,
+            ];
+        }
+
+        return $empty;
+    }
+
+    /**
+     * Persist referral data in cookie
+     *
+     * @param array{code:string,event_id:?int,coach_event_id:?int,set_at:int} $payload
+     * @return void
+     */
+    private function set_referral_cookie(array $payload) {
+        $encoded = wp_json_encode($payload);
+
+        if ($encoded === false) {
+            return;
+        }
+
+        $this->send_referral_cookie($encoded, time() + YEAR_IN_SECONDS);
+    }
+
+    /**
+     * Clear referral cookie
+     */
+    private function clear_referral_cookie() {
+        $this->send_referral_cookie('', time() - YEAR_IN_SECONDS);
+    }
+
+    /**
+     * Low-level cookie setter with secure defaults
+     *
+     * @param string $value
+     * @param int $expires
+     * @return void
+     */
+    private function send_referral_cookie($value, $expires) {
+        $options = [
+            'expires' => $expires,
+            'path' => '/',
+            'secure' => is_ssl(),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ];
+
+        if (defined('COOKIE_DOMAIN') && COOKIE_DOMAIN) {
+            $options['domain'] = COOKIE_DOMAIN;
+        }
+
+        setcookie('intersoccer_referral', $value, $options);
     }
 
     /**

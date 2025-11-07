@@ -12,7 +12,6 @@ class InterSoccer_Points_Manager {
 
         add_action('woocommerce_order_status_completed', [$this, 'allocate_points_for_order'], 10, 1);
         add_action('woocommerce_order_status_refunded', [$this, 'deduct_points_for_refund'], 10, 1);
-        add_action('wp_ajax_scan_orders_for_points', [$this, 'scan_orders_for_points']);
         add_action('wp_ajax_get_points_balance', [$this, 'get_points_balance_ajax']);
         add_action('wp_ajax_get_points_history', [$this, 'get_points_history_ajax']);
 
@@ -34,13 +33,28 @@ class InterSoccer_Points_Manager {
         $customer_id = $order->get_customer_id();
         if (!$customer_id) return;
 
+        // Respect go-live date configuration
+        $order_created = $order->get_date_created();
+        $order_timestamp = null;
+
+        if (class_exists('WC_DateTime') && $order_created instanceof WC_DateTime) {
+            $order_timestamp = $order_created->getTimestamp();
+        } elseif (!empty($order_created)) {
+            $order_timestamp = strtotime((string) $order_created);
+        }
+
+        if ($order_timestamp !== null && $this->is_order_before_go_live($order_timestamp)) {
+            error_log("InterSoccer: Skipped points allocation for order {$order_id} (before go-live date)");
+            return;
+        }
+
         // Check if points already allocated for this order
         if ($this->order_has_points_allocated($order_id)) {
             return;
         }
 
         $order_total = $order->get_total();
-        $points_to_allocate = $this->calculate_points_from_amount($order_total);
+        $points_to_allocate = $this->calculate_points_from_amount($order_total, $customer_id);
 
         if ($points_to_allocate > 0) {
             // Log points earning for audit
@@ -48,9 +62,9 @@ class InterSoccer_Points_Manager {
 
             $this->add_points_transaction(
                 $customer_id,
-                $order_id,
                 'order_purchase',
                 $points_to_allocate,
+                $order_id,
                 'Points allocated for order #' . $order_id,
                 [
                     'order_total' => $order_total,
@@ -83,9 +97,9 @@ class InterSoccer_Points_Manager {
 
         $this->add_points_transaction(
             $customer_id,
-            $order_id,
             'order_refund',
-            -$allocated_points, // Negative for deduction
+            -$allocated_points,
+            $order_id,
             'Points deducted for refunded order #' . $order_id,
             [
                 'refund_reason' => 'order_refunded',
@@ -100,129 +114,65 @@ class InterSoccer_Points_Manager {
     }
 
     /**
-     * Scan existing orders and allocate points (for backfilling)
-     */
-    public function scan_orders_for_points() {
-        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => 'Unauthorized']);
-        }
-
-        $result = $this->perform_points_sync();
-
-        wp_send_json_success([
-            'message' => "Backfill completed! Processed: {$result['processed']}, Skipped: {$result['skipped']}, Errors: {$result['errors']}",
-            'processed' => $result['processed'],
-            'skipped' => $result['skipped'],
-            'errors' => $result['errors']
-        ]);
-    }
-
-    /**
-     * Perform the actual points sync operation and return results
-     */
-    public function perform_points_sync() {
-        global $wpdb;
-
-        $processed = 0;
-        $skipped = 0;
-        $errors = 0;
-        $points_allocated = 0;
-
-        // Get all completed orders without points allocation
-        $orders = wc_get_orders([
-            'status' => 'completed',
-            'limit' => -1,
-            'orderby' => 'date',
-            'order' => 'ASC'
-        ]);
-
-        // Filter out refunds - only process actual orders
-        $orders = array_filter($orders, function($order) {
-            return $order instanceof WC_Order && !$order instanceof WC_Order_Refund;
-        });
-
-        foreach ($orders as $order) {
-            $order_id = $order->get_id();
-            $customer_id = $order->get_customer_id();
-
-            if (!$customer_id) {
-                $skipped++;
-                continue;
-            }
-
-            // Skip if already processed
-            if ($this->order_has_points_allocated($order_id)) {
-                $skipped++;
-                continue;
-            }
-
-            try {
-                $order_total = $order->get_total();
-                $points_to_allocate = $this->calculate_points_from_amount($order_total);
-
-                if ($points_to_allocate > 0) {
-                    $this->add_points_transaction(
-                        $customer_id,
-                        $order_id,
-                        'order_purchase_backfill',
-                        $points_to_allocate,
-                        'Points allocated for existing order #' . $order_id . ' (backfill)',
-                        [
-                            'order_total' => $order_total,
-                            'currency' => $order->get_currency(),
-                            'points_rate' => $this->points_per_currency,
-                            'backfill' => true
-                        ]
-                    );
-
-                    $this->update_user_points_balance($customer_id);
-                    $processed++;
-                    $points_allocated += $points_to_allocate;
-                } else {
-                    $skipped++;
-                }
-            } catch (Exception $e) {
-                error_log("InterSoccer: Error processing order {$order_id}: " . $e->getMessage());
-                $errors++;
-            }
-        }
-
-        $this->log_audit('points_backfill', "Backfill completed: {$processed} processed, {$skipped} skipped, {$errors} errors");
-
-        // Update sync status
-        update_option('intersoccer_points_sync_status', [
-            'last_sync' => current_time('mysql'),
-            'total_processed' => $processed,
-            'total_points' => $points_allocated,
-            'status' => 'completed'
-        ]);
-
-        return [
-            'processed' => $processed,
-            'skipped' => $skipped,
-            'errors' => $errors,
-            'points_allocated' => $points_allocated
-        ];
-    }
-
-    /**
      * Calculate points from currency amount
      * Returns integer points only - no fractional points
      * 
+     * Phase 0: Now supports role-specific point acquisition rates
+     * 
      * @param float $amount The currency amount in CHF
+     * @param int $user_id Optional user ID to apply role-specific rate
      * @return int The number of points earned (integer only)
      */
-    private function calculate_points_from_amount($amount) {
-        // Use floor() to ensure integer points (10 CHF = 1 point)
-        // floor() rounds down, so 95 CHF = 9 points (not 9.5)
-        return (int) floor($amount / 10);
+    private function calculate_points_from_amount($amount, $user_id = null) {
+        // Get rate based on user role (if user_id provided)
+        $rate = $this->get_points_rate_for_user($user_id);
+        
+        // Use floor() to ensure integer points
+        // Example: CHF 95 at rate of 10 = floor(95/10) = 9 points
+        return (int) floor($amount / $rate);
+    }
+
+    /**
+     * Get points acquisition rate for user based on their role
+     * 
+     * Priority order: partner > social_influencer > coach > customer
+     * 
+     * @param int $user_id User ID
+     * @return int Points rate (CHF per point)
+     */
+    private function get_points_rate_for_user($user_id) {
+        // Default rate if no user specified
+        if (!$user_id) {
+            return intval(get_option('intersoccer_points_rate_customer', 10));
+        }
+
+        $user = get_userdata($user_id);
+        if (!$user) {
+            return intval(get_option('intersoccer_points_rate_customer', 10));
+        }
+
+        // Check roles in priority order
+        $role_priority = [
+            'partner' => 'intersoccer_points_rate_partner',
+            'social_influencer' => 'intersoccer_points_rate_social_influencer',
+            'coach' => 'intersoccer_points_rate_coach',
+            'customer' => 'intersoccer_points_rate_customer',
+        ];
+
+        foreach ($role_priority as $role => $option_name) {
+            if (in_array($role, $user->roles)) {
+                return intval(get_option($option_name, 10));
+            }
+        }
+
+        // Fallback to customer rate
+        return intval(get_option('intersoccer_points_rate_customer', 10));
     }
 
     /**
      * Add a points transaction to the ledger
      */
-    public function add_points_transaction($customer_id, $order_id = null, $transaction_type, $points_amount, $description = '', $metadata = []) {
+    public function add_points_transaction($customer_id, $transaction_type, $points_amount, $order_id = null, $description = '', $metadata = []) {
         global $wpdb;
 
         // Get current balance before this transaction
@@ -290,7 +240,7 @@ class InterSoccer_Points_Manager {
 
         $count = $wpdb->get_var($wpdb->prepare(
             "SELECT COUNT(*) FROM {$this->points_log_table}
-             WHERE order_id = %d AND transaction_type IN ('order_purchase', 'order_purchase_backfill')",
+             WHERE order_id = %d AND transaction_type = 'order_purchase'",
             $order_id
         ));
 
@@ -305,7 +255,7 @@ class InterSoccer_Points_Manager {
 
         $points = $wpdb->get_var($wpdb->prepare(
             "SELECT points_amount FROM {$this->points_log_table}
-             WHERE order_id = %d AND transaction_type IN ('order_purchase', 'order_purchase_backfill')
+             WHERE order_id = %d AND transaction_type = 'order_purchase'
              ORDER BY created_at DESC LIMIT 1",
             $order_id
         ));
@@ -490,6 +440,31 @@ class InterSoccer_Points_Manager {
     }
 
     /**
+     * Determine if an order timestamp falls before the configured go-live date
+     *
+     * @param int $order_timestamp Unix timestamp representing order creation
+     * @return bool True when order should be skipped due to being before go-live date
+     */
+    private function is_order_before_go_live($order_timestamp) {
+        if (empty($order_timestamp)) {
+            return false;
+        }
+
+        $go_live_date = get_option('intersoccer_points_golive_date', '');
+        if (empty($go_live_date)) {
+            return false;
+        }
+
+        $go_live_timestamp = strtotime($go_live_date . ' 00:00:00');
+
+        if (!$go_live_timestamp) {
+            return false;
+        }
+
+        return $order_timestamp < $go_live_timestamp;
+    }
+
+    /**
      * Apply points discount to cart
      */
     public function apply_points_discount() {
@@ -570,9 +545,9 @@ class InterSoccer_Points_Manager {
         // Record the redemption
         $this->add_points_transaction(
             $user_id,
-            $order->get_id(),
             'points_redemption',
             -$points_to_redeem,
+            $order->get_id(),
             sprintf(__('Redeemed %d points for %.2f CHF discount', 'intersoccer-referral'), $points_to_redeem, $discount_amount),
             [
                 'discount_amount' => $discount_amount,
@@ -620,9 +595,9 @@ class InterSoccer_Points_Manager {
         // Refund the points
         $this->add_points_transaction(
             $user_id,
-            $order_id,
             'points_refund',
             $points_redeemed,
+            $order_id,
             sprintf(__('Refunded %d points due to %s', 'intersoccer-referral'), $points_redeemed, $reason),
             [
                 'original_discount' => $discount_amount,
