@@ -280,8 +280,9 @@ Multi-Year Retention Bonuses:
 
 **Loyalty Points**
 
-* Earning: CHF 10 spent \= 1 point  
-* Redeeming: 100 points \= CHF 10 bonus credit (max CHF 100 per CHF 1,000 spent)  
+* Earning: CHF 10 spent \= 1 point (default - configurable by role)  
+* Redeeming: 1 point \= 1 CHF discount (unlimited up to cart total - Phase 0!)  
+* Role-Specific Rates: Customer, Coach, Partner, Social Influencer (Phase 0!)
 * Retention: Season 2 return \= \+100 bonus points ; Season 3 return \= \+200 bonus points
 
 **Customer Referral System**

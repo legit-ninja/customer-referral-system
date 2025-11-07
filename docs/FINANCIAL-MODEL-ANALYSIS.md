@@ -39,9 +39,9 @@ People don't refer others just for money. Research shows the most effective refe
 - Minimum referral: Must not have booked in 18 months
 
 **Loyalty Points**:
-- Earning: 1 point per 10 CHF spent
-- Redemption: 100 points = 10 CHF
-- Max: 100 CHF per order
+- Earning: 1 point per 10 CHF spent (configurable by role - Phase 0!)
+- Redemption: 1 point = 1 CHF discount
+- Max: Unlimited (up to cart total) - Phase 0 update!
 - Retention: Season 2 = +100 points, Season 3 = +200 points
 
 ### What the Business Plan Says:
@@ -201,9 +201,10 @@ People don't refer others just for money. Research shows the most effective refe
 #### Core Principle: Reward Engagement, Not Just Spending
 
 **Current Implementation (Good Foundation)**:
-- 10 CHF spent = 1 point
-- 100 points = 10 CHF discount
-- Max 100 CHF per order
+- 10 CHF spent = 1 point (default - now configurable by role!)
+- 1 point = 1 CHF discount
+- Max: Unlimited redemption (up to cart total) - Phase 0!
+- Role-specific rates available: Customer, Coach, Partner, Social Influencer
 
 **Behavioral Enhancements**:
 

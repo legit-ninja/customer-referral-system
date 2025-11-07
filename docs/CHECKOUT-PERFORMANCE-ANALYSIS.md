@@ -31,13 +31,16 @@ $coaches = get_users([
 
 **Process**:
 ```php
-// Simple validation (no DB queries during validation)
-if ($points_to_redeem > 100) {
-    wc_add_notice('You can redeem a maximum of 100 credits per order.', 'error');
+// Simple validation (validates against cart total and available balance)
+$cart_total = WC()->cart->get_total('edit');
+if ($points_to_redeem > $cart_total) {
+    wc_add_notice('Points redemption cannot exceed your cart total.', 'error');
 }
 
 // Single user meta read (cached)
 $available_credits = get_user_meta($user_id, 'intersoccer_points_balance', true);
+
+// Phase 0: No longer limited to 100 points - can use ALL available points up to cart total!
 ```
 
 **Performance**: ~1-5ms (cached user meta)  
