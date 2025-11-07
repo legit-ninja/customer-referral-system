@@ -91,8 +91,8 @@ msgstr "Vous avez %s points disponibles"
 msgid "Apply All"
 msgstr "Appliquer tout"
 
-msgid "Apply Max (100)"
-msgstr "Appliquer le max (100)"
+msgid "Apply All Available"
+msgstr "Appliquer tous les disponibles"
 
 msgid "Or enter custom amount:"
 msgstr "Ou entrez un montant personnalisé :"
@@ -101,8 +101,14 @@ msgstr "Ou entrez un montant personnalisé :"
 msgid "Invalid points amount."
 msgstr "Montant de points invalide."
 
-msgid "You can redeem a maximum of 100 credits per order."
-msgstr "Vous pouvez échanger un maximum de 100 crédits par commande."
+msgid "Points redemption cannot exceed your cart total."
+msgstr "L'échange de points ne peut pas dépasser le total de votre panier."
+
+msgid "You can redeem up to your cart total or available points, whichever is less."
+msgstr "Vous pouvez échanger jusqu'au total de votre panier ou vos points disponibles, selon le montant le plus bas."
+
+msgid "Points must be whole numbers only. Fractional values are not allowed."
+msgstr "Les points doivent être des nombres entiers uniquement. Les valeurs décimales ne sont pas autorisées."
 
 msgid "You don't have enough points available."
 msgstr "Vous n'avez pas assez de points disponibles."
