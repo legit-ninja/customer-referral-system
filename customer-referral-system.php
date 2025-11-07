@@ -41,6 +41,8 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-financial.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-settings.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-points.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-coach-assignments.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-events-manager.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-coach-events.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-manager.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-audit-logger.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-audit.php';
@@ -48,6 +50,7 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-dashboard.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-admin-dashboard.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-migration.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-migration-integers.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-user-roles.php';
 error_log('All plugin files loaded, Referral Handler exists: ' . class_exists('InterSoccer_Referral_Handler'));
 
 // Main plugin class
@@ -239,6 +242,28 @@ class InterSoccer_Referral_System {
 
         dbDelta($assignments_sql);
 
+        // Coach events participation table (tracks which events coaches are associated with)
+        $coach_events_table = $wpdb->prefix . 'intersoccer_coach_events';
+        $coach_events_sql = "CREATE TABLE $coach_events_table (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            coach_id bigint(20) unsigned NOT NULL,
+            event_id bigint(20) unsigned NOT NULL,
+            event_type varchar(50) DEFAULT 'product' COMMENT 'Type of event reference (product, post, custom)',
+            source enum('coach','admin') DEFAULT 'coach' COMMENT 'Who created the association',
+            status enum('active','inactive','pending') DEFAULT 'active',
+            assigned_at datetime DEFAULT CURRENT_TIMESTAMP,
+            assigned_by bigint(20) unsigned DEFAULT NULL COMMENT 'Admin/user who created association',
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            notes text,
+            PRIMARY KEY (id),
+            UNIQUE KEY unique_coach_event (coach_id, event_id, event_type),
+            KEY idx_coach_id (coach_id),
+            KEY idx_event_id (event_id),
+            KEY idx_status (status),
+            KEY idx_source (source),
+            KEY idx_assigned_at (assigned_at)
+        ) $charset_collate;";
+
         // Coach performance table
         $performance_table = $wpdb->prefix . 'intersoccer_coach_performance';
         $performance_sql = "CREATE TABLE $performance_table (
@@ -405,6 +430,7 @@ class InterSoccer_Referral_System {
 
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
+        dbDelta($coach_events_sql);
         dbDelta($performance_sql);
         dbDelta($achievements_sql);
         dbDelta($partnerships_sql);
@@ -579,14 +605,23 @@ class InterSoccer_Referral_System {
             wp_localize_script('modern-dashboard-js', 'intersoccer_dashboard', [
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('dashboard_nonce'),
+                'coach_events_nonce' => wp_create_nonce('intersoccer_coach_events_nonce'),
                 'user_id' => get_current_user_id(),
                 'user_name' => wp_get_current_user()->display_name,
                 'referral_link' => InterSoccer_Referral_Handler::generate_coach_referral_link(get_current_user_id()),
+                'referral_code' => InterSoccer_Referral_Handler::get_coach_referral_code(get_current_user_id()),
                 'admin_url' => admin_url(),
                 'chart_data' => [
                     'labels' => $this->get_chart_labels(30),
                     'referrals' => $this->get_chart_data(get_current_user_id(), 30, 'referrals'),
                     'credits' => $this->get_chart_data(get_current_user_id(), 30, 'credits')
+                ],
+                'i18n' => [
+                    'no_events_title' => __('No events added yet', 'intersoccer-referral'),
+                    'no_events_description' => __('Add the events you coach so we can generate direct referral links for customers.', 'intersoccer-referral'),
+                    'copy' => __('Copy', 'intersoccer-referral'),
+                    'open' => __('Open', 'intersoccer-referral'),
+                    'remove' => __('Remove', 'intersoccer-referral')
                 ]
             ]);
         }
@@ -832,6 +867,37 @@ function intersoccer_get_coach_tier($coach_id = null) {
     if ($referral_count >= $gold_threshold) return 'Gold';
     if ($referral_count >= $silver_threshold) return 'Silver';
     return 'Bronze';
+}
+
+/**
+ * Get coach tier badge HTML
+ * 
+ * @param int $coach_id Coach user ID (optional, defaults to current user)
+ * @return string HTML badge element
+ */
+function intersoccer_get_coach_tier_badge($coach_id = null) {
+    $tier = intersoccer_get_coach_tier($coach_id);
+    $tier_lower = strtolower($tier);
+    
+    return '<span class="tier-badge tier-' . esc_attr($tier_lower) . '">' . esc_html($tier) . '</span>';
+}
+
+/**
+ * Get all coaches
+ * 
+ * @param array $args Optional arguments for get_users()
+ * @return array Array of WP_User objects with coach role
+ */
+function intersoccer_get_all_coaches($args = []) {
+    $default_args = [
+        'role' => 'coach',
+        'orderby' => 'display_name',
+        'order' => 'ASC',
+        'number' => -1, // Get all
+    ];
+    
+    $merged_args = array_merge($default_args, $args);
+    return get_users($merged_args);
 }
 
 // Template functions for shortcodes
