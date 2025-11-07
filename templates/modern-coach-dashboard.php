@@ -13,11 +13,15 @@ if (isset($coach_data) && is_array($coach_data)) {
     $points_balance = $coach_data['points_balance'];
     $tier = $coach_data['tier'];
     $referral_link = $coach_data['referral_link'];
+    $referral_code = $coach_data['referral_code'] ?? InterSoccer_Referral_Handler::get_coach_referral_code($user_id);
     $referral_count = $coach_data['total_referrals'];
     $recent_referrals = $coach_data['recent_referrals'];
     $chart_labels = $coach_data['chart_labels'];
     $chart_referrals = $coach_data['chart_referrals'];
     $chart_credits = $coach_data['chart_credits'];
+    $coach_events = $coach_data['coach_events'] ?? [];
+    $coach_events_nonce = $coach_data['coach_events_nonce'] ?? wp_create_nonce('intersoccer_coach_events_nonce');
+    $coach_events_ajax_url = $coach_data['ajax_url'] ?? admin_url('admin-ajax.php');
     $is_admin = $coach_data['is_admin_context'] ?? false;
 } else {
     // Frontend dashboard context - get data from dashboard class
@@ -27,6 +31,7 @@ if (isset($coach_data) && is_array($coach_data)) {
     $points_balance = (float) get_user_meta($user_id, 'intersoccer_points_balance', true);
     $tier = intersoccer_get_coach_tier($user_id);
     $referral_link = InterSoccer_Referral_Handler::generate_coach_referral_link($user_id);
+    $referral_code = InterSoccer_Referral_Handler::get_coach_referral_code($user_id);
     $referral_count = $this->get_coach_referral_count($user_id);
     $recent_referrals = $this->get_recent_referrals($user_id, 5);
     $monthly_stats = $this->get_monthly_stats($user_id);
@@ -35,6 +40,9 @@ if (isset($coach_data) && is_array($coach_data)) {
     $chart_labels = $this->get_chart_labels(30);
     $chart_referrals = $this->get_chart_data($user_id, 30, 'referrals');
     $chart_credits = $this->get_chart_data($user_id, 30, 'credits');
+    $coach_events = class_exists('InterSoccer_Coach_Events_Manager') ? InterSoccer_Coach_Events_Manager::get_coach_events($user_id) : [];
+    $coach_events_nonce = wp_create_nonce('intersoccer_coach_events_nonce');
+    $coach_events_ajax_url = admin_url('admin-ajax.php');
     $is_admin = false;
 }
 
@@ -138,7 +146,7 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                     <div class="progress-fill" style="width: <?php echo $this->get_tier_progress($tier, $referral_count); ?>%"></div>
                 </div>
                 <div class="progress-text">
-                    <?php echo $this->get_next_tier_requirements($tier); ?>
+                    <?php echo $this->get_next_tier_requirements($tier, $referral_count); ?>
                 </div>
             </div>
         </div>
@@ -206,6 +214,20 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                 </div>
             </div>
 
+            <div class="referral-code-container" data-aos="fade-up">
+                <div class="referral-code-header">
+                    <span class="code-icon" aria-hidden="true">🏷️</span>
+                    <div>
+                        <h4>Share Your Referral Code</h4>
+                        <p class="code-subtitle">Customers can enter this code directly at checkout.</p>
+                    </div>
+                </div>
+                <div class="referral-code-body">
+                    <span class="code-value" id="referral-code-value"><?php echo esc_html($referral_code); ?></span>
+                    <button class="btn-tertiary" id="copy-code">Copy Code</button>
+                </div>
+            </div>
+
             <!-- QR Code Modal -->
             <div id="qr-modal" class="modal">
                 <div class="modal-content qr-modal-content">
@@ -225,6 +247,86 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                     </div>
                 </div>
             </div>
+        </div>
+
+        <!-- Coach Event Participation -->
+        <div class="dashboard-card coach-events-card" data-aos="fade-left">
+            <div class="card-header">
+                <h3><i class="icon-calendar"></i> <?php esc_html_e('Event Participation', 'intersoccer-referral'); ?></h3>
+                <?php if (!$is_admin): ?>
+                <div class="card-actions">
+                    <button class="btn-icon" id="coach-events-refresh" data-tooltip="<?php esc_attr_e('Refresh events', 'intersoccer-referral'); ?>">
+                        <i class="icon-refresh"></i>
+                    </button>
+                </div>
+                <?php endif; ?>
+            </div>
+
+            <div class="coach-events-body" id="coach-events-body">
+                <?php if (!empty($coach_events)): ?>
+                    <ul class="coach-events-list">
+                        <?php foreach ($coach_events as $event): ?>
+                            <li class="coach-event-item" data-assignment-id="<?php echo esc_attr($event->id); ?>">
+                                <div class="event-title">
+                                    <?php if (!empty($event->event_permalink)): ?>
+                                        <a href="<?php echo esc_url($event->event_permalink); ?>" target="_blank" rel="noopener noreferrer">
+                                            <?php echo esc_html($event->event_title); ?>
+                                        </a>
+                                    <?php else: ?>
+                                        <?php echo esc_html($event->event_title); ?>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="event-meta">
+                                    <span class="event-status status-<?php echo esc_attr($event->status); ?>"><?php echo esc_html(ucfirst($event->status)); ?></span>
+                                    <span class="event-source">• <?php echo esc_html(ucfirst($event->source)); ?></span>
+                                    <?php if (!empty($event->assigned_at)): ?>
+                                        <span class="event-date">• <?php echo esc_html(mysql2date(get_option('date_format'), $event->assigned_at)); ?></span>
+                                    <?php endif; ?>
+                                </div>
+                            <?php if (!empty($event->event_share_link)): ?>
+                                <div class="event-share">
+                                    <input type="text" class="coach-event-share-input" value="<?php echo esc_attr($event->event_share_link); ?>" readonly>
+                                    <button class="btn-tertiary coach-event-copy" data-link="<?php echo esc_attr($event->event_share_link); ?>"><?php esc_html_e('Copy', 'intersoccer-referral'); ?></button>
+                                    <a class="btn-secondary" href="<?php echo esc_url($event->event_share_link); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e('Open', 'intersoccer-referral'); ?></a>
+                                </div>
+                            <?php endif; ?>
+                                <?php if (!$is_admin): ?>
+                                <div class="event-actions">
+                                    <button class="btn-tertiary coach-event-remove" data-assignment-id="<?php echo esc_attr($event->id); ?>"><?php esc_html_e('Remove', 'intersoccer-referral'); ?></button>
+                                </div>
+                                <?php endif; ?>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php else: ?>
+                    <div class="empty-state">
+                        <i class="icon-calendar"></i>
+                        <h4><?php esc_html_e('No events added yet', 'intersoccer-referral'); ?></h4>
+                        <p><?php esc_html_e('Add the events you coach so we can generate direct referral links for customers.', 'intersoccer-referral'); ?></p>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <?php if (!$is_admin): ?>
+            <div class="coach-events-form" data-nonce="<?php echo esc_attr($coach_events_nonce); ?>">
+                <h4><?php esc_html_e('Add Event Participation', 'intersoccer-referral'); ?></h4>
+                <p class="description"><?php esc_html_e('Search for the event or product you will coach. We\'ll notify admins so they can approve it.', 'intersoccer-referral'); ?></p>
+                <div class="coach-event-search">
+                    <div class="label-block">
+                        <label for="coach-event-search-input"><?php esc_html_e('Search for an event or product', 'intersoccer-referral'); ?></label>
+                        <input type="text" id="coach-event-search-input" class="wide-field" placeholder="<?php esc_attr_e('Start typing an event or product name…', 'intersoccer-referral'); ?>">
+                    </div>
+                    <button class="btn-secondary" id="coach-event-search-btn" type="button"><?php esc_html_e('Search', 'intersoccer-referral'); ?></button>
+                </div>
+                <input type="hidden" id="coach-event-selected-id" value="">
+                <input type="hidden" id="coach-event-selected-type" value="">
+                <div id="coach-event-search-results" class="coach-event-search-results" aria-live="polite"></div>
+                <div class="coach-event-actions">
+                    <button class="btn-primary" id="coach-event-add-btn" type="button"><?php esc_html_e('Request Event', 'intersoccer-referral'); ?></button>
+                    <span class="spinner" id="coach-event-spinner"></span>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
 
         <!-- Recent Activity -->
@@ -406,287 +508,7 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
 <?php endif; ?>
 
 <!-- Dashboard Scripts -->
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Initialize AOS animations
-    if (typeof AOS !== 'undefined') {
-        AOS.init({
-            duration: 600,
-            easing: 'ease-out-cubic',
-            once: true
-        });
-    }
 
-    // Counter animations
-    const counters = document.querySelectorAll('[data-counter]');
-    counters.forEach(counter => {
-        const target = parseInt(counter.dataset.counter);
-        const current = parseInt(counter.textContent.replace(/,/g, ''));
-        animateCounter(counter, current, target, 1000);
-    });
-
-    // Copy link functionality
-    document.getElementById('copy-link').addEventListener('click', function() {
-        copyToClipboard('<?php echo esc_js($referral_link); ?>');
-        showNotification('Link copied to clipboard!', 'success');
-    });
-
-    document.getElementById('copy-link-text').addEventListener('click', function() {
-        copyToClipboard('<?php echo esc_js($referral_link); ?>');
-        showNotification('Link copied to clipboard!', 'success');
-    });
-
-    // QR Code modal
-    document.getElementById('show-qr').addEventListener('click', function() {
-        document.getElementById('qr-modal').style.display = 'block';
-    });
-
-    document.querySelector('.modal-close').addEventListener('click', function() {
-        document.getElementById('qr-modal').style.display = 'none';
-    });
-
-    // Theme toggle
-    document.getElementById('theme-toggle').addEventListener('click', function() {
-        const dashboard = document.querySelector('.modern-coach-dashboard');
-        const currentTheme = dashboard.dataset.theme;
-        const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-
-        dashboard.dataset.theme = newTheme;
-        localStorage.setItem('coach-dashboard-theme', newTheme);
-
-        // Save to user meta
-        fetch('<?php echo admin_url('admin-ajax.php'); ?>', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: new FormData({
-                action: 'update_dashboard_theme',
-                theme: newTheme,
-                nonce: '<?php echo wp_create_nonce('dashboard_theme_nonce'); ?>'
-            })
-        });
-    });
-
-    // Quick actions
-    document.getElementById('create-post').addEventListener('click', function() {
-        // Open social media post composer
-        showSocialMediaComposer();
-    });
-
-    document.getElementById('send-email').addEventListener('click', function() {
-        // Open email campaign composer
-        showEmailComposer();
-    });
-
-    document.getElementById('view-resources').addEventListener('click', function() {
-        window.location.href = '<?php echo admin_url('admin.php?page=intersoccer-coach-resources'); ?>';
-    });
-
-    document.getElementById('contact-support').addEventListener('click', function() {
-        showSupportModal();
-    });
-
-    // Initialize charts
-    initializeCharts();
-});
-
-function animateCounter(element, start, end, duration) {
-    const startTime = performance.now();
-    const difference = end - start;
-
-    function updateCounter(currentTime) {
-        const elapsed = currentTime - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-
-        const current = Math.floor(start + (difference * progress));
-        element.textContent = current.toLocaleString();
-
-        if (progress < 1) {
-            requestAnimationFrame(updateCounter);
-        }
-    }
-
-    requestAnimationFrame(updateCounter);
-}
-
-function copyToClipboard(text) {
-    navigator.clipboard.writeText(text).catch(() => {
-        // Fallback for older browsers
-        const textArea = document.createElement('textarea');
-        textArea.value = text;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-    });
-}
-
-function showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    notification.innerHTML = `
-        <i class="icon-${type === 'success' ? 'check' : 'info'}"></i>
-        <span>${message}</span>
-    `;
-
-    document.body.appendChild(notification);
-
-    setTimeout(() => {
-        notification.classList.add('show');
-    }, 100);
-
-    setTimeout(() => {
-        notification.classList.remove('show');
-        setTimeout(() => document.body.removeChild(notification), 300);
-    }, 3000);
-}
-
-function initializeCharts() {
-    // Performance chart
-    const ctx = document.getElementById('performance-chart');
-    if (ctx && typeof Chart !== 'undefined') {
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: <?php echo json_encode($this->get_chart_labels(30)); ?>,
-                datasets: [{
-                    label: 'Referrals',
-                    data: <?php echo json_encode($this->get_chart_data($user_id, 30, 'referrals')); ?>,
-                    borderColor: '#667eea',
-                    backgroundColor: 'rgba(102, 126, 234, 0.1)',
-                    tension: 0.4
-                }, {
-                    label: 'Credits Earned',
-                    data: <?php echo json_encode($this->get_chart_data($user_id, 30, 'credits')); ?>,
-                    borderColor: '#764ba2',
-                    backgroundColor: 'rgba(118, 75, 162, 0.1)',
-                    tension: 0.4
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
-    }
-}
-
-function showSocialMediaComposer() {
-    // Implementation for social media post composer
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.innerHTML = `
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Create Social Media Post</h3>
-                <button class="modal-close">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="social-templates">
-                    <div class="template-option" data-platform="instagram">
-                        <h4>📸 Instagram Post</h4>
-                        <p>"Transform your game with personalized soccer training! 🏈⚽ Join me at InterSoccer - link in bio!"</p>
-                    </div>
-                    <div class="template-option" data-platform="facebook">
-                        <h4>📘 Facebook Post</h4>
-                        <p>"Looking to improve your soccer skills? I'm now partnering with InterSoccer to offer personalized training programs. Click here to get started: <?php echo esc_js($referral_link); ?>"</p>
-                    </div>
-                    <div class="template-option" data-platform="twitter">
-                        <h4>🐦 Twitter Post</h4>
-                        <p>"Level up your soccer game! 🏆 Join InterSoccer for personalized training. Link: <?php echo esc_js($referral_link); ?> #SoccerTraining #InterSoccer"</p>
-                    </div>
-                </div>
-                <div class="post-actions">
-                    <button class="btn-primary" id="copy-post">Copy Post</button>
-                    <button class="btn-secondary" id="share-post">Share Now</button>
-                </div>
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(modal);
-    modal.style.display = 'block';
-
-    // Modal functionality
-    modal.querySelector('.modal-close').addEventListener('click', () => {
-        modal.remove();
-    });
-
-    let selectedTemplate = null;
-    modal.querySelectorAll('.template-option').forEach(option => {
-        option.addEventListener('click', function() {
-            modal.querySelectorAll('.template-option').forEach(opt => opt.classList.remove('selected'));
-            this.classList.add('selected');
-            selectedTemplate = this.querySelector('p').textContent;
-        });
-    });
-
-    modal.querySelector('#copy-post').addEventListener('click', () => {
-        if (selectedTemplate) {
-            copyToClipboard(selectedTemplate);
-            showNotification('Post copied to clipboard!', 'success');
-        }
-    });
-}
-
-function showEmailComposer() {
-    // Implementation for email composer
-    showNotification('Email composer coming soon!', 'info');
-}
-
-function showSupportModal() {
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.innerHTML = `
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>Contact Support</h3>
-                <button class="modal-close">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="support-options">
-                    <div class="support-option">
-                        <i class="icon-chat"></i>
-                        <h4>Live Chat</h4>
-                        <p>Get instant help from our support team</p>
-                        <button class="btn-primary">Start Chat</button>
-                    </div>
-                    <div class="support-option">
-                        <i class="icon-email"></i>
-                        <h4>Email Support</h4>
-                        <p>Send us a detailed message</p>
-                        <button class="btn-secondary">Send Email</button>
-                    </div>
-                    <div class="support-option">
-                        <i class="icon-faq"></i>
-                        <h4>FAQ</h4>
-                        <p>Browse our knowledge base</p>
-                        <button class="btn-secondary">View FAQ</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(modal);
-    modal.style.display = 'block';
-
-    modal.querySelector('.modal-close').addEventListener('click', () => {
-        modal.remove();
-    });
-}
-</script>
 
 <style>
 /* Modern Coach Dashboard Styles */
@@ -999,10 +821,84 @@ function showSupportModal() {
     background: #e2e8f0;
 }
 
+.btn-tertiary {
+    padding: 0.65rem 1.25rem;
+    border-radius: 999px;
+    background: #fff7ed;
+    color: #c2410c;
+    border: 1px solid #fed7aa;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.btn-tertiary:hover {
+    background: #fed7aa;
+    color: #9a3412;
+    transform: translateY(-1px);
+}
+
+.referral-code-container {
+    margin: 0 1.5rem 1.5rem;
+    padding: 1.25rem 1.5rem;
+    border: 1px dashed #cbd5f5;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(129, 140, 248, 0.05));
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.referral-code-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.referral-code-header h4 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.code-subtitle {
+    margin: 0.125rem 0 0;
+    font-size: 0.875rem;
+    color: #475569;
+}
+
+.code-icon {
+    font-size: 1.75rem;
+    line-height: 1;
+}
+
+.referral-code-body {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    justify-content: space-between;
+    background: #ffffff;
+    border-radius: 999px;
+    padding: 0.75rem 1rem;
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    box-shadow: inset 0 1px 2px rgba(99, 102, 241, 0.08);
+}
+
+.code-value {
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 1rem;
+    letter-spacing: 0.1em;
+    color: #312e81;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
 /* Activity Feed */
 .activity-feed {
     max-height: 400px;
     overflow-y: auto;
+    padding: 0 1.5rem 1.5rem;
 }
 
 .activity-item {
@@ -1380,4 +1276,256 @@ function showSupportModal() {
 .icon-info:before { content: "ℹ️"; }
 .icon-chat:before { content: "💬"; }
 .icon-faq:before { content: "❓"; }
+
+/* Coach Events */
+.coach-events-card .card-header {
+    align-items: center;
+}
+
+.coach-events-body {
+    margin-bottom: 1.5rem;
+    padding: 0 1.5rem;
+}
+
+.coach-events-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.coach-event-item {
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    border-radius: 12px;
+    padding: 12px 16px;
+    background: rgba(248, 250, 252, 0.7);
+    transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.coach-event-item:hover {
+    border-color: rgba(37, 99, 235, 0.4);
+    transform: translateY(-1px);
+}
+
+.modern-coach-dashboard[data-theme="dark"] .coach-event-item {
+    background: rgba(30, 41, 59, 0.6);
+    border-color: rgba(148, 163, 184, 0.3);
+}
+
+.coach-event-item .event-title {
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+.coach-event-item .event-title a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.coach-event-item .event-title a:hover {
+    text-decoration: underline;
+}
+
+.coach-event-item .event-meta {
+    font-size: 0.85rem;
+    color: #64748b;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.modern-coach-dashboard[data-theme="dark"] .coach-event-item .event-meta {
+    color: #cbd5f5;
+}
+
+.coach-event-item .event-status {
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.coach-event-item .status-active {
+    background: rgba(34, 197, 94, 0.18);
+    color: #166534;
+}
+
+.coach-event-item .status-pending {
+    background: rgba(234, 179, 8, 0.18);
+    color: #b45309;
+}
+
+.coach-event-item .status-inactive {
+    background: rgba(148, 163, 184, 0.2);
+    color: #475569;
+}
+
+.modern-coach-dashboard[data-theme="dark"] .coach-event-item .status-active {
+    background: rgba(34, 197, 94, 0.25);
+    color: #bbf7d0;
+}
+
+.modern-coach-dashboard[data-theme="dark"] .coach-event-item .status-pending {
+    background: rgba(234, 179, 8, 0.25);
+    color: #fbbf24;
+}
+
+.modern-coach-dashboard[data-theme="dark"] .coach-event-item .status-inactive {
+    background: rgba(148, 163, 184, 0.25);
+    color: #e2e8f0;
+}
+
+.coach-event-item .event-actions {
+    margin-top: 10px;
+}
+
+.event-share {
+    margin-top: 10px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.event-share .coach-event-share-input {
+    flex: 1;
+    min-width: 220px;
+    padding: 0.5rem;
+    border-radius: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.4);
+    background: rgba(241, 245, 249, 0.6);
+}
+
+.modern-coach-dashboard[data-theme="dark"] .event-share .coach-event-share-input {
+    background: rgba(30, 41, 59, 0.7);
+    color: #f8fafc;
+    border-color: rgba(148, 163, 184, 0.4);
+}
+
+.event-share .btn-secondary,
+.event-share .btn-tertiary {
+    flex: 0 0 auto;
+}
+
+.coach-events-form {
+    background: rgba(102, 126, 234, 0.08);
+    border-radius: 12px;
+    padding: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin: 0 1.5rem 1.5rem;
+}
+
+.modern-coach-dashboard[data-theme="dark"] .coach-events-form {
+    border-top-color: rgba(148, 163, 184, 0.2);
+}
+
+.coach-event-search {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.coach-event-search .label-block {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.coach-event-search label {
+    font-weight: 600;
+    color: #475569;
+}
+
+.coach-event-search input[type="text"],
+.coach-event-share-input,
+.coach-events-card .wide-field {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 8px;
+    background: rgba(248, 250, 252, 0.9);
+    font-size: 0.9rem;
+}
+
+.coach-events-card .btn-secondary,
+.coach-events-card .btn-primary {
+    height: 44px;
+    align-self: flex-end;
+    padding: 0 16px;
+}
+
+.coach-event-search-results {
+    max-height: 220px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.coach-event-result {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    padding: 10px 12px;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    border-radius: 10px;
+    background: #fff;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.coach-event-result strong {
+    font-size: 0.95rem;
+}
+
+.coach-event-result-meta {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+
+.coach-event-result:hover,
+.coach-event-result.selected {
+    border-color: rgba(37, 99, 235, 0.6);
+    background: rgba(37, 99, 235, 0.08);
+}
+
+.modern-coach-dashboard[data-theme="dark"] .coach-event-result {
+    background: rgba(30, 41, 59, 0.8);
+    border-color: rgba(148, 163, 184, 0.4);
+    color: #e2e8f0;
+}
+
+.coach-event-search-empty {
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+.modern-coach-dashboard[data-theme="dark"] .coach-event-search-empty {
+    color: #cbd5f5;
+}
+
+.coach-event-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.coach-event-actions .spinner {
+    float: none;
+    visibility: hidden;
+}
+
+.coach-event-actions .spinner.is-active {
+    visibility: visible;
+}
 </style>

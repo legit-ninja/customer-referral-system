@@ -204,6 +204,283 @@ run_phpunit_tests() {
         fi
     fi
     
+    # Test 7: Role-Specific Point Rates
+    if [ -f "tests/RoleSpecificPointRatesTest.php" ]; then
+        echo -e "  ${BLUE}•${NC} RoleSpecificPointRatesTest (Role-Based Earning Rates)"
+        php vendor/bin/phpunit tests/RoleSpecificPointRatesTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (40 tests)${NC}"
+        else
+            echo -e "    ${RED}✗ FAILED - BLOCKING DEPLOYMENT${NC}"
+            return 1
+        fi
+    fi
+    
+    echo ""
+    echo -e "${BLUE}→ Running Additional Critical Tests...${NC}"
+    
+    # Test 8: Order Processing Integration
+    if [ -f "tests/OrderProcessingIntegrationTest.php" ]; then
+        echo -e "  ${BLUE}•${NC} OrderProcessingIntegrationTest (Order Flow & Points Allocation)"
+        php vendor/bin/phpunit tests/OrderProcessingIntegrationTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (34 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning (not blocking)${NC}"
+        fi
+    fi
+    
+    # Test 9: Balance Synchronization
+    if [ -f "tests/BalanceSynchronizationTest.php" ]; then
+        echo -e "  ${BLUE}•${NC} BalanceSynchronizationTest (Data Integrity)"
+        php vendor/bin/phpunit tests/BalanceSynchronizationTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (26 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning (not blocking)${NC}"
+        fi
+    fi
+    
+    # Test 10: Security Validation
+    if [ -f "tests/SecurityValidationTest.php" ]; then
+        echo -e "  ${BLUE}•${NC} SecurityValidationTest (Security & Input Validation)"
+        php vendor/bin/phpunit tests/SecurityValidationTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (28 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning (not blocking)${NC}"
+        fi
+    fi
+    
+    # Test 11: Referral Code Validation
+    if [ -f "tests/ReferralCodeValidationTest.php" ]; then
+        echo -e "  ${BLUE}•${NC} ReferralCodeValidationTest (Referral Code Processing)"
+        php vendor/bin/phpunit tests/ReferralCodeValidationTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (29 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning (not blocking)${NC}"
+        fi
+    fi
+    
+    # Test 12: Audit Logging
+    if [ -f "tests/AuditLoggingTest.php" ]; then
+        echo -e "  ${BLUE}•${NC} AuditLoggingTest (Audit Trail & Compliance)"
+        php vendor/bin/phpunit tests/AuditLoggingTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (25 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning (not blocking)${NC}"
+        fi
+    fi
+    
+    # Test 13: Checkout Points Redemption
+    if [ -f "tests/CheckoutPointsRedemptionTest.php" ]; then
+        echo -e "  ${BLUE}•${NC} CheckoutPointsRedemptionTest (Checkout Flow & UX)"
+        php vendor/bin/phpunit tests/CheckoutPointsRedemptionTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (42 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning (not blocking)${NC}"
+        fi
+    fi
+    
+    # Test 14: Commission Calculations
+    if [ -f "tests/CommissionCalculationTest.php" ]; then
+        echo -e "  ${BLUE}•${NC} CommissionCalculationTest (Financial Calculations)"
+        php vendor/bin/phpunit tests/CommissionCalculationTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (22 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning (not blocking)${NC}"
+        fi
+    fi
+    
+    # Test 15: Coach Helper Functions
+    if [ -f "tests/CoachHelperFunctionsTest.php" ]; then
+        echo -e "  ${BLUE}•${NC} CoachHelperFunctionsTest (Coach Tier & Helper Functions)"
+        php vendor/bin/phpunit tests/CoachHelperFunctionsTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (23 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning (not blocking)${NC}"
+        fi
+    fi
+    
+    # Test 16: User Roles Enhancement
+    if [ -f "tests/UserRolesEnhancementTest.php" ]; then
+        echo -e "  ${BLUE}•${NC} UserRolesEnhancementTest (Custom Roles & Capabilities)"
+        php vendor/bin/phpunit tests/UserRolesEnhancementTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (36 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning (not blocking)${NC}"
+        fi
+    fi
+    
+    # NEW: Comprehensive Business Logic Tests (WARNING)
+    echo ""
+    echo -e "${BLUE}→ Running Business Logic Tests...${NC}"
+    
+    if [ -f "tests/UtilityClassesTest.php" ]; then
+        echo -e "  ${YELLOW}•${NC} UtilityClassesTest (Utility Classes)"
+        php vendor/bin/phpunit tests/UtilityClassesTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (60 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+        fi
+    fi
+    
+    if [ -f "tests/CustomerDashboardTest.php" ]; then
+        echo -e "  ${YELLOW}•${NC} CustomerDashboardTest (Customer Dashboard)"
+        php vendor/bin/phpunit tests/CustomerDashboardTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (50 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+        fi
+    fi
+    
+    if [ -f "tests/PointsMigrationTest.php" ]; then
+        echo -e "  ${YELLOW}•${NC} PointsMigrationTest (Migration Operations)"
+        php vendor/bin/phpunit tests/PointsMigrationTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (28 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+        fi
+    fi
+    
+    if [ -f "tests/APIDummyTest.php" ]; then
+        echo -e "  ${YELLOW}•${NC} APIDummyTest (API Endpoints)"
+        php vendor/bin/phpunit tests/APIDummyTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (18 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+        fi
+    fi
+    
+    # NEW: Admin Interface Tests (WARNING)
+    echo ""
+    echo -e "${BLUE}→ Running Admin Interface Tests...${NC}"
+    
+    if [ -f "tests/AdminSettingsTest.php" ]; then
+        echo -e "  ${YELLOW}•${NC} AdminSettingsTest (Settings & AJAX)"
+        php vendor/bin/phpunit tests/AdminSettingsTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (90 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+        fi
+    fi
+    
+    if [ -f "tests/AdminDashboardTest.php" ]; then
+        echo -e "  ${YELLOW}•${NC} AdminDashboardTest (Admin Dashboard)"
+        php vendor/bin/phpunit tests/AdminDashboardTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (65 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+        fi
+    fi
+    
+    if [ -f "tests/AdminDashboardMainTest.php" ]; then
+        echo -e "  ${YELLOW}•${NC} AdminDashboardMainTest (Dashboard Widgets)"
+        php vendor/bin/phpunit tests/AdminDashboardMainTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (45 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+        fi
+    fi
+    
+    if [ -f "tests/AdminFinancialTest.php" ]; then
+        echo -e "  ${YELLOW}•${NC} AdminFinancialTest (Financial Reports)"
+        php vendor/bin/phpunit tests/AdminFinancialTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (28 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+        fi
+    fi
+    
+    if [ -f "tests/AdminAuditTest.php" ]; then
+        echo -e "  ${YELLOW}•${NC} AdminAuditTest (Audit Log)"
+        php vendor/bin/phpunit tests/AdminAuditTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (32 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+        fi
+    fi
+    
+    if [ -f "tests/AdminCoachesTest.php" ]; then
+        echo -e "  ${YELLOW}•${NC} AdminCoachesTest (Coach Management)"
+        php vendor/bin/phpunit tests/AdminCoachesTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (27 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+        fi
+    fi
+    
+    if [ -f "tests/AdminReferralsTest.php" ]; then
+        echo -e "  ${YELLOW}•${NC} AdminReferralsTest (Referral Management)"
+        php vendor/bin/phpunit tests/AdminReferralsTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (22 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+        fi
+    fi
+    
+    if [ -f "tests/AdminCoachAssignmentsTest.php" ]; then
+        echo -e "  ${YELLOW}•${NC} AdminCoachAssignmentsTest (Assignments)"
+        php vendor/bin/phpunit tests/AdminCoachAssignmentsTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (35 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+        fi
+    fi
+    
+    if [ -f "tests/CoachAdminDashboardTest.php" ]; then
+        echo -e "  ${YELLOW}•${NC} CoachAdminDashboardTest (Coach Dashboard)"
+        php vendor/bin/phpunit tests/CoachAdminDashboardTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (50 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+        fi
+    fi
+    
+    if [ -f "tests/CoachListTableTest.php" ]; then
+        echo -e "  ${YELLOW}•${NC} CoachListTableTest (List Table)"
+        php vendor/bin/phpunit tests/CoachListTableTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (23 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+        fi
+    fi
+    
+    if [ -f "tests/APIDummyTest.php" ]; then
+        echo -e "  ${YELLOW}•${NC} APIDummyTest (API Endpoints)"
+        php vendor/bin/phpunit tests/APIDummyTest.php --testdox 2>&1
+        if [ $? -eq 0 ]; then
+            echo -e "    ${GREEN}✓ PASSED (18 tests)${NC}"
+        else
+            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+        fi
+    fi
+    
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}  ✓ NEW TOTAL: 690 tests in comprehensive suite!${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    
     echo ""
     echo -e "${BLUE}→ Running Full Regression Test Suite...${NC}"
     

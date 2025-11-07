@@ -96,6 +96,17 @@ else
 fi
 echo ""
 
+# Test 7: Role-Specific Point Rates
+echo -e "${BLUE}→ RoleSpecificPointRatesTest...${NC}"
+php vendor/bin/phpunit tests/RoleSpecificPointRatesTest.php --colors=never 2>&1
+if [ $? -ne 0 ]; then
+    echo -e "${RED}✗ RoleSpecificPointRatesTest FAILED${NC}"
+    FAILED=1
+else
+    echo -e "${GREEN}✓ RoleSpecificPointRatesTest PASSED${NC}"
+fi
+echo ""
+
 if [ $FAILED -eq 1 ]; then
     echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${RED}  ✗ Some tests FAILED - See output above${NC}"

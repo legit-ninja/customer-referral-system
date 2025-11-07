@@ -13,6 +13,7 @@ class ModernCoachDashboard {
         this.initializeCharts();
         this.initializeAnimations();
         this.loadDashboardData();
+        this.initializeCoachEvents();
     }
 
     bindEvents() {
@@ -65,6 +66,270 @@ class ModernCoachDashboard {
         if (viewFullLeaderboard) {
             viewFullLeaderboard.addEventListener('click', () => this.showFullLeaderboard());
         }
+    }
+
+    initializeCoachEvents() {
+        if (!intersoccer_dashboard || !intersoccer_dashboard.coach_events_nonce) {
+            return;
+        }
+
+        const labels = Object.assign({
+            no_events_title: 'No events added yet',
+            no_events_description: 'Add the events you coach so we can generate direct referral links for customers.',
+            copy: 'Copy',
+            open: 'Open',
+            remove: 'Remove',
+        }, intersoccer_dashboard.i18n || {});
+
+        const searchBtn = document.getElementById('coach-event-search-btn');
+        const searchInput = document.getElementById('coach-event-search-input');
+        const addBtn = document.getElementById('coach-event-add-btn');
+        const resultsContainer = document.getElementById('coach-event-search-results');
+        const selectedIdInput = document.getElementById('coach-event-selected-id');
+        const selectedTypeInput = document.getElementById('coach-event-selected-type');
+        const spinner = document.getElementById('coach-event-spinner');
+        const refreshBtn = document.getElementById('coach-events-refresh');
+
+        if (searchBtn && searchInput) {
+            const performSearch = () => {
+                const term = searchInput.value.trim();
+                if (term.length < 2) {
+                    this.showNotification('Please enter at least two characters to search.', 'info');
+                    return;
+                }
+
+                resultsContainer.innerHTML = '<p class="coach-event-search-empty">Searching…</p>';
+
+                fetch(intersoccer_dashboard.ajax_url, {
+                    method: 'POST',
+                    body: new URLSearchParams({
+                        action: 'intersoccer_search_events',
+                        nonce: intersoccer_dashboard.coach_events_nonce,
+                        term
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success && Array.isArray(data.data.results)) {
+                        this.renderCoachEventResults(data.data.results);
+                    } else {
+                        resultsContainer.innerHTML = '<p class="coach-event-search-empty">No events found.</p>';
+                    }
+                })
+                .catch(() => {
+                    resultsContainer.innerHTML = '<p class="coach-event-search-empty">Search failed. Please try again.</p>';
+                });
+            };
+
+            searchBtn.addEventListener('click', performSearch);
+            searchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    performSearch();
+                }
+            });
+        }
+
+        if (resultsContainer) {
+            resultsContainer.addEventListener('click', (e) => {
+                const item = e.target.closest('.coach-event-result');
+                if (!item) return;
+
+                const eventId = item.dataset.eventId;
+                const eventType = item.dataset.eventType;
+                const eventTitle = item.dataset.eventTitle;
+
+                selectedIdInput.value = eventId;
+                selectedTypeInput.value = eventType;
+                searchInput.value = eventTitle;
+
+                resultsContainer.querySelectorAll('.coach-event-result').forEach(el => el.classList.remove('selected'));
+                item.classList.add('selected');
+
+                this.showNotification('Event selected. Click “Request Event” to submit.', 'info');
+            });
+        }
+
+        if (addBtn) {
+            addBtn.addEventListener('click', () => {
+                const eventId = selectedIdInput.value;
+                if (!eventId) {
+                    this.showNotification('Please select an event before requesting.', 'error');
+                    return;
+                }
+
+                if (spinner) {
+                    spinner.classList.add('is-active');
+                }
+
+                fetch(intersoccer_dashboard.ajax_url, {
+                    method: 'POST',
+                    body: new URLSearchParams({
+                        action: 'intersoccer_save_coach_event',
+                        nonce: intersoccer_dashboard.coach_events_nonce,
+                        event_id: eventId,
+                        event_type: selectedTypeInput.value
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        this.showNotification('Event request submitted. Awaiting approval.', 'success');
+                        selectedIdInput.value = '';
+                        selectedTypeInput.value = '';
+                        searchInput.value = '';
+                        resultsContainer.innerHTML = '';
+                        this.refreshCoachEvents();
+                    } else {
+                        this.showNotification(data.data || 'Unable to request event.', 'error');
+                    }
+                })
+                .catch(() => {
+                    this.showNotification('Network error. Please try again.', 'error');
+                })
+                .finally(() => {
+                    if (spinner) {
+                        spinner.classList.remove('is-active');
+                    }
+                });
+            });
+        }
+
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', () => this.refreshCoachEvents());
+        }
+
+        const eventsBody = document.getElementById('coach-events-body');
+        if (eventsBody) {
+            eventsBody.addEventListener('click', (e) => {
+                const copyBtn = e.target.closest('.coach-event-copy');
+                if (copyBtn) {
+                    this.copyToClipboard(copyBtn.dataset.link);
+                    this.showNotification('Event link copied to clipboard!', 'success');
+                    return;
+                }
+
+                const removeBtn = e.target.closest('.coach-event-remove');
+                if (removeBtn) {
+                    e.preventDefault();
+                    const assignmentId = removeBtn.dataset.assignmentId;
+                    if (!assignmentId) {
+                        return;
+                    }
+
+                    if (!confirm('Remove this event from your list?')) {
+                        return;
+                    }
+
+                    removeBtn.disabled = true;
+
+                    fetch(intersoccer_dashboard.ajax_url, {
+                        method: 'POST',
+                        body: new URLSearchParams({
+                            action: 'intersoccer_delete_coach_event',
+                            nonce: intersoccer_dashboard.coach_events_nonce,
+                            assignment_id: assignmentId
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            this.showNotification('Event removed.', 'success');
+                            this.refreshCoachEvents();
+                        } else {
+                            this.showNotification(data.data || 'Unable to remove event.', 'error');
+                        }
+                    })
+                    .catch(() => {
+                        this.showNotification('Network error. Please try again.', 'error');
+                    })
+                    .finally(() => {
+                        removeBtn.disabled = false;
+                    });
+                }
+            });
+        }
+    }
+
+    renderCoachEventResults(results) {
+        const container = document.getElementById('coach-event-search-results');
+        if (!container) {
+            return;
+        }
+
+        if (!results.length) {
+            container.innerHTML = '<p class="coach-event-search-empty">No events found.</p>';
+            return;
+        }
+
+        container.innerHTML = results.map(result => `
+            <button type="button" class="coach-event-result" data-event-id="${result.id}" data-event-type="${result.type}" data-event-title="${result.title}">
+                <strong>${result.title}</strong>
+                <span class="coach-event-result-meta">ID: ${result.id} • ${(result.type_label || result.type)}</span>
+            </button>
+        `).join('');
+    }
+
+    refreshCoachEvents() {
+        const body = document.getElementById('coach-events-body');
+        if (!body) return;
+
+        fetch(intersoccer_dashboard.ajax_url, {
+            method: 'POST',
+            body: new URLSearchParams({
+                action: 'intersoccer_get_coach_events',
+                nonce: intersoccer_dashboard.coach_events_nonce
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                this.showNotification('Unable to refresh events.', 'error');
+                return;
+            }
+
+            const events = (data.data && data.data.events) || [];
+            if (!events.length) {
+                body.innerHTML = `
+                    <div class="empty-state">
+                        <i class="icon-calendar"></i>
+                        <h4>${labels.no_events_title}</h4>
+                        <p>${labels.no_events_description}</p>
+                    </div>
+                `;
+                return;
+            }
+
+            body.innerHTML = `
+                <ul class="coach-events-list">
+                    ${events.map(event => `
+                        <li class="coach-event-item" data-assignment-id="${event.id}">
+                            <div class="event-title">
+                                ${event.event_permalink ? `<a href="${event.event_permalink}" target="_blank" rel="noopener noreferrer">${event.event_title}</a>` : event.event_title}
+                            </div>
+                            <div class="event-meta">
+                                <span class="event-status status-${event.status}">${event.status}</span>
+                                <span class="event-source">• ${event.source}</span>
+                                ${event.assigned_at ? `<span class="event-date">• ${event.assigned_at}</span>` : ''}
+                            </div>
+                            ${event.event_link ? `
+                                <div class="event-share">
+                                    <input type="text" class="coach-event-share-input" value="${event.event_link}" readonly>
+                                    <button class="btn-tertiary coach-event-copy" data-link="${event.event_link}">${labels.copy}</button>
+                                    <a class="btn-secondary" href="${event.event_link}" target="_blank" rel="noopener noreferrer">${labels.open}</a>
+                                </div>
+                            ` : ''}
+                            <div class="event-actions">
+                                <button class="btn-tertiary coach-event-remove" data-assignment-id="${event.id}">${labels.remove}</button>
+                            </div>
+                        </li>
+                    `).join('')}
+                </ul>
+            `;
+        })
+        .catch(() => {
+            this.showNotification('Unable to refresh events.', 'error');
+        });
     }
 
     copyReferralLink() {
@@ -370,6 +635,11 @@ ${intersoccer_dashboard.user_name}</textarea>
             referrals: [],
             credits: []
         };
+
+        const existingChart = Chart.getChart(ctx);
+        if (existingChart) {
+            existingChart.destroy();
+        }
 
         new Chart(ctx, {
             type: 'line',
