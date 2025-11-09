@@ -238,8 +238,8 @@ class InterSoccer_Admin_Settings {
                         <tr>
                             <th scope="row">Max Credits per Order</th>
                             <td>
-                                <input type="number" name="intersoccer_max_credits_per_order" value="<?php echo get_option('intersoccer_max_credits_per_order', '100'); ?>" min="1" max="1000">
-                                <p class="description">Maximum credits a customer can use in a single order</p>
+                                <input type="number" name="intersoccer_max_credits_per_order" value="<?php echo get_option('intersoccer_max_credits_per_order', '9999'); ?>" min="1" max="9999">
+                                <p class="description">Maximum credits a customer can use in a single order (default is effectively unlimited relative to order total)</p>
                             </td>
                         </tr>
                         <tr>
@@ -247,6 +247,23 @@ class InterSoccer_Admin_Settings {
                             <td>
                                 <input type="checkbox" name="intersoccer_debug_logging" value="1" <?php checked(get_option('intersoccer_debug_logging'), '1'); ?>>
                                 <p class="description">Enable detailed logging for debugging purposes</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="referral-eligibility-window"><?php esc_html_e('Referral Eligibility Window (months)', 'intersoccer-referral'); ?></label>
+                            </th>
+                            <td>
+                                <input type="number"
+                                       id="referral-eligibility-window"
+                                       name="intersoccer_referral_eligibility_months"
+                                       value="<?php echo esc_attr(get_option('intersoccer_referral_eligibility_months', 18)); ?>"
+                                       min="0"
+                                       max="60"
+                                       step="1">
+                                <p class="description">
+                                    <?php esc_html_e('Customers must be inactive for this many months before a referral from another customer earns rewards again. Set to 0 to disable the dormancy rule.', 'intersoccer-referral'); ?>
+                                </p>
                             </td>
                         </tr>
                         <tr>
@@ -2419,7 +2436,7 @@ class InterSoccer_Admin_Settings {
 
         register_setting('intersoccer_settings', 'intersoccer_max_credits_per_order', [
             'type' => 'number',
-            'default' => '100',
+            'default' => '9999',
             'sanitize_callback' => 'intval'
         ]);
 
@@ -2427,6 +2444,12 @@ class InterSoccer_Admin_Settings {
             'type' => 'boolean',
             'default' => false,
             'sanitize_callback' => 'boolval'
+        ]);
+
+        register_setting('intersoccer_settings', 'intersoccer_referral_eligibility_months', [
+            'type' => 'number',
+            'default' => 18,
+            'sanitize_callback' => [$this, 'sanitize_non_negative_int_option']
         ]);
 
         register_setting('intersoccer_points_configuration', 'intersoccer_points_golive_date', [
@@ -2742,5 +2765,21 @@ class InterSoccer_Admin_Settings {
         }
 
         return '';
+    }
+
+    /**
+     * Sanitize numeric options expected to be non-negative integers
+     *
+     * @param mixed $value
+     * @return int
+     */
+    public function sanitize_non_negative_int_option($value) {
+        $value = intval($value);
+
+        if ($value < 0) {
+            return 0;
+        }
+
+        return $value;
     }
 }

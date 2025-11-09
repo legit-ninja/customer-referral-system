@@ -228,9 +228,14 @@ class InterSoccer_Referral_Handler {
         $referrer = $this->get_referrer_by_code($ref_code);
         if (!$referrer) return;
 
-        $is_first_purchase = $this->is_first_purchase($customer_id);
-        $commission = $referrer['type'] === 'coach' ? InterSoccer_Commission_Calculator::calculate_total_commission($order, $referrer['id'], $customer_id, $is_first_purchase ? 1 : 2) : 0;
-        $credits = $is_first_purchase ? 500 : 0;
+        $eligibility = $this->evaluate_referral_eligibility($customer_id, $order_id);
+        $is_customer_referrer = ($referrer['type'] === 'customer');
+        $referral_status = 'pending';
+
+        $is_first_purchase = $this->is_first_purchase($customer_id, $order_id);
+        $referrer_reward_points = ($is_customer_referrer && $eligibility['eligible']) ? 500 : 0;
+
+        update_post_meta($order_id, '_intersoccer_referral_eligibility', $eligibility);
 
         // Insert referral record
         $wpdb->insert($table_name, [
@@ -239,9 +244,9 @@ class InterSoccer_Referral_Handler {
             'referrer_id' => $referrer['id'],
             'referrer_type' => $referrer['type'],
             'order_id' => $order_id,
-            'commission_amount' => $commission,
-            'status' => 'pending',
-            'purchase_count' => $is_first_purchase ? 1 : $this->get_purchase_count($customer_id),
+            'commission_amount' => 0,
+            'status' => $referral_status,
+            'purchase_count' => $this->get_purchase_count($customer_id) ?: 1,
             'referral_code' => $ref_code,
             'conversion_date' => current_time('mysql')
         ]);
@@ -297,27 +302,59 @@ class InterSoccer_Referral_Handler {
         }
 
         // Continue with existing referral processing...
-        if ($referrer['type'] === 'coach') {
-            $coach_credits = (float) get_user_meta($referrer['id'], 'intersoccer_credits', true);
-            update_user_meta($referrer['id'], 'intersoccer_credits', $coach_credits + $commission);
-        } else {
+        if ($referrer_reward_points > 0) {
             $customer_credits = (float) get_user_meta($referrer['id'], 'intersoccer_customer_credits', true);
-            update_user_meta($referrer['id'], 'intersoccer_customer_credits', $customer_credits + $credits);
+            update_user_meta($referrer['id'], 'intersoccer_customer_credits', $customer_credits + $referrer_reward_points);
             $referrals_made = get_user_meta($referrer['id'], 'intersoccer_referrals_made', true) ?: [];
             $referrals_made[] = ['order_id' => $order_id, 'date' => current_time('mysql')];
             update_user_meta($referrer['id'], 'intersoccer_referrals_made', $referrals_made);
+        } elseif (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log(sprintf(
+                'InterSoccer Referral: Customer referral for order #%d marked ineligible (reason: %s)',
+                $order_id,
+                $eligibility['reason']
+            ));
         }
 
-        // Apply first-time customer benefits
-        if ($is_first_purchase) {
+        $customer_bonus_points = $eligibility['eligible'] ? intval(get_option('intersoccer_new_customer_credits', 50)) : 0;
+        if ($customer_bonus_points > 0 && $customer_id) {
             $customer_credits = (float) get_user_meta($customer_id, 'intersoccer_customer_credits', true);
-            update_user_meta($customer_id, 'intersoccer_customer_credits', $customer_credits + 50);
-            
-            wp_mail($order->get_billing_email(), 'Welcome to InterSoccer!', 'Thanks for joining! You have 50 CHF credits and are connected with your coach partner.');
+            update_user_meta($customer_id, 'intersoccer_customer_credits', $customer_credits + $customer_bonus_points);
+        }
+
+        // Apply first-time customer benefits (email notification)
+        if ($is_first_purchase && $customer_bonus_points > 0) {
+            wp_mail(
+                $order->get_billing_email(),
+                'Welcome to InterSoccer!',
+                'Thanks for joining! You have 50 CHF credits and are connected with your coach partner.'
+            );
         }
 
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('InterSoccer Referral: Processed referral order #' . $order_id . ' - referrer_type: ' . $referrer['type'] . ', credits: ' . $credits);
+            error_log(sprintf(
+                'InterSoccer Referral: Processed referral order #%d - referrer_type: %s, eligible: %s, commission: %s, referrer_reward: %s, customer_bonus: %s',
+                $order_id,
+                $referrer['type'],
+                $eligibility['eligible'] ? 'yes' : 'no',
+                'computed_on_completion',
+                $referrer_reward_points,
+                $customer_bonus_points
+            ));
+        }
+
+        if (
+            $referrer['type'] === 'coach'
+            && class_exists('InterSoccer_Commission_Manager')
+            && $order->has_status(['processing', 'completed'])
+        ) {
+            $commission_manager = InterSoccer_Commission_Manager::get_instance();
+            if (method_exists($commission_manager, 'process_referral_commissions')) {
+                $commission_manager->process_referral_commissions($order_id);
+            }
+            if (method_exists($commission_manager, 'process_referral_code_rewards')) {
+                $commission_manager->process_referral_code_rewards($order_id);
+            }
         }
         
         // Clear referral session
@@ -343,6 +380,95 @@ class InterSoccer_Referral_Handler {
 
         $cookie_value = $_COOKIE['intersoccer_referral'] ?? '';
         return $this->normalize_referral_payload($cookie_value);
+    }
+
+    /**
+     * Evaluate whether a referred customer is eligible based on the dormancy window.
+     *
+     * @param int $customer_id
+     * @param int $current_order_id
+     * @return array{eligible:bool,reason:string,lookback_months:int,last_order_id:?int,last_order_date:?string,months_since_last:?int,evaluated_at:string}
+     */
+    private function evaluate_referral_eligibility($customer_id, $current_order_id) {
+        $lookback_months = intval(get_option('intersoccer_referral_eligibility_months', 18));
+        if ($lookback_months < 0) {
+            $lookback_months = 0;
+        }
+
+        $result = [
+            'eligible' => true,
+            'reason' => 'no_history',
+            'lookback_months' => $lookback_months,
+            'last_order_id' => null,
+            'last_order_date' => null,
+            'months_since_last' => null,
+            'evaluated_at' => current_time('mysql'),
+        ];
+
+        if ($customer_id <= 0) {
+            $result['reason'] = 'guest_checkout';
+            return $result;
+        }
+
+        $query_args = [
+            'customer' => $customer_id,
+            'status' => ['wc-completed', 'completed'],
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'limit' => 1,
+        ];
+
+        if (!empty($current_order_id)) {
+            $query_args['exclude'] = [$current_order_id];
+        }
+
+        $previous_orders = wc_get_orders($query_args);
+
+        if (empty($previous_orders)) {
+            if ($lookback_months === 0) {
+                $result['reason'] = 'rule_disabled';
+            }
+            return $result;
+        }
+
+        /** @var WC_Order $last_order */
+        $last_order = $previous_orders[0];
+        $result['last_order_id'] = $last_order->get_id();
+
+        $last_completed = $last_order->get_date_completed();
+        if (!$last_completed) {
+            $last_completed = $last_order->get_date_created();
+        }
+
+        if ($last_completed instanceof WC_DateTime) {
+            $result['last_order_date'] = $last_completed->date_i18n('Y-m-d H:i:s');
+
+            $timezone = wp_timezone();
+            $now = new \DateTimeImmutable('now', $timezone);
+            $last_datetime = (new \DateTimeImmutable('@' . $last_completed->getTimestamp()))->setTimezone($timezone);
+            $diff = $last_datetime->diff($now);
+            $result['months_since_last'] = ($diff->y * 12) + $diff->m;
+
+            if ($lookback_months === 0) {
+                $result['reason'] = 'rule_disabled';
+                return $result;
+            }
+
+            $cutoff = $now->sub(new \DateInterval('P' . $lookback_months . 'M'));
+
+            if ($last_datetime >= $cutoff) {
+                $result['eligible'] = false;
+                $result['reason'] = 'recent_purchase';
+            } else {
+                $result['reason'] = 'dormant_customer';
+            }
+        } else {
+            if ($lookback_months === 0) {
+                $result['reason'] = 'rule_disabled';
+            }
+        }
+
+        return $result;
     }
 
     /**
@@ -666,12 +792,35 @@ class InterSoccer_Referral_Handler {
     }
 
     // Check if first purchase
-    private function is_first_purchase($customer_id) {
-        return wc_get_orders(['customer' => $customer_id, 'status' => 'completed', 'limit' => -1]) <= 1;
+    private function is_first_purchase($customer_id, $current_order_id = null) {
+        if (empty($customer_id)) {
+            return true;
+        }
+
+        $query_args = [
+            'customer' => $customer_id,
+            'status' => ['wc-completed', 'completed'],
+            'orderby' => 'date',
+            'order' => 'DESC',
+            'limit' => 1,
+            'return' => 'ids',
+        ];
+
+        if (!empty($current_order_id)) {
+            $query_args['exclude'] = [$current_order_id];
+        }
+
+        $orders = wc_get_orders($query_args);
+
+        return empty($orders);
     }
 
     private function get_purchase_count($customer_id) {
-        return count(wc_get_orders(['customer' => $customer_id, 'status' => 'completed', 'limit' => -1]));
+        return count(wc_get_orders([
+            'customer' => $customer_id,
+            'status' => ['wc-completed', 'completed'],
+            'limit' => -1,
+        ]));
     }
 
     // Add credit field to checkout

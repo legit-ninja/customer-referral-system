@@ -59,10 +59,12 @@ class InterSoccer_Referral_Admin_Dashboard {
         add_action('wp_ajax_export_audit_log', [$this->settings, 'export_audit_log']);
         add_action('wp_ajax_bulk_credit_adjustment', [$this->settings, 'bulk_credit_adjustment']);
         add_action('wp_ajax_get_points_statistics', [$this->settings, 'get_points_statistics_ajax']);
-        add_action('wp_ajax_get_points_ledger', [$this->settings, 'get_points_ledger_ajax']);
+        add_action('wp_ajax_get_points_ledger', [$this->points, 'get_points_ledger_ajax']);
         add_action('wp_ajax_get_points_users', [$this->points, 'get_points_users_ajax']);
         add_action('wp_ajax_adjust_user_points', [$this->points, 'adjust_user_points_ajax']);
         add_action('wp_ajax_export_points_report', [$this->points, 'export_points_report_ajax']);
+        add_action('wp_ajax_intersoccer_update_referral_eligibility', [$this->referrals, 'ajax_update_referral_eligibility']);
+        add_action('admin_post_intersoccer_delete_referral', [$this->referrals, 'handle_delete_referral']);
 
         // Debug action to test AJAX is working
         add_action('wp_ajax_test_ajax_connection', [$this, 'test_ajax_connection']);
@@ -394,15 +396,55 @@ class InterSoccer_Referral_Admin_Dashboard {
         // Add referral code input field before order review
         if (!is_user_logged_in()) return;
 
+        $referral_context = $this->get_checkout_referral_context();
+        $prefill_code = $referral_context['prefill_code'];
+        $is_code_applied = !empty($referral_context['applied_code']);
+        $auto_apply = $referral_context['auto_apply'] ? 'yes' : 'no';
+
+        $input_attributes = sprintf(
+            ' value="%s" data-code-applied="%s"',
+            esc_attr($prefill_code),
+            $is_code_applied ? 'yes' : 'no'
+        );
+
+        $input_disabled = $is_code_applied ? ' disabled="disabled"' : '';
+        $button_disabled = $is_code_applied ? ' disabled="disabled"' : '';
+        $button_label = $is_code_applied ? __('Applied', 'intersoccer-referral') : __('Apply Code', 'intersoccer-referral');
+
+        $message_text = '';
+        $message_classes = 'intersoccer-referral-message';
+        $message_display = 'none';
+        $message_status_attr = '';
+
+        if (!empty($referral_context['status_message'])) {
+            $message_status_attr = ' data-status-message="' . esc_attr($referral_context['status_message']) . '"';
+            $message_text = $referral_context['status_message'];
+            $message_classes .= ' success';
+            $message_display = 'block';
+        }
+
+        if ($is_code_applied) {
+            $message_text = sprintf(
+                __('Coach referral code %s is applied. Your discount appears in the order summary.', 'intersoccer-referral'),
+                esc_html($prefill_code)
+            );
+            $message_classes .= ' success';
+            $message_display = 'block';
+        }
+
+        if (function_exists('WC') && WC()->session) {
+            WC()->session->set('intersoccer_referral_status_message', null);
+        }
+
         echo '<div class="intersoccer-referral-code-wrapper" style="width: 100%; clear: both; margin-bottom: 20px;">';
         echo '<div class="intersoccer-referral-code" style="border: 1px solid #e1e5e9; border-radius: 8px; padding: 16px; margin: 0; background: #f0f9ff; width: 100%; box-sizing: border-box;">';
         echo '<div style="margin-bottom: 12px;">';
         echo '<label for="intersoccer_referral_code" style="font-weight: 600; color: #111827; margin: 0; display: block; margin-bottom: 8px;">' . __('Coach Referral Code (Optional)', 'intersoccer-referral') . '</label>';
         echo '<p style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px;">' . __('Support your favorite coach! Enter their referral code to give them credit for this purchase.', 'intersoccer-referral') . '</p>';
-        echo '<input type="text" name="intersoccer_referral_code" id="intersoccer_referral_code" placeholder="Enter referral code" style="width: 100%; max-width: 300px; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px;" />';
-        echo '<button type="button" id="apply_referral_code" class="button button-secondary" style="margin-left: 8px; padding: 8px 16px;">' . __('Apply Code', 'intersoccer-referral') . '</button>';
+        echo '<input type="text" name="intersoccer_referral_code" id="intersoccer_referral_code" placeholder="Enter referral code" style="width: 100%; max-width: 300px; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px;"' . $input_attributes . $input_disabled . ' />';
+        echo '<button type="button" id="apply_referral_code" class="button button-secondary" data-auto-apply="' . esc_attr($auto_apply) . '" style="margin-left: 8px; padding: 8px 16px;"' . $button_disabled . '>' . esc_html($button_label) . '</button>';
         echo '</div>';
-        echo '<div id="referral_code_message" style="display: none; margin-top: 8px; padding: 8px; border-radius: 4px; font-size: 14px;"></div>';
+        echo '<div id="referral_code_message" class="' . esc_attr($message_classes) . '" data-applied="' . ($is_code_applied ? 'yes' : 'no') . '"' . $message_status_attr . ' style="display: ' . $message_display . '; margin-top: 8px; padding: 8px; border-radius: 4px; font-size: 14px; background: ' . ($is_code_applied ? '#ecfdf5' : '#fff') . '; color: ' . ($is_code_applied ? '#065f46' : '#111827') . ';">' . esc_html($message_text) . '</div>';
         echo '</div>';
         echo '</div>';
     }
@@ -463,45 +505,100 @@ class InterSoccer_Referral_Admin_Dashboard {
                 function initPointsRedemptionHandlers() {
                     console.log('Initializing points redemption handlers');
 
-                    // Handle referral code application
-                    $(document).off('click', '#apply_referral_code').on('click', '#apply_referral_code', function() {
-                    var referralCode = $('#intersoccer_referral_code').val().trim();
-                    var $message = $('#referral_code_message');
-                    var $button = $(this);
+                    var $referralInput = $('#intersoccer_referral_code');
+                    var $referralButton = $('#apply_referral_code');
+                    var $referralMessage = $('#referral_code_message');
 
-                    if (!referralCode) {
-                        $message.removeClass('success').addClass('error').html('<?php _e('Please enter a referral code', 'intersoccer-referral'); ?>').show();
-                        return;
-                    }
+                    function applyReferralCode() {
+                        var referralCode = ($referralInput.val() || '').trim();
+                        var $button = $referralButton;
+                        var $message = $referralMessage;
 
-                    $button.prop('disabled', true).text('<?php _e('Applying...', 'intersoccer-referral'); ?>');
+                        if (!referralCode) {
+                            $message.removeClass('success').addClass('error').html('<?php _e('Please enter a referral code', 'intersoccer-referral'); ?>').show();
+                            return;
+                        }
 
-                    $.ajax({
-                        url: '<?php echo admin_url('admin-ajax.php'); ?>',
-                        type: 'POST',
-                        data: {
-                            action: 'apply_referral_code',
-                            referral_code: referralCode,
-                            nonce: '<?php echo wp_create_nonce('intersoccer_checkout_nonce'); ?>'
-                        },
-                        success: function(response) {
-                            if (response.success) {
-                                $message.removeClass('error').addClass('success').html(response.data.message).show();
-                                $('#intersoccer_referral_code').prop('disabled', true);
-                                $button.prop('disabled', true).text('<?php _e('Applied', 'intersoccer-referral'); ?>');
-                                // Trigger checkout update to show discount
-                                $(document.body).trigger('update_checkout');
-                            } else {
-                                $message.removeClass('success').addClass('error').html(response.data.message).show();
+                        $('input#coach_referral_code').val(referralCode);
+
+                        $button.prop('disabled', true).text('<?php _e('Applying...', 'intersoccer-referral'); ?>');
+
+                        $.ajax({
+                            url: '<?php echo admin_url('admin-ajax.php'); ?>',
+                            type: 'POST',
+                            data: {
+                                action: 'apply_referral_code',
+                                referral_code: referralCode,
+                                nonce: '<?php echo wp_create_nonce('intersoccer_checkout_nonce'); ?>'
+                            },
+                            success: function(response) {
+                                if (response.success) {
+                                    var appliedMessage = response.data.message;
+                                    if (typeof response.data.discount_amount !== 'undefined') {
+                                        var discountValue = parseFloat(response.data.discount_amount);
+                                        if (!isNaN(discountValue)) {
+                                            appliedMessage += ' ' + '<?php echo esc_js(__('Discount:', 'intersoccer-referral')); ?> ' + 'CHF ' + discountValue.toFixed(2);
+                                        }
+                                    }
+
+                                    $message.removeClass('error').addClass('success').html(appliedMessage).show();
+                                     $referralInput.prop('disabled', true).data('code-applied', 'yes');
+                                     $button.prop('disabled', true).text('<?php _e('Applied', 'intersoccer-referral'); ?>').data('auto-apply', 'no');
+                                     $message.attr('data-applied', 'yes');
+                                     $('input#coach_referral_code').val(referralCode);
+                                     $(document.body).trigger('update_checkout');
+                                 } else {
+                                     $message.removeClass('success').addClass('error').html(response.data.message).show();
+                                     $button.prop('disabled', false).text('<?php _e('Apply Code', 'intersoccer-referral'); ?>');
+                                 }
+                            },
+                            error: function() {
+                                $message.removeClass('success').addClass('error').html('<?php _e('Error applying referral code', 'intersoccer-referral'); ?>').show();
                                 $button.prop('disabled', false).text('<?php _e('Apply Code', 'intersoccer-referral'); ?>');
                             }
-                        },
-                        error: function() {
-                            $message.removeClass('success').addClass('error').html('<?php _e('Error applying referral code', 'intersoccer-referral'); ?>').show();
-                            $button.prop('disabled', false).text('<?php _e('Apply Code', 'intersoccer-referral'); ?>');
+                        });
+                    }
+
+                    if ($referralInput.length && $referralButton.length) {
+                        var isApplied = $referralInput.data('code-applied') === 'yes' || ($referralMessage.data('applied') === 'yes');
+
+                        if (isApplied) {
+                            $referralInput.prop('disabled', true);
+                            $referralButton.prop('disabled', true).text('<?php _e('Applied', 'intersoccer-referral'); ?>');
+                            if ($referralMessage.length) {
+                                $referralMessage.removeClass('error').addClass('success');
+                                var statusMessage = $referralMessage.data('statusMessage');
+                                if (statusMessage) {
+                                    $referralMessage.html(statusMessage).show();
+                                } else {
+                                    $referralMessage.show();
+                                }
+                            }
+                        } else {
+                            var statusMessagePrefill = $referralMessage.data('statusMessage');
+                            if (statusMessagePrefill) {
+                                $referralMessage.removeClass('error').addClass('success').html(statusMessagePrefill).show();
+                            }
                         }
+                    }
+
+                    $(document).off('click', '#apply_referral_code').on('click', '#apply_referral_code', function(event) {
+                        event.preventDefault();
+                        applyReferralCode();
                     });
-                });
+
+                    if ($referralInput.length && $referralButton.length) {
+                        var shouldAutoApply = $referralButton.data('auto-apply') === 'yes';
+                        var existingCode = ($referralInput.val() || '').trim();
+                        var alreadyTriggered = $referralButton.data('autoTriggered');
+                        var isAlreadyApplied = $referralInput.data('code-applied') === 'yes';
+
+                        if (!isAlreadyApplied && shouldAutoApply && existingCode && !alreadyTriggered) {
+                            console.log('Auto-applying referral code:', existingCode);
+                            $referralButton.data('autoTriggered', true);
+                            applyReferralCode();
+                        }
+                    }
 
                     // Handle points redemption checkbox
                     $(document).off('change', '#intersoccer_use_points').on('change', '#intersoccer_use_points', function() {
@@ -865,50 +962,20 @@ class InterSoccer_Referral_Admin_Dashboard {
             wp_send_json_error(['message' => 'Must be logged in to apply referral code']);
         }
 
-        $user_id = get_current_user_id();
-        $referral_code = strtoupper(sanitize_text_field($_POST['referral_code']));
-
-
-
-        // Check if referral code is already applied to this session
-        $applied_code = WC()->session->get('intersoccer_applied_referral_code');
-        if ($applied_code) {
-            // Log attempt to apply multiple referral codes
-            do_action('intersoccer_referral_code_invalid', $referral_code, 'code_already_applied');
-            wp_send_json_error(['message' => 'Referral code already applied to this order']);
-        }
-
-        // Find coach with this referral code
-        $coaches = get_users([
-            'role' => 'coach',
-            'meta_key' => 'referral_code',
-            'meta_value' => $referral_code,
-            'number' => 1
+        $referral_code = sanitize_text_field($_POST['referral_code'] ?? '');
+        $result = $this->apply_coach_referral_code_internal($referral_code, [
+            'recalculate' => true,
+            'context' => 'ajax'
         ]);
 
-        if (empty($coaches)) {
-            // Log invalid referral code attempt
-            do_action('intersoccer_referral_code_invalid', $referral_code, 'code_not_found');
-            wp_send_json_error(['message' => 'Invalid referral code']);
+        if (!$result['success']) {
+            wp_send_json_error(['message' => $result['message']]);
         }
 
-        $coach = $coaches[0];
-        $coach_name = $coach->first_name . ' ' . $coach->last_name;
-
-        // Store referral code and coach info in session
-        WC()->session->set('intersoccer_applied_referral_code', $referral_code);
-        WC()->session->set('intersoccer_referral_coach_id', $coach->ID);
-
-        // Store the coach ID in customer metadata for ongoing commissions
-        update_user_meta($user_id, 'intersoccer_preferred_coach', $coach->ID);
-
-        // Log successful referral code usage
-        do_action('intersoccer_referral_code_used', $referral_code, $user_id, $coach->ID);
-
         wp_send_json_success([
-            'message' => sprintf(__('Referral code applied! You will receive a discount from coach %s.', 'intersoccer-referral'), $coach_name),
-            'coach_name' => $coach_name,
-            'discount_amount' => 10 // 10 CHF discount for referral codes
+            'message' => $result['message'],
+            'coach_name' => $result['coach_name'],
+            'discount_amount' => $result['discount_amount']
         ]);
     }
 
@@ -934,8 +1001,16 @@ class InterSoccer_Referral_Admin_Dashboard {
 
         // Apply points discount
         $points_to_redeem = WC()->session->get('intersoccer_points_to_redeem', 0);
+        $is_checkout_context = (function_exists('is_checkout') && is_checkout());
 
-        if ($points_to_redeem > 0) {
+        if (!$is_checkout_context && wp_doing_ajax() && isset($_REQUEST['wc-ajax'])) {
+            $ajax_action = sanitize_text_field(wp_unslash($_REQUEST['wc-ajax']));
+            if ($ajax_action === 'update_order_review') {
+                $is_checkout_context = true;
+            }
+        }
+
+        if ($is_checkout_context && $points_to_redeem > 0) {
             $discount_amount = -$points_to_redeem; // Negative fee for discount
             $cart->add_fee(__('Referral Credits Discount', 'intersoccer-referral'), $discount_amount, true, '');
             
@@ -952,5 +1027,209 @@ class InterSoccer_Referral_Admin_Dashboard {
     public function display_points_used_in_orders($order) {
         // This would modify the order total column to show points used
         // Implementation depends on WooCommerce hooks
+    }
+
+    private function get_checkout_referral_context() {
+        $context = [
+            'prefill_code' => '',
+            'applied_code' => '',
+            'auto_apply' => false,
+            'source' => 'none'
+        ];
+
+        if (function_exists('WC') && WC()->session) {
+            $session = WC()->session;
+            $session_payload = $session->get('intersoccer_referral');
+            $context['prefill_code'] = $this->normalize_referral_code_source($session_payload);
+            $context['applied_code'] = $this->normalize_referral_code_source(
+                $session->get('intersoccer_applied_referral_code')
+            );
+            if (!empty($context['prefill_code'])) {
+                $context['source'] = 'session';
+            }
+            $context['status_message'] = $session->get('intersoccer_referral_status_message');
+        }
+
+        if (empty($context['prefill_code']) && isset($_COOKIE['intersoccer_referral'])) {
+            $context['prefill_code'] = $this->normalize_referral_code_source($_COOKIE['intersoccer_referral']);
+            if (!empty($context['prefill_code'])) {
+                $context['source'] = 'cookie';
+            }
+        }
+
+        if (!empty($context['applied_code'])) {
+            $context['prefill_code'] = $context['applied_code'];
+        } elseif (!empty($context['prefill_code'])) {
+            $context['auto_apply'] = true;
+        }
+
+        if ($context['auto_apply'] && !empty($context['prefill_code'])) {
+            $autoAppliedKey = 'intersoccer_referral_auto_applied_' . md5($context['prefill_code']);
+            $session_applied = (function_exists('WC') && WC()->session) ? WC()->session->get($autoAppliedKey) : null;
+
+            if (!$session_applied) {
+                $result = $this->apply_coach_referral_code_internal($context['prefill_code'], [
+                    'recalculate' => true,
+                    'context' => 'auto-apply',
+                    'silent' => true
+                ]);
+
+                if ($result['success']) {
+                    $context['applied_code'] = strtoupper($context['prefill_code']);
+                    $context['prefill_code'] = $context['applied_code'];
+                    $context['auto_apply'] = false;
+                    $context['status_message'] = $result['message'];
+
+                    if (function_exists('WC') && WC()->session) {
+                        WC()->session->set('intersoccer_referral_status_message', $result['message']);
+                        WC()->session->set($autoAppliedKey, time());
+                    }
+                }
+            }
+        }
+
+        return $context;
+    }
+
+    private function normalize_referral_code_source($source) {
+        if (empty($source)) {
+            return '';
+        }
+
+        if (is_array($source)) {
+            return strtoupper(sanitize_text_field($source['code'] ?? ''));
+        }
+
+        if (is_string($source)) {
+            $decoded = json_decode(stripslashes($source), true);
+            if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+                return $this->normalize_referral_code_source($decoded);
+            }
+
+            return strtoupper(sanitize_text_field($source));
+        }
+
+        return '';
+    }
+
+    private function apply_coach_referral_code_internal($referral_code, array $args = []) {
+        $defaults = [
+            'recalculate' => false,
+            'context' => 'manual',
+            'silent' => false,
+        ];
+
+        $args = array_merge($defaults, $args);
+        $referral_code = strtoupper(trim($referral_code));
+
+        if ($referral_code === '') {
+            return [
+                'success' => false,
+                'message' => __('Please enter a referral code.', 'intersoccer-referral')
+            ];
+        }
+
+        if (!is_user_logged_in()) {
+            return [
+                'success' => false,
+                'message' => __('Please log in before applying a referral code.', 'intersoccer-referral')
+            ];
+        }
+
+        if (!function_exists('WC') || !WC()->session) {
+            return [
+                'success' => false,
+                'message' => __('Unable to access your checkout session. Please refresh and try again.', 'intersoccer-referral')
+            ];
+        }
+
+        $session = WC()->session;
+
+        $existing_applied_code = strtoupper((string) $session->get('intersoccer_applied_referral_code'));
+        if ($existing_applied_code && $existing_applied_code !== $referral_code) {
+            do_action('intersoccer_referral_code_invalid', $referral_code, 'code_already_applied');
+            return [
+                'success' => false,
+                'message' => __('A different referral code is already applied to this order.', 'intersoccer-referral')
+            ];
+        }
+
+        $customer_referral_code = strtoupper((string) $session->get('customer_referral_code'));
+        $partner_referral_code = strtoupper((string) $session->get('partner_referral_code'));
+        $influencer_referral_code = strtoupper((string) $session->get('influencer_referral_code'));
+        $affiliate_referral_code = strtoupper((string) $session->get('affiliate_referral_code'));
+        $existing_coach_session_code = strtoupper((string) $session->get('coach_referral_code'));
+
+        $conflicts = [];
+        if ($customer_referral_code && $customer_referral_code !== $referral_code) {
+            $conflicts[] = __('friend referral code', 'intersoccer-referral');
+        }
+        if ($partner_referral_code) {
+            $conflicts[] = __('partner referral code', 'intersoccer-referral');
+        }
+        if ($influencer_referral_code) {
+            $conflicts[] = __('influencer referral code', 'intersoccer-referral');
+        }
+        if ($affiliate_referral_code) {
+            $conflicts[] = __('affiliate referral code', 'intersoccer-referral');
+        }
+        if ($existing_coach_session_code && $existing_coach_session_code !== $referral_code) {
+            $conflicts[] = __('a different coach referral code', 'intersoccer-referral');
+        }
+
+        if (!empty($conflicts)) {
+            return [
+                'success' => false,
+                'message' => sprintf(
+                    __('Another referral code is already applied (%s). Please remove it before using a coach code.', 'intersoccer-referral'),
+                    implode(', ', $conflicts)
+                )
+            ];
+        }
+
+        $coaches = get_users([
+            'role' => 'coach',
+            'meta_key' => 'referral_code',
+            'meta_value' => $referral_code,
+            'number' => 1
+        ]);
+
+        if (empty($coaches)) {
+            do_action('intersoccer_referral_code_invalid', $referral_code, 'code_not_found');
+            return [
+                'success' => false,
+                'message' => __('Invalid referral code.', 'intersoccer-referral')
+            ];
+        }
+
+        $coach = $coaches[0];
+        $coach_name = trim(($coach->first_name ?? '') . ' ' . ($coach->last_name ?? ''));
+        if ($coach_name === '') {
+            $coach_name = $coach->display_name;
+        }
+
+        $session->set('intersoccer_applied_referral_code', $referral_code);
+        $session->set('intersoccer_referral_coach_id', $coach->ID);
+        $session->set('coach_referral_code', $referral_code);
+        $session->set('intersoccer_referral_status_message', sprintf(
+            __('Referral code applied! You will receive a discount from coach %s.', 'intersoccer-referral'),
+            $coach_name
+        ));
+
+        update_user_meta(get_current_user_id(), 'intersoccer_preferred_coach', $coach->ID);
+
+        if (!empty($args['recalculate']) && WC()->cart) {
+            WC()->cart->calculate_totals();
+            WC()->cart->set_session();
+        }
+
+        do_action('intersoccer_referral_code_used', $referral_code, get_current_user_id(), $coach->ID);
+
+        return [
+            'success' => true,
+            'message' => sprintf(__('Referral code applied! You will receive a discount from coach %s.', 'intersoccer-referral'), $coach_name),
+            'coach_name' => $coach_name,
+            'discount_amount' => 10
+        ];
     }
 }

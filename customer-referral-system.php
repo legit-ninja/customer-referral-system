@@ -122,6 +122,12 @@ class InterSoccer_Referral_System {
         // Move Elementor integration to plugins_loaded
         add_action('elementor/loaded', [$this,'initiate_elementor_integration']);
         add_action('elementor/init', [$this, 'initiate_elementor_integration']);
+
+        // Customer-facing referral tools (WooCommerce My Account)
+        add_action('init', [$this, 'register_customer_account_endpoint']);
+        add_filter('query_vars', [$this, 'add_customer_account_query_var']);
+        add_filter('woocommerce_account_menu_items', [$this, 'add_customer_dashboard_menu_item']);
+        add_action('woocommerce_account_referrals_endpoint', [$this, 'render_customer_account_endpoint']);
     }
 
     public function initiate_elementor_integration() {
@@ -370,6 +376,49 @@ class InterSoccer_Referral_System {
             KEY idx_created_at (created_at)
         ) $charset_collate;";
 
+        // Coach commissions table for finalized commission payouts
+        $coach_commissions_table = $wpdb->prefix . 'intersoccer_coach_commissions';
+        $coach_commissions_sql = "CREATE TABLE $coach_commissions_table (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            coach_id bigint(20) unsigned NOT NULL,
+            order_id bigint(20) unsigned NOT NULL,
+            commission_amount decimal(10,2) NOT NULL DEFAULT '0.00',
+            commission_rate decimal(10,2) NOT NULL DEFAULT '0.00',
+            order_total decimal(10,2) NOT NULL DEFAULT '0.00',
+            currency varchar(10) DEFAULT 'CHF',
+            status varchar(20) DEFAULT 'approved',
+            notes longtext,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY unique_coach_order (coach_id, order_id),
+            KEY idx_coach_id (coach_id),
+            KEY idx_order_id (order_id),
+            KEY idx_status (status),
+            KEY idx_created_at (created_at)
+        ) $charset_collate;";
+
+        // Audit log table for detailed event tracking
+        $audit_log_table = $wpdb->prefix . 'intersoccer_audit_log';
+        $audit_log_sql = "CREATE TABLE $audit_log_table (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            event_type varchar(100) NOT NULL,
+            category varchar(50) NOT NULL DEFAULT 'general',
+            user_id bigint(20) unsigned NULL,
+            data longtext NOT NULL,
+            ip_address varchar(45) DEFAULT '',
+            user_agent text DEFAULT '',
+            session_id varchar(255) DEFAULT '',
+            created_at datetime NOT NULL,
+            created_at_gmt datetime NOT NULL,
+            PRIMARY KEY (id),
+            KEY event_type (event_type),
+            KEY category (category),
+            KEY user_id (user_id),
+            KEY created_at (created_at),
+            KEY ip_address (ip_address)
+        ) $charset_collate;";
+
         // Points log table for digital currency ledger
         $points_log_table = $wpdb->prefix . 'intersoccer_points_log';
         $points_log_sql = "CREATE TABLE $points_log_table (
@@ -439,6 +488,8 @@ class InterSoccer_Referral_System {
         dbDelta($activities_sql);
         dbDelta($credits_sql);
         dbDelta($redemptions_sql);
+        dbDelta($coach_commissions_sql);
+        dbDelta($audit_log_sql);
         dbDelta($points_log_sql);
         dbDelta($assignments_sql);
         // Update version
@@ -524,6 +575,121 @@ class InterSoccer_Referral_System {
         add_option('intersoccer_cookie_duration', 30);
         add_option('intersoccer_enable_gamification', 1);
         add_option('intersoccer_enable_email_notifications', 1);
+        add_option('intersoccer_referral_eligibility_months', 18);
+        add_option('intersoccer_max_credits_per_order', 9999);
+
+        // Upgrade legacy ceiling (pre-unlimited deployments defaulted to 100)
+        $legacy_max = get_option('intersoccer_max_credits_per_order', 9999);
+        if ((int) $legacy_max === 100) {
+            update_option('intersoccer_max_credits_per_order', 9999);
+        }
+    }
+
+    /**
+     * Register WooCommerce My Account endpoint for the customer referral dashboard
+     *
+     * @return void
+     */
+    public function register_customer_account_endpoint() {
+        if (!function_exists('add_rewrite_endpoint')) {
+            return;
+        }
+
+        $mask = 0;
+        if (defined('EP_ROOT')) {
+            $mask |= EP_ROOT;
+        }
+        if (defined('EP_PAGES')) {
+            $mask |= EP_PAGES;
+        }
+        if ($mask === 0) {
+            $mask = 1;
+        }
+
+        add_rewrite_endpoint('referrals', $mask);
+    }
+
+    /**
+     * Ensure WooCommerce query vars include the referrals endpoint
+     *
+     * @param array $vars
+     * @return array
+     */
+    public function add_customer_account_query_var($vars) {
+        if (!in_array('referrals', $vars, true)) {
+            $vars[] = 'referrals';
+        }
+        return $vars;
+    }
+
+    /**
+     * Inject "Refer & Earn" navigation entry into the WooCommerce account menu
+     *
+     * @param array $items
+     * @return array
+     */
+    public function add_customer_dashboard_menu_item($items) {
+        if (!$this->should_display_customer_dashboard()) {
+            return $items;
+        }
+
+        $label = __('Refer & Earn', 'intersoccer-referral');
+        $new_items = [];
+        $inserted = false;
+
+        foreach ($items as $key => $item_label) {
+            $new_items[$key] = $item_label;
+            if (!$inserted && $key === 'dashboard') {
+                $new_items['referrals'] = $label;
+                $inserted = true;
+            }
+        }
+
+        if (!$inserted) {
+            $new_items['referrals'] = $label;
+        }
+
+        return $new_items;
+    }
+
+    /**
+     * Render the customer referral dashboard within the WooCommerce account area
+     *
+     * @return void
+     */
+    public function render_customer_account_endpoint() {
+        $dashboard = new InterSoccer_Referral_Dashboard();
+        echo $dashboard->render_customer_dashboard();
+    }
+
+    /**
+     * Determine whether the current user should see the customer referral dashboard navigation
+     *
+     * @return bool
+     */
+    private function should_display_customer_dashboard() {
+        if (!function_exists('is_user_logged_in') || !is_user_logged_in()) {
+            return false;
+        }
+
+        if (!function_exists('wp_get_current_user')) {
+            return false;
+        }
+
+        $user = wp_get_current_user();
+        if (!$user || empty($user->roles)) {
+            return false;
+        }
+
+        $eligible_roles = ['customer', 'subscriber', 'partner', 'social_influencer', 'content_creator'];
+
+        foreach ((array) $user->roles as $role) {
+            if (in_array($role, $eligible_roles, true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1051,3 +1217,32 @@ function intersoccer_send_weekly_report($coach_id) {
         
         wp_mail($coach->user_email, $subject, $message);
     }
+
+if (defined('WP_CLI') && WP_CLI) {
+    WP_CLI::add_command('intersoccer sync-commissions', function($args, $assoc_args) {
+        $manager = InterSoccer_Commission_Manager::get_instance();
+
+        $order_id = isset($assoc_args['order']) ? absint($assoc_args['order']) : null;
+        $limit = isset($assoc_args['limit']) ? max(1, (int) $assoc_args['limit']) : 100;
+        $statuses = ['wc-completed', 'completed', 'wc-processing'];
+
+        if (isset($assoc_args['status'])) {
+            $status_arg = $assoc_args['status'];
+            if (!is_array($status_arg)) {
+                $status_arg = array_map('trim', explode(',', (string) $status_arg));
+            }
+            $filtered = array_filter(array_map('sanitize_key', $status_arg));
+            if (!empty($filtered)) {
+                $statuses = $filtered;
+            }
+        }
+
+        $processed = $manager->sync_commissions([
+            'order_id' => $order_id,
+            'limit' => $limit,
+            'statuses' => $statuses,
+        ]);
+
+        WP_CLI::success(sprintf('Processed %d order(s).', $processed));
+    });
+}

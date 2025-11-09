@@ -45,6 +45,7 @@ fi
 DRY_RUN=false
 RUN_TESTS=false
 CLEAR_CACHE=false
+DROP_TABLES=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -60,6 +61,10 @@ while [[ $# -gt 0 ]]; do
             CLEAR_CACHE=true
             shift
             ;;
+        --drop-tables)
+            DROP_TABLES=true
+            shift
+            ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
@@ -67,6 +72,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --dry-run        Show what would be uploaded without uploading"
             echo "  --test           Run PHPUnit tests before deploying"
             echo "  --clear-cache    Clear server caches after deployment"
+            echo "  --drop-tables    Drop plugin tables on the server (use with caution)"
             echo "  --help           Show this help message"
             exit 0
             ;;
@@ -755,6 +761,63 @@ unlink(__FILE__);
     echo -e "${GREEN}✓ Server caches cleared${NC}"
 }
 
+drop_referral_tables() {
+    print_header "Dropping Referral Plugin Tables"
+
+    if [ "$DRY_RUN" = true ]; then
+        echo -e "${YELLOW}Skipping table drop in dry-run mode.${NC}"
+        return 0
+    fi
+
+    read -p "This will DROP all referral plugin tables on ${SERVER_HOST}. Continue? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "${YELLOW}Table drop cancelled by user.${NC}"
+        return 0
+    fi
+
+    DROP_SCRIPT='<?php
+define("WP_USE_THEMES", false);
+define("SHORTINIT", true);
+require_once dirname(dirname(dirname(dirname(__FILE__)))) . "/wp-load.php";
+
+global $wpdb;
+$tables = [
+    "intersoccer_referrals",
+    "intersoccer_referral_credits",
+    "intersoccer_coach_commissions",
+    "intersoccer_audit_log",
+    "intersoccer_coach_notes",
+    "intersoccer_coach_events",
+    "intersoccer_coach_achievements",
+    "intersoccer_coach_performance",
+    "intersoccer_coach_assignments",
+    "intersoccer_customer_activities",
+    "intersoccer_customer_partnerships",
+    "intersoccer_credit_redemptions",
+    "intersoccer_points_log",
+    "intersoccer_referral_rewards",
+    "intersoccer_purchase_rewards"
+];
+
+foreach ($tables as $table) {
+    $full = $wpdb->prefix . $table;
+    $wpdb->query("DROP TABLE IF EXISTS {$full}");
+    echo "Dropped table: {$full}\n";
+}
+
+echo "\nReferral plugin tables dropped.\n";
+unlink(__FILE__);
+?>'
+
+    echo "$DROP_SCRIPT" | ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cat > ${SERVER_PATH}/drop-referral-tables-temp.php"
+
+    echo "Executing drop script on server..."
+    ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cd ${SERVER_PATH} && php drop-referral-tables-temp.php"
+
+    echo -e "${GREEN}✓ Referral plugin tables dropped${NC}"
+}
+
 ###############################################################################
 # Main Script
 ###############################################################################
@@ -813,6 +876,11 @@ fi
 # Clear caches if requested
 if [ "$CLEAR_CACHE" = true ] && [ "$DRY_RUN" = false ]; then
     clear_server_caches
+fi
+
+# Drop tables if requested
+if [ "$DROP_TABLES" = true ]; then
+    drop_referral_tables
 fi
 
 # Success message

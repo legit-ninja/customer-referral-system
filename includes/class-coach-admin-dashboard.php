@@ -271,6 +271,10 @@ class InterSoccer_Coach_Admin_Dashboard {
             'total_referrals' => $this->get_coach_referral_count($user_id),
             'recent_referrals' => $this->get_recent_referrals($user_id, 5),
             'earnings_data' => $this->get_earnings_data($user_id),
+            'monthly_stats' => $this->get_monthly_stats($user_id),
+            'coach_rank' => $this->get_coach_rank($user_id),
+            'top_performers' => $this->get_top_performers(),
+            'coach_achievements' => $this->get_coach_achievement_progress($user_id),
             'chart_labels' => $this->get_chart_labels(30),
             'chart_referrals' => $this->get_chart_data($user_id, 30, 'referrals'),
             'chart_credits' => $this->get_chart_data($user_id, 30, 'credits'),
@@ -1519,7 +1523,8 @@ class InterSoccer_Coach_Admin_Dashboard {
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('intersoccer_tour_nonce'),
                 'user_id' => get_current_user_id(),
-                'tour_completed' => get_user_meta(get_current_user_id(), 'intersoccer_tour_completed', true)
+                'tour_completed' => get_user_meta(get_current_user_id(), 'intersoccer_tour_completed', true),
+                'debug' => defined('WP_DEBUG') && WP_DEBUG
             ]);
         }
     }
@@ -1534,6 +1539,19 @@ class InterSoccer_Coach_Admin_Dashboard {
             "SELECT COUNT(*) FROM $table_name WHERE coach_id = %d",
             $coach_id
         ));
+    }
+
+    private function get_customer_name($customer_id) {
+        if (!$customer_id) {
+            return __('Unknown Customer', 'intersoccer-referral');
+        }
+
+        $user = get_userdata($customer_id);
+        if ($user && !empty($user->display_name)) {
+            return $user->display_name;
+        }
+
+        return __('Unknown Customer', 'intersoccer-referral');
     }
 
     /**
@@ -1567,6 +1585,172 @@ class InterSoccer_Coach_Admin_Dashboard {
         ));
 
         return $results ?: [];
+    }
+
+    /**
+     * Build achievement progress data for dashboard cards.
+     */
+    private function get_coach_achievement_progress($coach_id) {
+        $referral_count = $this->get_coach_referral_count($coach_id);
+        $credits = (float) get_user_meta($coach_id, 'intersoccer_credits', true);
+
+        return [
+            [
+                'title' => __('First Referral', 'intersoccer-referral'),
+                'description' => __('Made your first successful referral', 'intersoccer-referral'),
+                'icon' => 'handshake',
+                'unlocked' => $referral_count >= 1,
+                'progress' => min(100, $referral_count * 100),
+                'progress_text' => $referral_count >= 1
+                    ? __('Completed!', 'intersoccer-referral')
+                    : sprintf(
+                        _n('%d referral remaining', '%d referrals remaining', max(1 - $referral_count, 0), 'intersoccer-referral'),
+                        max(1 - $referral_count, 0)
+                    ),
+            ],
+            [
+                'title' => __('Top Earner', 'intersoccer-referral'),
+                'description' => __('Earned 500 CHF in commissions', 'intersoccer-referral'),
+                'icon' => 'trophy',
+                'unlocked' => $credits >= 500,
+                'progress' => min(100, ($credits / 500) * 100),
+                'progress_text' => $credits >= 500
+                    ? __('Completed!', 'intersoccer-referral')
+                    : sprintf(
+                        __('%s CHF to go', 'intersoccer-referral'),
+                        number_format_i18n(max(500 - $credits, 0), 0)
+                    ),
+            ],
+            [
+                'title' => __('Referral Master', 'intersoccer-referral'),
+                'description' => __('Generated 25 successful referrals', 'intersoccer-referral'),
+                'icon' => 'users',
+                'unlocked' => $referral_count >= 25,
+                'progress' => min(100, ($referral_count / 25) * 100),
+                'progress_text' => $referral_count >= 25
+                    ? __('Completed!', 'intersoccer-referral')
+                    : sprintf(
+                        _n('%d referral to go', '%d referrals to go', max(25 - $referral_count, 0), 'intersoccer-referral'),
+                        max(25 - $referral_count, 0)
+                    ),
+            ],
+            [
+                'title' => __('Commission Champion', 'intersoccer-referral'),
+                'description' => __('Earned 1000 CHF in total commissions', 'intersoccer-referral'),
+                'icon' => 'crown',
+                'unlocked' => $credits >= 1000,
+                'progress' => min(100, ($credits / 1000) * 100),
+                'progress_text' => $credits >= 1000
+                    ? __('Completed!', 'intersoccer-referral')
+                    : sprintf(
+                        __('%s CHF to go', 'intersoccer-referral'),
+                        number_format_i18n(max(1000 - $credits, 0), 0)
+                    ),
+            ],
+        ];
+    }
+
+    private function get_monthly_stats($coach_id) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'intersoccer_referrals';
+
+        $current_timestamp = current_time('timestamp');
+        $current_month_start = gmdate('Y-m-01 00:00:00', $current_timestamp);
+        $last_month_start = gmdate('Y-m-01 00:00:00', strtotime('-1 month', $current_timestamp));
+
+        $current_referrals = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $table_name WHERE coach_id = %d AND status = 'completed' AND created_at >= %s",
+            $coach_id,
+            $current_month_start
+        ));
+
+        $last_month_referrals = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM $table_name WHERE coach_id = %d AND status = 'completed' AND created_at >= %s AND created_at < %s",
+            $coach_id,
+            $last_month_start,
+            $current_month_start
+        ));
+
+        $conversion_rate = $current_referrals > 0
+            ? min(100, ($current_referrals / max(1, $current_referrals + 5)) * 100)
+            : 0;
+        $last_month_conversion = $last_month_referrals > 0
+            ? min(100, ($last_month_referrals / max(1, $last_month_referrals + 5)) * 100)
+            : 0;
+
+        return [
+            'new_referrals' => $current_referrals,
+            'conversion_rate' => round($conversion_rate, 1),
+            'conversion_trend' => round($conversion_rate - $last_month_conversion, 1),
+        ];
+    }
+
+    private function get_top_performers($limit = 10) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'intersoccer_referrals';
+
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT coach_id,
+                    COUNT(*) AS referral_count,
+                    COALESCE(SUM(commission_amount), 0) AS total_credits
+             FROM $table_name
+             WHERE status = 'completed'
+             GROUP BY coach_id
+             ORDER BY total_credits DESC, referral_count DESC
+             LIMIT %d",
+            $limit
+        ));
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        $performers = [];
+        foreach ($rows as $row) {
+            $user = get_userdata($row->coach_id);
+            if (!$user) {
+                continue;
+            }
+
+            $performers[] = (object) [
+                'ID' => (int) $row->coach_id,
+                'display_name' => $user->display_name,
+                'referral_count' => (int) $row->referral_count,
+                'total_credits' => (float) $row->total_credits,
+                'tier' => intersoccer_get_coach_tier($row->coach_id),
+            ];
+        }
+
+        return $performers;
+    }
+
+    private function get_coach_rank($coach_id) {
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'intersoccer_referrals';
+
+        $coach_total = (float) $wpdb->get_var($wpdb->prepare(
+            "SELECT COALESCE(SUM(commission_amount), 0)
+             FROM $table_name
+             WHERE coach_id = %d AND status = 'completed'",
+            $coach_id
+        ));
+
+        if ($coach_total <= 0) {
+            return 1;
+        }
+
+        $higher_count = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM (
+                SELECT coach_id
+                FROM $table_name
+                WHERE status = 'completed'
+                GROUP BY coach_id
+                HAVING SUM(commission_amount) > %f
+            ) as ranked",
+            $coach_total
+        ));
+
+        return $higher_count + 1;
     }
 
     /**

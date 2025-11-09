@@ -1366,6 +1366,7 @@ class InterSoccer_Admin_Dashboard_Main {
                 'intersoccer_coach_achievements',
                 'intersoccer_coach_assignments',
                 'intersoccer_coach_commissions',
+                'intersoccer_audit_log',
                 'intersoccer_coach_notes',
                 'intersoccer_coach_performance',
                 'intersoccer_customer_activities',

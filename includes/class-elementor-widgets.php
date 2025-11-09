@@ -64,6 +64,9 @@ class InterSoccer_Elementor_Integration {
             $widgets_manager->register(new InterSoccer_Customer_Dashboard_Widget());
             error_log('InterSoccer: Registered widget: intersoccer_customer_dashboard');
 
+            $widgets_manager->register(new InterSoccer_Customer_Header_Badge_Widget());
+            error_log('InterSoccer: Registered widget: intersoccer_customer_header_badge');
+
             $widgets_manager->register(new InterSoccer_Coach_Dashboard_Widget());
             error_log('InterSoccer: Registered widget: intersoccer_coach_dashboard');
 
@@ -120,6 +123,238 @@ class InterSoccer_Elementor_Integration {
             'tier' => 'Platinum',
             'monthly_earnings' => 890.50
         ];
+    }
+}
+
+// Customer Header Badge Widget
+class InterSoccer_Customer_Header_Badge_Widget extends \Elementor\Widget_Base {
+
+    public function get_name() {
+        return 'intersoccer_customer_header_badge';
+    }
+
+    public function get_title() {
+        return __('Customer Referral Badge', 'intersoccer-referral');
+    }
+
+    public function get_icon() {
+        return 'eicon-badge';
+    }
+
+    public function get_categories() {
+        return ['intersoccer-widgets'];
+    }
+
+    protected function register_controls() {
+        $this->start_controls_section(
+            'content_section',
+            [
+                'label' => __('Display Options', 'intersoccer-referral'),
+                'tab' => \Elementor\Controls_Manager::TAB_CONTENT,
+            ]
+        );
+
+        $this->add_control(
+            'badge_icon',
+            [
+                'label' => __('Icon', 'intersoccer-referral'),
+                'type' => \Elementor\Controls_Manager::ICONS,
+                'default' => [
+                    'value' => 'fas fa-user-friends',
+                    'library' => 'solid',
+                ],
+            ]
+        );
+
+        $this->add_control(
+            'show_points',
+            [
+                'label' => __('Show Points Balance', 'intersoccer-referral'),
+                'type' => \Elementor\Controls_Manager::SWITCHER,
+                'default' => 'yes',
+            ]
+        );
+
+        $this->add_control(
+            'show_referral_link',
+            [
+                'label' => __('Show Referral Link Button', 'intersoccer-referral'),
+                'type' => \Elementor\Controls_Manager::SWITCHER,
+                'default' => 'yes',
+            ]
+        );
+
+        $this->add_control(
+            'badge_label',
+            [
+                'label' => __('Badge Label', 'intersoccer-referral'),
+                'type' => \Elementor\Controls_Manager::TEXT,
+                'default' => __('Your Points', 'intersoccer-referral'),
+            ]
+        );
+
+        $this->add_control(
+            'cta_label',
+            [
+                'label' => __('CTA Label', 'intersoccer-referral'),
+                'type' => \Elementor\Controls_Manager::TEXT,
+                'default' => __('Share Link', 'intersoccer-referral'),
+                'condition' => [
+                    'show_referral_link' => 'yes',
+                ],
+            ]
+        );
+
+        $this->end_controls_section();
+
+        $this->start_controls_section(
+            'style_section',
+            [
+                'label' => __('Style', 'intersoccer-referral'),
+                'tab' => \Elementor\Controls_Manager::TAB_STYLE,
+            ]
+        );
+
+        $this->add_control(
+            'badge_background',
+            [
+                'label' => __('Badge Background', 'intersoccer-referral'),
+                'type' => \Elementor\Controls_Manager::COLOR,
+                'default' => '#1D3557',
+                'selectors' => [
+                    '{{WRAPPER}} .intersoccer-customer-badge' => 'background-color: {{VALUE}};',
+                ],
+            ]
+        );
+
+        $this->add_control(
+            'badge_text_color',
+            [
+                'label' => __('Badge Text Color', 'intersoccer-referral'),
+                'type' => \Elementor\Controls_Manager::COLOR,
+                'default' => '#FFFFFF',
+                'selectors' => [
+                    '{{WRAPPER}} .intersoccer-customer-badge' => 'color: {{VALUE}};',
+                ],
+            ]
+        );
+
+        $this->add_group_control(
+            \Elementor\Group_Control_Typography::get_type(),
+            [
+                'name' => 'badge_typography',
+                'selector' => '{{WRAPPER}} .intersoccer-customer-badge',
+            ]
+        );
+
+        $this->add_control(
+            'cta_background',
+            [
+                'label' => __('Button Background', 'intersoccer-referral'),
+                'type' => \Elementor\Controls_Manager::COLOR,
+                'default' => '#F1FAEE',
+                'selectors' => [
+                    '{{WRAPPER}} .intersoccer-customer-badge__cta' => 'background-color: {{VALUE}};',
+                ],
+                'condition' => [
+                    'show_referral_link' => 'yes',
+                ],
+            ]
+        );
+
+        $this->add_control(
+            'cta_text_color',
+            [
+                'label' => __('Button Text Color', 'intersoccer-referral'),
+                'type' => \Elementor\Controls_Manager::COLOR,
+                'default' => '#1D3557',
+                'selectors' => [
+                    '{{WRAPPER}} .intersoccer-customer-badge__cta' => 'color: {{VALUE}};',
+                ],
+                'condition' => [
+                    'show_referral_link' => 'yes',
+                ],
+            ]
+        );
+
+        $this->end_controls_section();
+    }
+
+    protected function render() {
+        if (!is_user_logged_in() || !function_exists('wp_get_current_user')) {
+            return;
+        }
+
+        $user = wp_get_current_user();
+        if (!$user || empty($user->roles)) {
+            return;
+        }
+
+        $customer_roles = ['customer', 'subscriber', 'partner', 'social_influencer', 'content_creator'];
+        $has_customer_role = false;
+        foreach ((array) $user->roles as $role) {
+            if (in_array($role, $customer_roles, true)) {
+                $has_customer_role = true;
+                break;
+            }
+        }
+
+        if (!$has_customer_role) {
+            return;
+        }
+
+        $settings = $this->get_settings_for_display();
+        $show_points = $settings['show_points'] === 'yes';
+        $show_cta = $settings['show_referral_link'] === 'yes';
+
+        $points = (int) get_user_meta($user->ID, 'intersoccer_points_balance', true);
+        $referral_link = InterSoccer_Referral_Handler::generate_customer_referral_link($user->ID);
+
+        ?>
+        <div class="sc_layouts_item sc_layouts_customer_badge sc_layouts_cart_market_woocommerce" aria-live="polite">
+            <span class="sc_layouts_item_icon sc_layouts_cart_icon sc_icon_type_icons" aria-hidden="true">
+                <?php
+                if (!empty($settings['badge_icon']['value'])) {
+                    if (class_exists('\Elementor\Icons_Manager')) {
+                        \Elementor\Icons_Manager::render_icon(
+                            $settings['badge_icon'],
+                            ['aria-hidden' => 'true']
+                        );
+                    } else {
+                        printf(
+                            '<i class="%s" aria-hidden="true"></i>',
+                            esc_attr($settings['badge_icon']['value'])
+                        );
+                    }
+                }
+                ?>
+            </span>
+            <span class="sc_layouts_item_details sc_layouts_customer_badge_details">
+                <span class="sc_layouts_item_details_line1 intersoccer-customer-badge__label">
+                    <?php echo esc_html($settings['badge_label']); ?>
+                </span>
+                <?php if ($show_points): ?>
+                    <span class="sc_layouts_item_details_line2 intersoccer-customer-badge__points">
+                        <?php echo number_format_i18n($points); ?>
+                    </span>
+                <?php endif; ?>
+            </span>
+            <?php if ($show_cta): ?>
+                <button
+                    class="intersoccer-customer-badge__cta sc_layouts_cart_widget_button"
+                    type="button"
+                    data-referral-link="<?php echo esc_url($referral_link); ?>"
+                    aria-label="<?php esc_attr_e('Copy your referral link', 'intersoccer-referral'); ?>"
+                >
+                    <?php echo esc_html($settings['cta_label']); ?>
+                </button>
+            <?php endif; ?>
+        </div>
+        <?php
+    }
+
+    public function render_plain_content() {
+        echo __('Customer referral badge widget', 'intersoccer-referral');
     }
 }
 
@@ -1340,6 +1575,7 @@ class InterSoccer_Customer_Progress_Widget extends \Elementor\Widget_Base {
 add_action('wp_ajax_get_available_coaches', 'intersoccer_handle_get_available_coaches');
 add_action('wp_ajax_select_coach_partner', 'intersoccer_handle_select_coach_partner');
 add_action('wp_ajax_gift_credits', 'intersoccer_handle_gift_credits');
+add_action('wp_ajax_intersoccer_get_customer_widget_summary', 'intersoccer_handle_customer_widget_summary');
 
 function intersoccer_handle_get_available_coaches() {
     check_ajax_referer('intersoccer_dashboard_nonce', 'nonce');
@@ -1474,5 +1710,178 @@ function intersoccer_handle_gift_credits() {
         'message' => 'Gift sent successfully! You earned 20 CHF back as a thank you.',
         'new_credits' => $new_credits
     ]);
+}
+
+function intersoccer_handle_customer_widget_summary() {
+    $nonce = isset($_POST['nonce']) ? sanitize_text_field($_POST['nonce']) : '';
+
+    $nonce_valid = check_ajax_referer('intersoccer_dashboard_nonce', 'nonce', false);
+    if (false === $nonce_valid) {
+        $nonce_valid = check_ajax_referer('intersoccer_elementor_nonce', 'nonce', false);
+    }
+
+    if (false === $nonce_valid) {
+        wp_send_json_error([
+            'message' => __('Invalid security token.', 'intersoccer-referral')
+        ], 403);
+    }
+
+    if (!is_user_logged_in()) {
+        wp_send_json_error([
+            'message' => __('Please log in to view your referral summary.', 'intersoccer-referral')
+        ], 401);
+    }
+
+    $user = wp_get_current_user();
+    if (!$user || empty($user->ID)) {
+        wp_send_json_error([
+            'message' => __('User context is unavailable.', 'intersoccer-referral')
+        ], 400);
+    }
+
+    $allowed_roles = apply_filters('intersoccer_customer_widget_allowed_roles', [
+        'customer',
+        'subscriber',
+        'partner',
+        'social_influencer',
+        'content_creator'
+    ]);
+
+    $user_roles = (array) $user->roles;
+    $has_allowed_role = array_intersect($allowed_roles, $user_roles);
+
+    if (empty($has_allowed_role) && !current_user_can('manage_options')) {
+        wp_send_json_error([
+            'message' => __('Your account does not have access to referral widget data.', 'intersoccer-referral')
+        ], 403);
+    }
+
+    $summary = intersoccer_get_customer_widget_summary_data($user->ID);
+
+    $summary = apply_filters('intersoccer_customer_widget_summary', $summary, $user->ID);
+
+    wp_send_json_success($summary);
+}
+
+function intersoccer_get_customer_widget_summary_data($user_id) {
+    $user = get_user_by('ID', $user_id);
+
+    if (!$user) {
+        return [
+            'user' => [
+                'id' => (int) $user_id,
+                'display_name' => '',
+                'roles' => []
+            ],
+            'points' => [
+                'balance' => 0,
+                'formatted_balance' => '0',
+                'value_chf' => 0,
+                'lifetime_earned' => null,
+                'lifetime_redeemed' => null,
+                'pending_redemptions' => null,
+                'next_reward' => [
+                    'threshold' => null,
+                    'points_to_next' => null
+                ]
+            ],
+            'referral' => [
+                'code' => '',
+                'link' => home_url('/'),
+                'share_copy' => []
+            ],
+            'coach_connection' => null,
+            'meta' => [
+                'generated_at' => current_time('c'),
+                'source' => 'fallback'
+            ]
+        ];
+    }
+
+    $points_balance = (int) get_user_meta($user_id, 'intersoccer_points_balance', true);
+    $lifetime_earned = get_user_meta($user_id, 'intersoccer_points_lifetime_earned', true);
+    $lifetime_redeemed = get_user_meta($user_id, 'intersoccer_points_lifetime_redeemed', true);
+    $pending_redeemed = get_user_meta($user_id, 'intersoccer_points_pending_redeem', true);
+
+    $points_value_per_point = (float) apply_filters('intersoccer_points_value_per_point', 1.0, $user_id);
+    $points_value = round($points_balance * $points_value_per_point, 2);
+
+    $formatter = function($value) {
+        if (function_exists('number_format_i18n')) {
+            return number_format_i18n($value);
+        }
+        return number_format($value, 0, '.', ',');
+    };
+
+    $reward_threshold = absint(apply_filters(
+        'intersoccer_customer_reward_threshold',
+        (int) get_option('intersoccer_points_reward_threshold', 100),
+        $user_id
+    ));
+
+    $points_to_next = null;
+    if ($reward_threshold > 0) {
+        $remainder = $points_balance % $reward_threshold;
+        $points_to_next = $remainder === 0 ? 0 : $reward_threshold - $remainder;
+    }
+
+    $referral_link = InterSoccer_Referral_Handler::generate_customer_referral_link($user_id);
+    $referral_code = get_user_meta($user_id, 'intersoccer_customer_referral_code', true);
+
+    $share_copy_default = sprintf(
+        __('Join me at InterSoccer—claim your spot here: %s', 'intersoccer-referral'),
+        $referral_link
+    );
+
+    $share_copy = [
+        'default' => $share_copy_default,
+        'whatsapp' => 'https://wa.me/?text=' . rawurlencode($share_copy_default),
+        'facebook' => 'https://www.facebook.com/sharer/sharer.php?u=' . rawurlencode($referral_link),
+        'email' => 'mailto:?subject=' . rawurlencode(__('Train with InterSoccer', 'intersoccer-referral')) . '&body=' . rawurlencode($share_copy_default)
+    ];
+
+    $coach_id = (int) get_user_meta($user_id, 'intersoccer_partnership_coach_id', true);
+    $coach_connection = null;
+
+    if ($coach_id) {
+        $coach = get_user_by('ID', $coach_id);
+        if ($coach) {
+            $coach_connection = [
+                'id' => $coach_id,
+                'name' => $coach->display_name,
+                'tier' => function_exists('intersoccer_get_coach_tier') ? intersoccer_get_coach_tier($coach_id) : null
+            ];
+        }
+    }
+
+    return [
+        'user' => [
+            'id' => (int) $user_id,
+            'display_name' => $user->display_name,
+            'roles' => array_values((array) $user->roles)
+        ],
+        'points' => [
+            'balance' => $points_balance,
+            'formatted_balance' => $formatter($points_balance),
+            'value_chf' => $points_value,
+            'lifetime_earned' => $lifetime_earned !== '' ? (int) $lifetime_earned : null,
+            'lifetime_redeemed' => $lifetime_redeemed !== '' ? (int) $lifetime_redeemed : null,
+            'pending_redemptions' => $pending_redeemed !== '' ? (int) $pending_redeemed : null,
+            'next_reward' => [
+                'threshold' => $reward_threshold ?: null,
+                'points_to_next' => $points_to_next
+            ]
+        ],
+        'referral' => [
+            'code' => $referral_code,
+            'link' => $referral_link,
+            'share_copy' => $share_copy
+        ],
+        'coach_connection' => $coach_connection,
+        'meta' => [
+            'generated_at' => current_time('c'),
+            'source' => 'user_meta'
+        ]
+    ];
 }
 ?>
