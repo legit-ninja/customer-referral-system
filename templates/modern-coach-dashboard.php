@@ -23,6 +23,14 @@ if (isset($coach_data) && is_array($coach_data)) {
     $coach_events_nonce = $coach_data['coach_events_nonce'] ?? wp_create_nonce('intersoccer_coach_events_nonce');
     $coach_events_ajax_url = $coach_data['ajax_url'] ?? admin_url('admin-ajax.php');
     $is_admin = $coach_data['is_admin_context'] ?? false;
+    $monthly_stats = $coach_data['monthly_stats'] ?? [
+        'new_referrals' => 0,
+        'conversion_rate' => 0,
+        'conversion_trend' => 0,
+    ];
+    $top_performers = $coach_data['top_performers'] ?? [];
+    $coach_rank = $coach_data['coach_rank'] ?? 1;
+    $achievements = $coach_data['coach_achievements'] ?? [];
 } else {
     // Frontend dashboard context - get data from dashboard class
     $user_id = get_current_user_id();
@@ -37,6 +45,7 @@ if (isset($coach_data) && is_array($coach_data)) {
     $monthly_stats = $this->get_monthly_stats($user_id);
     $top_performers = $this->get_top_performers();
     $coach_rank = $this->get_coach_rank($user_id);
+    $achievements = $this->get_coach_achievements($user_id);
     $chart_labels = $this->get_chart_labels(30);
     $chart_referrals = $this->get_chart_data($user_id, 30, 'referrals');
     $chart_credits = $this->get_chart_data($user_id, 30, 'credits');
@@ -71,7 +80,7 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                 </div>
             </div>
 
-            <div class="header-actions">
+            <div class="header-actions" id="tour-actions">
                 <button class="action-btn primary" id="share-link-btn" data-tooltip="Share your referral link">
                     <i class="icon-share"></i>
                     <span>Share Link</span>
@@ -89,7 +98,7 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
 
     <!-- Stats Overview Cards -->
     <div class="stats-grid">
-        <div class="stat-card credits-card" data-aos="fade-up" data-aos-delay="0">
+        <div class="stat-card credits-card" id="tour-credits" data-aos="fade-up" data-aos-delay="0">
             <div class="stat-icon">
                 <i class="icon-credits"></i>
             </div>
@@ -127,7 +136,7 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
             </div>
         </div>
 
-        <div class="stat-card tier-card" data-aos="fade-up" data-aos-delay="200">
+        <div class="stat-card tier-card" id="tour-tier" data-aos="fade-up" data-aos-delay="200">
             <div class="stat-icon">
                 <i class="icon-tier"></i>
             </div>
@@ -396,7 +405,7 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                     </div>
                 </button>
 
-                <button class="action-tile" id="view-resources">
+                <button class="action-tile" id="view-resources" data-tour="resources">
                     <div class="action-icon">
                         <i class="icon-resources"></i>
                     </div>
@@ -480,10 +489,7 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
     <div class="achievements-section" data-aos="fade-up">
         <h3><i class="icon-achievements"></i> Your Achievements</h3>
         <div class="achievements-grid">
-            <?php
-            $achievements = $this->get_coach_achievements($user_id);
-            foreach ($achievements as $achievement):
-            ?>
+            <?php foreach ($achievements as $achievement): ?>
                 <div class="achievement-badge <?php echo $achievement['unlocked'] ? 'unlocked' : 'locked'; ?>">
                     <div class="badge-icon">
                         <i class="icon-<?php echo $achievement['icon']; ?>"></i>

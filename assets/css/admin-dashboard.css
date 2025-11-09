@@ -407,6 +407,95 @@
     100% { transform: translate(-50%, -50%) rotate(360deg); }
 }
 
+/* Referral Eligibility */
+.eligibility-column {
+    min-width: 260px;
+}
+
+.eligibility-status {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.eligibility-status__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.eligibility-status__badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.eligibility-status__badge.eligible {
+    background: #e3fcef;
+    color: #0a8a4d;
+}
+
+.eligibility-status__badge.ineligible {
+    background: #fdecea;
+    color: #b22121;
+}
+
+.eligibility-status__badge.manual {
+    background: linear-gradient(135deg, #e8f4fc 0%, #e8e6ff 100%);
+    color: #3f51b5;
+}
+
+.eligibility-status__badge.partial {
+    background: #fff4e5;
+    color: #b15a00;
+}
+
+.eligibility-status__override-info {
+    font-size: 11px;
+    font-style: italic;
+    color: #6b6b6b;
+}
+
+.eligibility-status__meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 12px;
+    color: #555;
+}
+
+.eligibility-status__meta a {
+    color: #21759b;
+    text-decoration: none;
+}
+
+.eligibility-status__meta a:hover {
+    text-decoration: underline;
+}
+
+.eligibility-status__actions {
+    display: flex;
+    gap: 6px;
+}
+
+.eligibility-status__actions .button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    position: relative;
+}
+
+.eligibility-status__note {
+    color: #8a6d3b;
+}
+
 /* Success/Error Messages */
 .notice-success {
     background: #d4edda;

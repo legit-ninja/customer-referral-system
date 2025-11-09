@@ -529,6 +529,82 @@
                 }
             });
         });
+
+        $(document).on('click', '.intersoccer-eligibility-override', function(e) {
+            e.preventDefault();
+
+            const $button = $(this);
+            if ($button.prop('disabled')) {
+                return;
+            }
+
+            const referralId = $button.data('referralId');
+            const orderId = $button.data('orderId');
+            const targetStatus = $button.data('targetStatus');
+
+            if (!referralId || !orderId || !targetStatus) {
+                alert('Unable to determine referral eligibility context.');
+                return;
+            }
+
+            const message = targetStatus === 'eligible'
+                ? 'Mark this referral as eligible? This will allow rewards to proceed when the order is completed.'
+                : 'Mark this referral as ineligible? This prevents rewards from being issued.';
+
+            if (!confirm(message)) {
+                return;
+            }
+
+            let note = '';
+            if (targetStatus === 'ineligible') {
+                note = window.prompt('Optional note for audit log (leave blank to skip):', '');
+                if (note === null) {
+                    return;
+                }
+            }
+
+            $button.prop('disabled', true).addClass('loading');
+
+            $.ajax({
+                url: intersoccer_admin.ajax_url,
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    action: 'intersoccer_update_referral_eligibility',
+                    nonce: intersoccer_admin.nonce,
+                    referral_id: referralId,
+                    order_id: orderId,
+                    target_status: targetStatus,
+                    note: note
+                }
+            }).done(function(response) {
+                if (response && response.success && response.data) {
+                    const $container = $button.closest('.eligibility-status');
+                    if (response.data.html) {
+                        $container.replaceWith(response.data.html);
+                    }
+
+                    if (response.data.referral_status) {
+                        const $row = $button.closest('tr');
+                        const $statusBadge = $row.find('.status-badge');
+                        if ($statusBadge.length) {
+                            $statusBadge
+                                .text(response.data.referral_status_label || response.data.referral_status)
+                                .removeClass('pending ineligible eligible completed')
+                                .addClass(response.data.referral_status);
+                        }
+                    }
+                } else if (response && response.data && response.data.message) {
+                    alert(response.data.message);
+                } else {
+                    alert('Unable to update referral eligibility. Please try again.');
+                }
+            }).fail(function() {
+                alert('An unexpected error occurred while updating eligibility.');
+            }).always(function() {
+                $button.prop('disabled', false).removeClass('loading');
+            });
+        });
     }
 
     /**

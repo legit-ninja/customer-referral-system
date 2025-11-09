@@ -7,6 +7,74 @@ jQuery(document).ready(function($) {
     let selectedCoachId = null;
     let availableCoaches = [];
     let debounceTimer = null;
+
+    if (typeof window.intersoccerFetchCustomerWidgetSummary === 'undefined') {
+        window.intersoccerFetchCustomerWidgetSummary = function(options) {
+            options = options || {};
+
+            if (typeof intersoccer_elementor === 'undefined' || !intersoccer_elementor.ajax_url) {
+                const endpointError = {
+                    message: 'Customer widget endpoint is not available.',
+                    code: 'intersoccer_endpoint_missing'
+                };
+
+                if (typeof options.onError === 'function') {
+                    options.onError(endpointError);
+                }
+
+                return Promise.reject(endpointError);
+            }
+
+            const nonceValue = (typeof intersoccer_elementor !== 'undefined' && intersoccer_elementor.nonce)
+                ? intersoccer_elementor.nonce
+                : (typeof intersoccer_dashboard !== 'undefined' ? intersoccer_dashboard.nonce : '');
+
+            const requestData = {
+                action: 'intersoccer_get_customer_widget_summary',
+                nonce: nonceValue
+            };
+
+            return new Promise(function(resolve, reject) {
+                $.ajax({
+                    url: intersoccer_elementor.ajax_url,
+                    type: 'POST',
+                    data: requestData,
+                    success: function(response) {
+                        if (response && response.success) {
+                            if (typeof options.onSuccess === 'function') {
+                                options.onSuccess(response.data);
+                            }
+                            resolve(response.data);
+                        } else {
+                            const errorData = (response && response.data) ? response.data : {
+                                message: 'Unknown response from server.',
+                                code: 'intersoccer_unknown_response'
+                            };
+
+                            if (typeof options.onError === 'function') {
+                                options.onError(errorData);
+                            }
+
+                            reject(errorData);
+                        }
+                    },
+                    error: function(xhr, status, errorThrown) {
+                        const ajaxError = {
+                            message: errorThrown || 'Request failed.',
+                            code: 'intersoccer_request_failed',
+                            status: status
+                        };
+
+                        if (typeof options.onError === 'function') {
+                            options.onError(ajaxError);
+                        }
+
+                        reject(ajaxError);
+                    }
+                });
+            });
+        };
+    }
     
     // Initialize dashboard functionality
     initializeDashboard();
