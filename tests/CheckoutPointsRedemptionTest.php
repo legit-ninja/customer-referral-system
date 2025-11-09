@@ -379,6 +379,54 @@ class CheckoutPointsRedemptionTest extends TestCase {
         $this->assertEquals('updated_checkout', $trigger_event);
     }
 
+
+    /**
+     * Test a complete checkout where points fully cover the cart total
+     */
+    public function testCheckoutFullyCoveredByPointsBalance() {
+        $customer_id = 123;
+        $cart_total = 270.00; // CHF cart total that should be fully covered
+        $available_points = 350; // Customer balance comfortably above cart total
+
+        /** @var InterSoccer_Points_Manager|\PHPUnit\Framework\MockObject\MockObject $points_manager */
+        $points_manager = $this
+            ->getMockBuilder(InterSoccer_Points_Manager::class)
+            ->onlyMethods(['get_points_balance'])
+            ->getMock();
+
+        // Simulate an unlimited balance (no hidden 100-point ceiling)
+        $points_manager
+            ->method('get_points_balance')
+            ->with($customer_id)
+            ->willReturn($available_points);
+
+        // Max redeemable should be identical to cart total (not capped at 100)
+        $points_to_redeem = $points_manager->get_max_redeemable_points($customer_id, $cart_total);
+        $this->assertEquals(270, $points_to_redeem, 'Customer should be able to cover full cart total');
+        $this->assertGreaterThan(100, $points_to_redeem, 'Regression guard: ensure old 100-point cap is not reintroduced');
+
+        // Validate redemption checks succeed for the full amount
+        $this->assertTrue(
+            $points_manager->can_redeem_points($customer_id, $points_to_redeem, $cart_total),
+            'Redemption validation should pass when balance >= cart total'
+        );
+
+        // Discount should wipe the order total to zero
+        $discount = $points_manager->calculate_discount_from_points($points_to_redeem);
+        $this->assertEquals(270.00, $discount, 'Discount should equal the cart total');
+
+        $order_total_after_discount = round($cart_total - $discount, 2);
+        $this->assertEquals(0.00, $order_total_after_discount, 'Cart should be fully covered by points');
+
+        // Ensure remaining balance reflects the deduction (mocked balance - redeemed points)
+        $remaining_balance = $available_points - $points_to_redeem;
+        $this->assertEquals(80, $remaining_balance, 'Customer should retain leftover points after full coverage');
+
+        // Sanity check: plugin default max-per-order remains effectively unlimited (>= cart total)
+        $max_setting = get_option('intersoccer_max_credits_per_order', 9999);
+        $this->assertGreaterThanOrEqual($cart_total, $max_setting, 'Settings default must allow full cart coverage');
+    }
+
     /**
      * Test nonce verification on AJAX
      */

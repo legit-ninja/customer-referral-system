@@ -210,7 +210,9 @@ class DatabaseSchemaTest extends TestCase {
             'intersoccer_purchase_rewards',
             'intersoccer_referrals',
             'intersoccer_credit_redemptions',
-            'intersoccer_coach_events'
+            'intersoccer_coach_events',
+            'intersoccer_coach_commissions',
+            'intersoccer_audit_log'
         ];
         
         foreach ($required_tables as $table) {
@@ -233,6 +235,40 @@ class DatabaseSchemaTest extends TestCase {
             'unique_coach_event (coach_id, event_id, event_type)',
             $content,
             'Coach events table must enforce unique coach/event combinations'
+        );
+    }
+
+    public function testCoachCommissionsTableHasUniqueConstraint() {
+        $plugin_file = __DIR__ . '/../customer-referral-system.php';
+        $content = file_get_contents($plugin_file);
+
+        $this->assertStringContainsString(
+            'intersoccer_coach_commissions',
+            $content,
+            'Coach commissions table definition must exist'
+        );
+
+        $this->assertStringContainsString(
+            'UNIQUE KEY unique_coach_order (coach_id, order_id)',
+            $content,
+            'Coach commissions table should prevent duplicate commission rows'
+        );
+    }
+
+    public function testAuditLogTableDefinitionExists() {
+        $plugin_file = __DIR__ . '/../customer-referral-system.php';
+        $content = file_get_contents($plugin_file);
+
+        $this->assertStringContainsString(
+            'intersoccer_audit_log',
+            $content,
+            'Audit log table definition must be present'
+        );
+
+        $this->assertStringContainsString(
+            'event_type varchar(100) NOT NULL',
+            $content,
+            'Audit log table should include event_type column'
         );
     }
 }

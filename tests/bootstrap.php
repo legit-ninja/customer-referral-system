@@ -162,7 +162,7 @@ if (!$wpdb) {
         global $mock_customer_spent;
 
         if (strpos($query, 'COUNT(*)') !== false) {
-            return 5;
+            return 15;
         }
 
         if (strpos($query, 'SUM(pm.meta_value)') !== false) {
@@ -226,7 +226,14 @@ if (!$wpdb) {
     $wpdb->insert = function($table, $data) use (&$mock_wpdb_last_insert) {
         static $insert_id = 1;
         $mock_wpdb_last_insert = compact('table', 'data');
-        return $insert_id++;
+        global $wpdb, $mock_wpdb_last_insert_by_table;
+        if (!is_array($mock_wpdb_last_insert_by_table)) {
+            $mock_wpdb_last_insert_by_table = [];
+        }
+        $mock_wpdb_last_insert_by_table[$table] = $data;
+        $current_id = $insert_id++;
+        $wpdb->insert_id = $current_id;
+        return true;
     };
 
     $wpdb->delete = function($table, $where) use (&$mock_wpdb_last_delete) {
@@ -439,12 +446,32 @@ if (!function_exists('get_user_by')) {
 if (!function_exists('get_users')) {
     function get_users($args = []) {
         global $mock_users;
-        if (isset($args['role']) && $args['role'] === 'coach') {
-            return array_filter($mock_users, function($user) {
-                return in_array('coach', $user->roles ?? []);
+        $results = $mock_users;
+
+        if (isset($args['role'])) {
+            $role = $args['role'];
+            $results = array_filter($results, function($user) use ($role) {
+                return in_array($role, $user->roles ?? []);
             });
         }
-        return $mock_users;
+
+        if (isset($args['meta_key'])) {
+            $meta_key = $args['meta_key'];
+            $meta_value = isset($args['meta_value']) ? $args['meta_value'] : null;
+            $results = array_filter($results, function($user) use ($meta_key, $meta_value) {
+                $value = get_user_meta($user->ID, $meta_key, true);
+                if ($meta_value === null) {
+                    return $value !== '' && $value !== null;
+                }
+                return strtoupper((string)$value) === strtoupper((string)$meta_value);
+            });
+        }
+
+        if (isset($args['number']) && is_numeric($args['number'])) {
+            $results = array_slice($results, 0, (int)$args['number']);
+        }
+
+        return $results;
     }
 }
 

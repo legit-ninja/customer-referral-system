@@ -291,6 +291,205 @@ class CommissionManagerTest extends TestCase {
         $this->assertEquals(13.5, $commission['loyalty_bonus']);
     }
 
+    /**
+     * Ensure commissions are calculated on discounted totals.
+     */
+    public function testCommissionUsesDiscountedTotal() {
+        $order = new class {
+            public function get_total() {
+                return 180.00;
+            }
+            public function get_total_tax() {
+                return 0.00;
+            }
+            public function get_subtotal() {
+                return 250.00;
+            }
+        };
+
+        $commission = InterSoccer_Commission_Manager::calculate_total_commission(
+            $order,
+            1, // coach_id (mock DB count returns 15 → 15% tier)
+            1,
+            1
+        );
+
+        $this->assertEquals(27.0, $commission['base_commission']);
+        $this->assertEquals(9.0, $commission['loyalty_bonus']);
+        $this->assertGreaterThan(0, $commission['total_amount']);
+    }
+
+    public function testSyncCommissionsProcessesCompletedOrders() {
+        global $mock_wpdb_last_insert, $mock_wpdb_last_delete, $mock_wpdb_get_results, $mock_wpdb_get_row_results, $mock_wc_order_override, $mock_wpdb_last_insert_by_table;
+
+        $mock_wpdb_last_insert = null;
+        $mock_wpdb_last_delete = null;
+        $mock_wpdb_last_insert_by_table = [];
+
+        $backup_results = isset($mock_wpdb_get_results) ? $mock_wpdb_get_results : [];
+        $backup_rows = isset($mock_wpdb_get_row_results) ? $mock_wpdb_get_row_results : [];
+
+        if (!isset($mock_wpdb_get_results) || !is_array($mock_wpdb_get_results)) {
+            $mock_wpdb_get_results = [];
+        }
+        if (!isset($mock_wpdb_get_row_results) || !is_array($mock_wpdb_get_row_results)) {
+            $mock_wpdb_get_row_results = [];
+        }
+
+        $mock_wpdb_get_results['__queue__'][] = function($query) {
+            return [
+                (object) [
+                    'id' => 501,
+                    'order_id' => 777,
+                    'coach_id' => 7,
+                    'customer_id' => 5,
+                    'commission_amount' => 20.0,
+                    'loyalty_bonus' => 5.0,
+                    'retention_bonus' => 0.0,
+                    'network_bonus' => 0.0,
+                    'status' => 'completed',
+                    'purchase_count' => 1,
+                    'referral_code' => 'COACH777XYZ',
+                ],
+            ];
+        };
+
+        $mock_wpdb_get_row_results['__queue__'][] = function($query) {
+            return (object) [
+                'id' => 88,
+                'coach_id' => 7,
+                'customer_id' => 5,
+                'order_id' => 777,
+                'purchase_count' => 1,
+                'status' => 'pending',
+            ];
+        };
+
+        $mock_wc_order_override = new WC_Order();
+        $mock_wc_order_override->set_total(200);
+        $mock_wc_order_override->set_tax_total(20);
+
+        $manager = InterSoccer_Commission_Manager::get_instance();
+        $processed = $manager->sync_commissions(['limit' => 1]);
+
+        $this->assertEquals(1, $processed);
+        $this->assertNotNull($mock_wpdb_last_insert);
+        $this->assertEquals('wp_intersoccer_referral_credits', $mock_wpdb_last_insert['table']);
+        $this->assertArrayHasKey('wp_intersoccer_coach_commissions', $mock_wpdb_last_insert_by_table);
+        $this->assertArrayHasKey('wp_intersoccer_referral_credits', $mock_wpdb_last_insert_by_table);
+
+        $mock_wpdb_get_results = $backup_results;
+        $mock_wpdb_get_row_results = $backup_rows;
+        $mock_wc_order_override = null;
+    }
+
+    /**
+     * Ensure commission payouts create referral credit records.
+     */
+    public function testProcessReferralCommissionsCreatesCreditRecord() {
+        global $mock_wpdb_last_insert, $mock_wpdb_last_delete, $mock_wpdb_get_row_results, $mock_wc_order_override, $mock_wpdb_last_insert_by_table;
+
+        $mock_wpdb_last_insert = null;
+        $mock_wpdb_last_delete = null;
+        $mock_wpdb_last_insert_by_table = [];
+
+        $backup_get_row = isset($mock_wpdb_get_row_results) ? $mock_wpdb_get_row_results : [];
+        $mock_wpdb_get_row_results = [
+            '__queue__' => [
+                function($query) {
+                    return (object) [
+                        'id' => 42,
+                        'coach_id' => 7,
+                        'customer_id' => 5,
+                        'order_id' => 555,
+                        'purchase_count' => 1,
+                        'status' => 'pending'
+                    ];
+                }
+            ]
+        ];
+
+        $mock_wc_order_override = new WC_Order();
+        $mock_wc_order_override->set_total(180);
+        $mock_wc_order_override->set_tax_total(18);
+
+        $manager = InterSoccer_Commission_Manager::get_instance();
+        $manager->process_referral_commissions(555);
+
+        $this->assertNotNull($mock_wpdb_last_delete);
+        $this->assertEquals('wp_intersoccer_referral_credits', $mock_wpdb_last_delete['table']);
+
+        $this->assertNotNull($mock_wpdb_last_insert);
+        $this->assertEquals('wp_intersoccer_referral_credits', $mock_wpdb_last_insert['table']);
+        $this->assertEquals(42, $mock_wpdb_last_insert['data']['referral_id']);
+        $this->assertEquals('commission', $mock_wpdb_last_insert['data']['credit_type']);
+        $this->assertGreaterThan(0, $mock_wpdb_last_insert['data']['credit_amount']);
+        $this->assertArrayHasKey('wp_intersoccer_coach_commissions', $mock_wpdb_last_insert_by_table);
+
+        $mock_wpdb_get_row_results = $backup_get_row;
+        $mock_wc_order_override = null;
+    }
+
+    public function testPartnershipMergeDoesNotCreateDuplicateReferralRow() {
+        global $mock_wpdb_get_row_results, $mock_wpdb_last_insert_by_table, $mock_wpdb_last_insert, $mock_wpdb_last_update, $mock_wpdb_last_delete, $mock_wc_order_override, $mock_user_meta;
+
+        $backup_get_row = isset($mock_wpdb_get_row_results) ? $mock_wpdb_get_row_results : [];
+        $mock_wpdb_get_row_results = [
+            '__queue__' => [
+                function($query) {
+                    if (strpos($query, 'WHERE order_id') !== false) {
+                        return (object) [
+                            'id' => 311,
+                            'coach_id' => 77,
+                            'customer_id' => 55,
+                            'order_id' => 901,
+                            'purchase_count' => 1,
+                            'status' => 'pending',
+                            'commission_amount' => 0.0,
+                            'loyalty_bonus' => 0.0,
+                            'retention_bonus' => 0.0,
+                            'referral_code' => 'COACH77CODE',
+                        ];
+                    }
+                    return null;
+                },
+            ],
+        ];
+
+        $mock_wpdb_last_insert_by_table = [];
+        $mock_wpdb_last_insert = null;
+        $mock_wpdb_last_update = null;
+        $mock_wpdb_last_delete = null;
+
+        update_user_meta(55, 'intersoccer_partnership_coach_id', 77);
+        update_user_meta(77, 'intersoccer_credits', 0);
+
+        $mock_wc_order_override = new class extends WC_Order {
+            public function get_customer_id() { return 55; }
+            public function has_status($statuses) { return true; }
+            public function get_id() { return 901; }
+            public function add_order_note($note) {}
+            public function get_currency() { return 'CHF'; }
+        };
+        $mock_wc_order_override->set_total(314);
+        $mock_wc_order_override->set_tax_total(0);
+
+        $manager = InterSoccer_Commission_Manager::get_instance();
+        $manager->process_referral_commissions(901);
+
+        $this->assertArrayHasKey('wp_intersoccer_coach_commissions', $mock_wpdb_last_insert_by_table);
+        $this->assertArrayHasKey('wp_intersoccer_referral_credits', $mock_wpdb_last_insert_by_table);
+        $this->assertArrayNotHasKey('wp_intersoccer_referrals', $mock_wpdb_last_insert_by_table);
+
+        $this->assertGreaterThan(0, get_user_meta(77, 'intersoccer_credits', true));
+
+        $mock_wpdb_get_row_results = $backup_get_row;
+        $mock_wc_order_override = null;
+        if (isset($mock_user_meta[55]['intersoccer_partnership_coach_id'])) {
+            unset($mock_user_meta[55]['intersoccer_partnership_coach_id']);
+        }
+    }
+
     // =========================================================================
     // ADDITIONAL COMMISSION COVERAGE TESTS (18 tests)
     // =========================================================================
