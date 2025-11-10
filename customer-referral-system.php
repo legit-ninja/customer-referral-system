@@ -51,6 +51,7 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-admin-dashboard.p
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-migration.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-migration-integers.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-user-roles.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-utils.php';
 error_log('All plugin files loaded, Referral Handler exists: ' . class_exists('InterSoccer_Referral_Handler'));
 
 // Main plugin class
@@ -79,18 +80,51 @@ class InterSoccer_Referral_System {
         $plugin_lang_dir = WP_PLUGIN_DIR . '/' . $plugin_rel_path . '/languages/';
         
         $locale = determine_locale();
-        $mofile = 'intersoccer-referral-' . $locale . '.mo';
-        
-        // Load from plugin directory first
-        $loaded = load_textdomain('intersoccer-referral', $plugin_lang_dir . $mofile);
-        
-        if ($loaded && defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('InterSoccer Referral: Loaded translations from plugin directory: ' . $plugin_lang_dir . $mofile);
+        $domain = 'intersoccer-referral';
+        $attempts = [];
+
+        // Exact locale first (e.g. fr_FR)
+        $attempts[] = $locale;
+
+        // Base language fallback (e.g. fr)
+        if (!empty($locale_parts[0])) {
+            $base_lang = $locale_parts[0];
+            if ($base_lang !== $locale) {
+                $attempts[] = $base_lang;
+            }
+ 
+             // Any regional variant we ship for that base language (e.g. fr_CH)
+             foreach (glob($plugin_lang_dir . $domain . '-' . $base_lang . '_*.mo') as $regional_file) {
+                $regional_locale = str_replace($domain . '-', '', basename($regional_file, '.mo'));
+                if ($regional_locale && $regional_locale !== $locale) {
+                    $attempts[] = $regional_locale;
+                }
+             }
+         }
+ 
+         // Always allow a catch-all file if we add one (e.g. domain.mo)
+         $attempts[] = '';
+
+         $attempts = array_unique($attempts);
+
+        $loaded = false;
+        foreach ($attempts as $attempt_locale) {
+            $candidate = $attempt_locale !== ''
+                ? $plugin_lang_dir . $domain . '-' . $attempt_locale . '.mo'
+                : $plugin_lang_dir . $domain . '.mo';
+
+            if (@is_readable($candidate)) {
+                $loaded = load_textdomain($domain, $candidate);
+                if ($loaded && defined('WP_DEBUG') && WP_DEBUG) {
+                    error_log('InterSoccer Referral: Loaded translations from plugin directory: ' . $candidate);
+                }
+                break;
+            }
         }
-        
+
         // Fallback to global directory (WPML may place files here)
         if (!$loaded) {
-            load_plugin_textdomain('intersoccer-referral', false, $plugin_rel_path . '/languages');
+            load_plugin_textdomain($domain, false, $plugin_rel_path . '/languages');
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 error_log('InterSoccer Referral: Attempted fallback translation loading for locale: ' . $locale);
             }
@@ -634,6 +668,23 @@ class InterSoccer_Referral_System {
         }
 
         $label = __('Refer & Earn', 'intersoccer-referral');
+
+        if (defined('ICL_SITEPRESS_VERSION')) {
+            do_action(
+                'wpml_register_single_string',
+                'Intersoccer Referral System',
+                'woocommerce_account_menu_refer_and_earn',
+                $label
+            );
+
+            $label = apply_filters(
+                'wpml_translate_single_string',
+                $label,
+                'Intersoccer Referral System',
+                'woocommerce_account_menu_refer_and_earn'
+            );
+        }
+
         $new_items = [];
         $inserted = false;
 
@@ -782,13 +833,7 @@ class InterSoccer_Referral_System {
                     'referrals' => $this->get_chart_data(get_current_user_id(), 30, 'referrals'),
                     'credits' => $this->get_chart_data(get_current_user_id(), 30, 'credits')
                 ],
-                'i18n' => [
-                    'no_events_title' => __('No events added yet', 'intersoccer-referral'),
-                    'no_events_description' => __('Add the events you coach so we can generate direct referral links for customers.', 'intersoccer-referral'),
-                    'copy' => __('Copy', 'intersoccer-referral'),
-                    'open' => __('Open', 'intersoccer-referral'),
-                    'remove' => __('Remove', 'intersoccer-referral')
-                ]
+                'i18n' => function_exists('intersoccer_referral_get_dashboard_i18n') ? intersoccer_referral_get_dashboard_i18n() : []
             ]);
         }
 
