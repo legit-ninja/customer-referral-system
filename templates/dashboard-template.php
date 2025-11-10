@@ -1,13 +1,31 @@
 <!-- templates/dashboard-template.php -->
 <div class="intersoccer-dashboard">
-    <h2>Coach Referral Dashboard</h2>
-    <p>Total Credits: <?php echo esc_html($credits); ?> CHF</p>
-    <p>Your Referral Link: <a href="<?php echo esc_url($referral_link); ?>"><?php echo esc_url($referral_link); ?></a></p>
-    <button onclick="navigator.clipboard.writeText('<?php echo esc_js($referral_link); ?>')">Copy Link</button>
-    
-    <h3>Recent Referrals</h3>
+    <h2><?php esc_html_e('Coach Referral Dashboard', 'intersoccer-referral'); ?></h2>
+    <p>
+        <?php
+        printf(
+            esc_html__('Total Credits: %s CHF', 'intersoccer-referral'),
+            esc_html($credits)
+        );
+        ?>
+    </p>
+    <p>
+        <?php esc_html_e('Your Referral Link:', 'intersoccer-referral'); ?>
+        <a href="<?php echo esc_url($referral_link); ?>"><?php echo esc_html($referral_link); ?></a>
+    </p>
+    <button type="button" onclick="navigator.clipboard.writeText('<?php echo esc_js($referral_link); ?>')">
+        <?php esc_html_e('Copy Link', 'intersoccer-referral'); ?>
+    </button>
+
+    <h3><?php esc_html_e('Recent Referrals', 'intersoccer-referral'); ?></h3>
     <table>
-        <thead><tr><th>Order ID</th><th>Commission</th><th>Date</th></tr></thead>
+        <thead>
+            <tr>
+                <th><?php esc_html_e('Order ID', 'intersoccer-referral'); ?></th>
+                <th><?php esc_html_e('Commission', 'intersoccer-referral'); ?></th>
+                <th><?php esc_html_e('Date', 'intersoccer-referral'); ?></th>
+            </tr>
+        </thead>
         <tbody>
             <?php foreach ($referrals as $ref): ?>
                 <tr>
@@ -18,7 +36,7 @@
             <?php endforeach; ?>
         </tbody>
     </table>
-    
+
     <!-- Basic progress bar (placeholder) -->
     <div class="progress-bar" style="width: 100%; background: #eee; height: 20px;">
         <div style="width: <?php echo min(100, ($credits / 100) * 100); ?>%; background: #4caf50; height: 100%;"></div>
