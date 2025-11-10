@@ -5,6 +5,72 @@
 
 class ModernCoachDashboard {
     constructor() {
+        const defaultLabels = {
+            no_events_title: 'No events added yet',
+            no_events_description: 'Add the events you coach so we can generate direct referral links for customers.',
+            copy: 'Copy',
+            open: 'Open',
+            remove: 'Remove',
+            search_prompt: 'Please enter at least two characters to search.',
+            searching: 'Searching...',
+            no_results: 'No events found.',
+            search_failed: 'Search failed. Please try again.',
+            event_selected: 'Event selected. Click "Request Event" to submit.',
+            select_event_first: 'Please select an event before requesting.',
+            request_success: 'Event request submitted. Awaiting approval.',
+            request_error: 'Unable to request event.',
+            network_error: 'Network error. Please try again.',
+            event_link_copied: 'Event link copied to clipboard!',
+            remove_confirm: 'Remove this event from your list?',
+            remove_success: 'Event removed.',
+            remove_error: 'Unable to remove event.',
+            refresh_error: 'Unable to refresh events.',
+            referral_link_copied: 'Referral link copied to clipboard!',
+            event_result_meta_pattern: 'ID: %1$s • %2$s',
+            social_modal_title: 'Create Social Media Post',
+            social_instagram_title: 'Instagram Post',
+            social_instagram_body: 'Transform your game with personalized soccer training! Join me at InterSoccer - link in bio!',
+            social_facebook_title: 'Facebook Post',
+            social_facebook_body: 'Looking to improve your soccer skills? I\'m now partnering with InterSoccer to offer personalized training programs. Click here to get started: %s',
+            social_twitter_title: 'Twitter Post',
+            social_twitter_body: 'Level up your soccer game! Join InterSoccer for personalized training. Link: %s #SoccerTraining #InterSoccer',
+            social_copy_post: 'Copy Post',
+            social_share_now: 'Share Now',
+            social_copy_success: 'Post copied to clipboard!',
+            social_share_copy_success: 'Post copied! Share it on your favorite social platform.',
+            email_modal_title: 'Send Referral Email',
+            email_recipient_label: 'Recipient Email',
+            email_recipient_placeholder: 'friend@example.com',
+            email_subject_label: 'Subject',
+            email_subject_default: 'Join me at InterSoccer!',
+            email_message_label: 'Message',
+            email_message_default: "Hi there!\n\nI thought you'd be interested in InterSoccer's personalized soccer training programs. I've been really enjoying the coaching and wanted to share this opportunity with you.\n\nClick here to check it out: %1$s\n\nBest regards,\n%2$s",
+            email_send_button: 'Send Email',
+            cancel_button: 'Cancel',
+            email_sending: 'Sending...',
+            email_sent_success: 'Email sent successfully!',
+            email_send_failed: 'Failed to send email',
+            email_send_retry: 'Failed to send email. Please try again.',
+            support_modal_title: 'Contact Support',
+            support_live_chat_title: 'Live Chat',
+            support_live_chat_description: 'Get instant help from our support team',
+            support_live_chat_action: 'Start Chat',
+            support_email_title: 'Email Support',
+            support_email_description: 'Send us a detailed message',
+            support_email_action: 'Send Email',
+            support_faq_title: 'FAQ',
+            support_faq_description: 'Browse our knowledge base',
+            support_faq_action: 'View FAQ',
+            modal_close_label: 'Close modal',
+            chart_referrals_label: 'Referrals',
+            chart_credits_label: 'Credits Earned',
+            leaderboard_modal_title: 'Full Leaderboard',
+            leaderboard_loading: 'Loading leaderboard...',
+            leaderboard_you_badge: 'You',
+            leaderboard_stats_pattern: '%1$s referrals • %2$s CHF'
+        };
+
+        this.labels = Object.assign({}, defaultLabels, (typeof intersoccer_dashboard !== 'undefined' && intersoccer_dashboard.i18n) ? intersoccer_dashboard.i18n : {});
         this.init();
     }
 
@@ -73,13 +139,7 @@ class ModernCoachDashboard {
             return;
         }
 
-        const labels = Object.assign({
-            no_events_title: 'No events added yet',
-            no_events_description: 'Add the events you coach so we can generate direct referral links for customers.',
-            copy: 'Copy',
-            open: 'Open',
-            remove: 'Remove',
-        }, intersoccer_dashboard.i18n || {});
+        const labels = this.labels;
 
         const searchBtn = document.getElementById('coach-event-search-btn');
         const searchInput = document.getElementById('coach-event-search-input');
@@ -94,11 +154,11 @@ class ModernCoachDashboard {
             const performSearch = () => {
                 const term = searchInput.value.trim();
                 if (term.length < 2) {
-                    this.showNotification('Please enter at least two characters to search.', 'info');
+                    this.showNotification(labels.search_prompt, 'info');
                     return;
                 }
 
-                resultsContainer.innerHTML = '<p class="coach-event-search-empty">Searching…</p>';
+                resultsContainer.innerHTML = `<p class="coach-event-search-empty">${this.escapeHtml(labels.searching)}</p>`;
 
                 fetch(intersoccer_dashboard.ajax_url, {
                     method: 'POST',
@@ -113,11 +173,11 @@ class ModernCoachDashboard {
                     if (data.success && Array.isArray(data.data.results)) {
                         this.renderCoachEventResults(data.data.results);
                     } else {
-                        resultsContainer.innerHTML = '<p class="coach-event-search-empty">No events found.</p>';
+                        resultsContainer.innerHTML = `<p class="coach-event-search-empty">${this.escapeHtml(labels.no_results)}</p>`;
                     }
                 })
                 .catch(() => {
-                    resultsContainer.innerHTML = '<p class="coach-event-search-empty">Search failed. Please try again.</p>';
+                    resultsContainer.innerHTML = `<p class="coach-event-search-empty">${this.escapeHtml(labels.search_failed)}</p>`;
                 });
             };
 
@@ -146,7 +206,7 @@ class ModernCoachDashboard {
                 resultsContainer.querySelectorAll('.coach-event-result').forEach(el => el.classList.remove('selected'));
                 item.classList.add('selected');
 
-                this.showNotification('Event selected. Click “Request Event” to submit.', 'info');
+                this.showNotification(labels.event_selected, 'info');
             });
         }
 
@@ -154,7 +214,7 @@ class ModernCoachDashboard {
             addBtn.addEventListener('click', () => {
                 const eventId = selectedIdInput.value;
                 if (!eventId) {
-                    this.showNotification('Please select an event before requesting.', 'error');
+                    this.showNotification(labels.select_event_first, 'error');
                     return;
                 }
 
@@ -174,18 +234,19 @@ class ModernCoachDashboard {
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
-                        this.showNotification('Event request submitted. Awaiting approval.', 'success');
+                        this.showNotification(labels.request_success, 'success');
                         selectedIdInput.value = '';
                         selectedTypeInput.value = '';
                         searchInput.value = '';
                         resultsContainer.innerHTML = '';
                         this.refreshCoachEvents();
                     } else {
-                        this.showNotification(data.data || 'Unable to request event.', 'error');
+                        const message = data.data && (data.data.message || data.data);
+                        this.showNotification(message || labels.request_error, 'error');
                     }
                 })
                 .catch(() => {
-                    this.showNotification('Network error. Please try again.', 'error');
+                    this.showNotification(labels.network_error, 'error');
                 })
                 .finally(() => {
                     if (spinner) {
@@ -203,45 +264,38 @@ class ModernCoachDashboard {
         if (eventsBody) {
             eventsBody.addEventListener('click', (e) => {
                 const copyBtn = e.target.closest('.coach-event-copy');
-                if (copyBtn) {
+                if (copyBtn && copyBtn.dataset.link) {
                     this.copyToClipboard(copyBtn.dataset.link);
-                    this.showNotification('Event link copied to clipboard!', 'success');
-                    return;
+                    this.showNotification(labels.event_link_copied, 'success');
                 }
 
                 const removeBtn = e.target.closest('.coach-event-remove');
                 if (removeBtn) {
-                    e.preventDefault();
-                    const assignmentId = removeBtn.dataset.assignmentId;
-                    if (!assignmentId) {
-                        return;
-                    }
-
-                    if (!confirm('Remove this event from your list?')) {
+                    if (!confirm(labels.remove_confirm)) {
                         return;
                     }
 
                     removeBtn.disabled = true;
-
                     fetch(intersoccer_dashboard.ajax_url, {
                         method: 'POST',
                         body: new URLSearchParams({
                             action: 'intersoccer_delete_coach_event',
                             nonce: intersoccer_dashboard.coach_events_nonce,
-                            assignment_id: assignmentId
+                            assignment_id: removeBtn.dataset.assignmentId
                         })
                     })
                     .then(response => response.json())
                     .then(data => {
                         if (data.success) {
-                            this.showNotification('Event removed.', 'success');
+                            this.showNotification(labels.remove_success, 'success');
                             this.refreshCoachEvents();
                         } else {
-                            this.showNotification(data.data || 'Unable to remove event.', 'error');
+                            const errorMessage = data.data && (data.data.message || data.data);
+                            this.showNotification(errorMessage || labels.remove_error, 'error');
                         }
                     })
                     .catch(() => {
-                        this.showNotification('Network error. Please try again.', 'error');
+                        this.showNotification(labels.network_error, 'error');
                     })
                     .finally(() => {
                         removeBtn.disabled = false;
@@ -257,22 +311,34 @@ class ModernCoachDashboard {
             return;
         }
 
+        const labels = this.labels;
+
         if (!results.length) {
-            container.innerHTML = '<p class="coach-event-search-empty">No events found.</p>';
+            container.innerHTML = `<p class="coach-event-search-empty">${this.escapeHtml(labels.no_results)}</p>`;
             return;
         }
 
-        container.innerHTML = results.map(result => `
-            <button type="button" class="coach-event-result" data-event-id="${result.id}" data-event-type="${result.type}" data-event-title="${result.title}">
-                <strong>${result.title}</strong>
-                <span class="coach-event-result-meta">ID: ${result.id} • ${(result.type_label || result.type)}</span>
-            </button>
-        `).join('');
+        container.innerHTML = results.map(result => {
+            const idValue = String(result.id);
+            const typeLabelValue = result.type_label || result.type || '';
+            const metaText = this.formatLabel('event_result_meta_pattern', idValue, typeLabelValue);
+            const id = this.escapeHtml(idValue);
+            const title = this.escapeHtml(result.title || '');
+            const typeLabelAttr = this.escapeHtml(result.type || '');
+            return `
+                <button type="button" class="coach-event-result" data-event-id="${id}" data-event-type="${typeLabelAttr}" data-event-title="${title}">
+                    <strong>${title}</strong>
+                    <span class="coach-event-result-meta">${this.escapeHtml(metaText)}</span>
+                </button>
+            `;
+        }).join('');
     }
 
     refreshCoachEvents() {
         const body = document.getElementById('coach-events-body');
         if (!body) return;
+
+        const labels = this.labels;
 
         fetch(intersoccer_dashboard.ajax_url, {
             method: 'POST',
@@ -284,7 +350,7 @@ class ModernCoachDashboard {
         .then(response => response.json())
         .then(data => {
             if (!data.success) {
-                this.showNotification('Unable to refresh events.', 'error');
+                this.showNotification(labels.refresh_error, 'error');
                 return;
             }
 
@@ -293,8 +359,8 @@ class ModernCoachDashboard {
                 body.innerHTML = `
                     <div class="empty-state">
                         <i class="icon-calendar"></i>
-                        <h4>${labels.no_events_title}</h4>
-                        <p>${labels.no_events_description}</p>
+                        <h4>${this.escapeHtml(labels.no_events_title)}</h4>
+                        <p>${this.escapeHtml(labels.no_events_description)}</p>
                     </div>
                 `;
                 return;
@@ -302,33 +368,49 @@ class ModernCoachDashboard {
 
             body.innerHTML = `
                 <ul class="coach-events-list">
-                    ${events.map(event => `
-                        <li class="coach-event-item" data-assignment-id="${event.id}">
-                            <div class="event-title">
-                                ${event.event_permalink ? `<a href="${event.event_permalink}" target="_blank" rel="noopener noreferrer">${event.event_title}</a>` : event.event_title}
+                    ${events.map(event => {
+                        const assignmentId = this.escapeHtml(String(event.id));
+                        const title = this.escapeHtml(event.event_title || '');
+                        const permalink = event.event_permalink ? this.escapeHtml(event.event_permalink) : '';
+                        const statusClass = (event.status || '').toString().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                        const statusLabel = this.escapeHtml(event.status_label || event.status || '');
+                        const sourceLabel = this.escapeHtml(event.source_label || event.source || '');
+                        const assignedDate = event.assigned_at ? `<span class="event-date">• ${this.escapeHtml(event.assigned_at)}</span>` : '';
+                        const eventLink = event.event_link ? this.escapeHtml(event.event_link) : '';
+                        const shareMarkup = eventLink ? `
+                            <div class="event-share">
+                                <input type="text" class="coach-event-share-input" value="${eventLink}" readonly>
+                                <button class="btn-tertiary coach-event-copy" data-link="${eventLink}">${this.escapeHtml(labels.copy)}</button>
+                                <a class="btn-secondary" href="${eventLink}" target="_blank" rel="noopener noreferrer">${this.escapeHtml(labels.open)}</a>
                             </div>
-                            <div class="event-meta">
-                                <span class="event-status status-${event.status}">${event.status}</span>
-                                <span class="event-source">• ${event.source}</span>
-                                ${event.assigned_at ? `<span class="event-date">• ${event.assigned_at}</span>` : ''}
-                            </div>
-                            ${event.event_link ? `
-                                <div class="event-share">
-                                    <input type="text" class="coach-event-share-input" value="${event.event_link}" readonly>
-                                    <button class="btn-tertiary coach-event-copy" data-link="${event.event_link}">${labels.copy}</button>
-                                    <a class="btn-secondary" href="${event.event_link}" target="_blank" rel="noopener noreferrer">${labels.open}</a>
+                        ` : '';
+
+                        const titleMarkup = permalink
+                            ? `<a href="${permalink}" target="_blank" rel="noopener noreferrer">${title}</a>`
+                            : title;
+
+                        return `
+                            <li class="coach-event-item" data-assignment-id="${assignmentId}">
+                                <div class="event-title">
+                                    ${titleMarkup}
                                 </div>
-                            ` : ''}
-                            <div class="event-actions">
-                                <button class="btn-tertiary coach-event-remove" data-assignment-id="${event.id}">${labels.remove}</button>
-                            </div>
-                        </li>
-                    `).join('')}
+                                <div class="event-meta">
+                                    <span class="event-status status-${statusClass}">${statusLabel}</span>
+                                    <span class="event-source">• ${sourceLabel}</span>
+                                    ${assignedDate}
+                                </div>
+                                ${shareMarkup}
+                                <div class="event-actions">
+                                    <button class="btn-tertiary coach-event-remove" data-assignment-id="${assignmentId}">${this.escapeHtml(labels.remove)}</button>
+                                </div>
+                            </li>
+                        `;
+                    }).join('')}
                 </ul>
             `;
         })
         .catch(() => {
-            this.showNotification('Unable to refresh events.', 'error');
+            this.showNotification(labels.refresh_error, 'error');
         });
     }
 
@@ -337,7 +419,7 @@ class ModernCoachDashboard {
         if (linkInput) {
             linkInput.select();
             document.execCommand('copy');
-            this.showNotification('Referral link copied to clipboard!', 'success');
+            this.showNotification(this.getLabel('referral_link_copied'), 'success');
         }
     }
 
@@ -410,24 +492,27 @@ class ModernCoachDashboard {
     }
 
     showSocialMediaComposer() {
-        const modal = this.createModal('Create Social Media Post', `
+        const labels = this.labels;
+        const referralLink = intersoccer_dashboard.referral_link || '';
+
+        const modal = this.createModal(this.getLabel('social_modal_title'), `
             <div class="social-templates">
                 <div class="template-option" data-platform="instagram">
-                    <h4>📸 Instagram Post</h4>
-                    <p>"Transform your game with personalized soccer training! 🏈⚽ Join me at InterSoccer - link in bio!"</p>
+                    <h4>${this.escapeHtml(this.getLabel('social_instagram_title'))}</h4>
+                    <p>${this.escapeHtml(this.formatLabel('social_instagram_body'))}</p>
                 </div>
                 <div class="template-option" data-platform="facebook">
-                    <h4>📘 Facebook Post</h4>
-                    <p>"Looking to improve your soccer skills? I'm now partnering with InterSoccer to offer personalized training programs. Click here to get started: ${intersoccer_dashboard.referral_link}"</p>
+                    <h4>${this.escapeHtml(this.getLabel('social_facebook_title'))}</h4>
+                    <p>${this.escapeHtml(this.formatLabel('social_facebook_body', referralLink))}</p>
                 </div>
                 <div class="template-option" data-platform="twitter">
-                    <h4>🐦 Twitter Post</h4>
-                    <p>"Level up your soccer game! 🏆 Join InterSoccer for personalized training. Link: ${intersoccer_dashboard.referral_link} #SoccerTraining #InterSoccer"</p>
+                    <h4>${this.escapeHtml(this.getLabel('social_twitter_title'))}</h4>
+                    <p>${this.escapeHtml(this.formatLabel('social_twitter_body', referralLink))}</p>
                 </div>
             </div>
             <div class="modal-actions">
-                <button class="btn-primary" id="copy-post">Copy Post</button>
-                <button class="btn-secondary" id="share-post">Share Now</button>
+                <button class="btn-primary" id="copy-post">${this.escapeHtml(this.getLabel('social_copy_post'))}</button>
+                <button class="btn-secondary" id="share-post">${this.escapeHtml(this.getLabel('social_share_now'))}</button>
             </div>
         `);
 
@@ -445,7 +530,7 @@ class ModernCoachDashboard {
         modal.querySelector('#copy-post').addEventListener('click', () => {
             if (selectedTemplate) {
                 this.copyToClipboard(selectedTemplate);
-                this.showNotification('Post copied to clipboard!', 'success');
+                this.showNotification(labels.social_copy_success, 'success');
             }
         });
 
@@ -457,33 +542,33 @@ class ModernCoachDashboard {
     }
 
     showEmailComposer() {
-        const modal = this.createModal('Send Referral Email', `
+        const labels = this.labels;
+        const referralLink = intersoccer_dashboard.referral_link || '';
+        const userName = intersoccer_dashboard.user_name || '';
+        const emailBody = this.formatLabel('email_message_default', referralLink, userName);
+
+        const modal = this.createModal(this.getLabel('email_modal_title'), `
             <form id="email-form">
                 <div class="form-group">
-                    <label for="email-recipient">Recipient Email</label>
-                    <input type="email" id="email-recipient" required placeholder="friend@example.com">
+                    <label for="email-recipient">${this.escapeHtml(this.getLabel('email_recipient_label'))}</label>
+                    <input type="email" id="email-recipient" required placeholder="${this.escapeHtml(this.getLabel('email_recipient_placeholder'))}">
                 </div>
                 <div class="form-group">
-                    <label for="email-subject">Subject</label>
-                    <input type="text" id="email-subject" required value="Join me at InterSoccer!">
+                    <label for="email-subject">${this.escapeHtml(this.getLabel('email_subject_label'))}</label>
+                    <input type="text" id="email-subject" required value="${this.escapeHtml(this.getLabel('email_subject_default'))}">
                 </div>
                 <div class="form-group">
-                    <label for="email-message">Message</label>
-                    <textarea id="email-message" rows="6" required>Hi there!
-
-I thought you'd be interested in InterSoccer's personalized soccer training programs. I've been really enjoying the coaching and wanted to share this opportunity with you.
-
-Click here to check it out: ${intersoccer_dashboard.referral_link}
-
-Best regards,
-${intersoccer_dashboard.user_name}</textarea>
+                    <label for="email-message">${this.escapeHtml(this.getLabel('email_message_label'))}</label>
+                    <textarea id="email-message" rows="6" required>${this.escapeHtml(emailBody)}</textarea>
                 </div>
                 <div class="modal-actions">
-                    <button type="submit" class="btn-primary">Send Email</button>
-                    <button type="button" class="btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+                    <button type="submit" class="btn-primary">${this.escapeHtml(this.getLabel('email_send_button'))}</button>
+                    <button type="button" class="btn-secondary" data-modal-dismiss="true">${this.escapeHtml(this.getLabel('cancel_button'))}</button>
                 </div>
             </form>
         `);
+
+        modal.querySelector('[data-modal-dismiss="true"]').addEventListener('click', () => modal.remove());
 
         // Bind form submission
         modal.querySelector('#email-form').addEventListener('submit', (e) => {
@@ -493,25 +578,26 @@ ${intersoccer_dashboard.user_name}</textarea>
     }
 
     showSupportModal() {
-        const modal = this.createModal('Contact Support', `
+        const labels = this.labels;
+        const modal = this.createModal(this.getLabel('support_modal_title'), `
             <div class="support-options">
                 <div class="support-option">
                     <div class="support-icon">💬</div>
-                    <h4>Live Chat</h4>
-                    <p>Get instant help from our support team</p>
-                    <button class="btn-primary" onclick="window.open('https://intersoccer.com/support/chat', '_blank')">Start Chat</button>
+                    <h4>${this.escapeHtml(this.getLabel('support_live_chat_title'))}</h4>
+                    <p>${this.escapeHtml(this.getLabel('support_live_chat_description'))}</p>
+                    <button class="btn-primary" onclick="window.open('https://intersoccer.com/support/chat', '_blank')">${this.escapeHtml(this.getLabel('support_live_chat_action'))}</button>
                 </div>
                 <div class="support-option">
                     <div class="support-icon">📧</div>
-                    <h4>Email Support</h4>
-                    <p>Send us a detailed message</p>
-                    <button class="btn-secondary" onclick="window.location.href='mailto:support@intersoccer.com'">Send Email</button>
+                    <h4>${this.escapeHtml(this.getLabel('support_email_title'))}</h4>
+                    <p>${this.escapeHtml(this.getLabel('support_email_description'))}</p>
+                    <button class="btn-secondary" onclick="window.location.href='mailto:support@intersoccer.com'">${this.escapeHtml(this.getLabel('support_email_action'))}</button>
                 </div>
                 <div class="support-option">
                     <div class="support-icon">❓</div>
-                    <h4>FAQ</h4>
-                    <p>Browse our knowledge base</p>
-                    <button class="btn-secondary" onclick="window.open('https://intersoccer.com/faq', '_blank')">View FAQ</button>
+                    <h4>${this.escapeHtml(this.getLabel('support_faq_title'))}</h4>
+                    <p>${this.escapeHtml(this.getLabel('support_faq_description'))}</p>
+                    <button class="btn-secondary" onclick="window.open('https://intersoccer.com/faq', '_blank')">${this.escapeHtml(this.getLabel('support_faq_action'))}</button>
                 </div>
             </div>
         `);
@@ -524,7 +610,7 @@ ${intersoccer_dashboard.user_name}</textarea>
             <div class="modal-content">
                 <div class="modal-header">
                     <h3>${title}</h3>
-                    <button class="modal-close">&times;</button>
+                    <button class="modal-close" type="button" aria-label="${this.escapeHtml(this.getLabel('modal_close_label'))}">&times;</button>
                 </div>
                 <div class="modal-body">
                     ${content}
@@ -562,14 +648,14 @@ ${intersoccer_dashboard.user_name}</textarea>
         // This would integrate with social media APIs
         // For now, just copy to clipboard
         this.copyToClipboard(text);
-        this.showNotification('Post copied! Share it on your favorite social platform.', 'success');
+        this.showNotification(this.getLabel('social_share_copy_success'), 'success');
     }
 
     sendReferralEmail(formData) {
         // Show loading state
         const submitBtn = document.querySelector('#email-form .btn-primary');
         const originalText = submitBtn.textContent;
-        submitBtn.textContent = 'Sending...';
+        submitBtn.textContent = this.getLabel('email_sending');
         submitBtn.disabled = true;
 
         // Prepare data
@@ -583,15 +669,16 @@ ${intersoccer_dashboard.user_name}</textarea>
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                this.showNotification('Email sent successfully!', 'success');
+                this.showNotification(this.getLabel('email_sent_success'), 'success');
                 document.querySelector('.modal').remove();
             } else {
-                this.showNotification(data.data.message || 'Failed to send email', 'error');
+                const message = data.data && (data.data.message || data.data);
+                this.showNotification(message || this.getLabel('email_send_failed'), 'error');
             }
         })
         .catch(error => {
             console.error('Email send error:', error);
-            this.showNotification('Failed to send email. Please try again.', 'error');
+            this.showNotification(this.getLabel('email_send_retry'), 'error');
         })
         .finally(() => {
             submitBtn.textContent = originalText;
@@ -617,6 +704,42 @@ ${intersoccer_dashboard.user_name}</textarea>
             notification.classList.remove('show');
             setTimeout(() => notification.remove(), 300);
         }, 3000);
+    }
+
+    getLabel(key) {
+        return this.labels[key] || '';
+    }
+
+    formatLabel(key, ...args) {
+        let template = this.getLabel(key);
+        if (!template) {
+            return '';
+        }
+
+        if (!args.length) {
+            return template;
+        }
+
+        args.forEach((value, index) => {
+            const positional = new RegExp(`%${index + 1}\\$s`, 'g');
+            template = template.replace(positional, value);
+            template = template.replace('%s', value);
+        });
+
+        return template;
+    }
+
+    escapeHtml(str) {
+        if (typeof str !== 'string') {
+            return str;
+        }
+
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
     }
 
     initializeCharts() {
@@ -646,14 +769,14 @@ ${intersoccer_dashboard.user_name}</textarea>
             data: {
                 labels: chartData.labels,
                 datasets: [{
-                    label: 'Referrals',
+                    label: this.getLabel('chart_referrals_label'),
                     data: chartData.referrals,
                     borderColor: '#667eea',
                     backgroundColor: 'rgba(102, 126, 234, 0.1)',
                     tension: 0.4,
                     fill: true
                 }, {
-                    label: 'Credits Earned',
+                    label: this.getLabel('chart_credits_label'),
                     data: chartData.credits,
                     borderColor: '#764ba2',
                     backgroundColor: 'rgba(118, 75, 162, 0.1)',
@@ -800,9 +923,9 @@ ${intersoccer_dashboard.user_name}</textarea>
 
     showFullLeaderboard() {
         // Open full leaderboard modal or navigate to page
-        const modal = this.createModal('Full Leaderboard', `
+        const modal = this.createModal(this.getLabel('leaderboard_modal_title'), `
             <div id="full-leaderboard-content">
-                <p>Loading leaderboard...</p>
+                <p>${this.escapeHtml(this.getLabel('leaderboard_loading'))}</p>
             </div>
         `);
 
@@ -830,30 +953,38 @@ ${intersoccer_dashboard.user_name}</textarea>
     }
 
     renderLeaderboard(leaderboardData) {
+        const youBadge = this.escapeHtml(this.getLabel('leaderboard_you_badge'));
         return `
             <div class="leaderboard-list full">
-                ${leaderboardData.map((performer, index) => `
-                    <div class="leaderboard-item ${performer.ID == intersoccer_dashboard.user_id ? 'current-user' : ''}">
-                        <div class="rank-badge ${index < 3 ? 'top-' + (index + 1) : ''}">
-                            ${index + 1}
-                        </div>
-                        <div class="performer-info">
-                            <div class="performer-name">
-                                ${performer.display_name}
-                                ${performer.ID == intersoccer_dashboard.user_id ? '<span class="you-badge">You</span>' : ''}
+                ${leaderboardData.map((performer, index) => {
+                    const statsText = this.formatLabel(
+                        'leaderboard_stats_pattern',
+                        String(performer.referral_count),
+                        this.formatNumber(performer.total_credits)
+                    );
+                    const tierClass = (performer.tier || '').toString().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                    return `
+                        <div class="leaderboard-item ${performer.ID == intersoccer_dashboard.user_id ? 'current-user' : ''}">
+                            <div class="rank-badge ${index < 3 ? 'top-' + (index + 1) : ''}">
+                                ${index + 1}
                             </div>
-                            <div class="performer-stats">
-                                ${performer.referral_count} referrals •
-                                ${this.formatNumber(performer.total_credits)} CHF
+                            <div class="performer-info">
+                                <div class="performer-name">
+                                    ${this.escapeHtml(performer.display_name)}
+                                    ${performer.ID == intersoccer_dashboard.user_id ? `<span class="you-badge">${youBadge}</span>` : ''}
+                                </div>
+                                <div class="performer-stats">
+                                    ${this.escapeHtml(statsText)}
+                                </div>
+                            </div>
+                            <div class="performer-tier">
+                                <span class="tier-badge ${tierClass}">
+                                    ${this.escapeHtml(performer.tier)}
+                                </span>
                             </div>
                         </div>
-                        <div class="performer-tier">
-                            <span class="tier-badge ${performer.tier.toLowerCase()}">
-                                ${performer.tier}
-                            </span>
-                        </div>
-                    </div>
-                `).join('')}
+                    `;
+                }).join('')}
             </div>
         `;
     }
