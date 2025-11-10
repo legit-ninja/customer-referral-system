@@ -1,0 +1,406 @@
+# French translations for InterSoccer Referral System
+# Copyright (C) 2025 InterSoccer
+# This file is distributed under the GPL-2.0+.
+msgid ""
+msgstr ""
+"Project-Id-Version: InterSoccer Referral System 1.0.0\n"
+"Report-Msgid-Bugs-To: https://intersoccer.ch\n"
+"POT-Creation-Date: 2025-11-03 18:30:00+00:00\n"
+"PO-Revision-Date: 2025-11-03 18:30:00+00:00\n"
+"Last-Translator: InterSoccer Team <info@intersoccer.ch>\n"
+"Language-Team: French <fr@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"X-Generator: Poedit 3.0\n"
+"X-Poedit-KeywordsList: __;_e;_n:1,2;_x:1,2c;_ex:1,2c;_nx:4c,1,2;esc_attr__;esc_attr_e;esc_attr_x:1,2c;esc_html__;esc_html_e;esc_html_x:1,2c;_n_noop:1,2;_nx_noop:3c,1,2;__ngettext_noop:1,2\n"
+"X-Poedit-Basepath: ..\n"
+"X-Poedit-SourceCharset: UTF-8\n"
+"X-Poedit-SearchPath-0: .\n"
+"X-Poedit-SearchPathExcluded-0: vendor\n"
+"X-Poedit-SearchPathExcluded-1: node_modules\n"
+"X-Poedit-SearchPathExcluded-2: tests\n"
+
+# User Roles
+msgid "Coach"
+msgstr "Entraîneur"
+
+msgid "Content Creator"
+msgstr "Créateur de contenu"
+
+msgid "Partner"
+msgstr "Partenaire"
+
+# Frontend Messages
+msgid "Link copied!"
+msgstr "Lien copié !"
+
+msgid "Error occurred"
+msgstr "Une erreur s'est produite"
+
+msgid "Failed to copy"
+msgstr "Échec de la copie"
+
+msgid "Loading..."
+msgstr "Chargement..."
+
+# Demo Data
+msgid "Are you sure you want to clear all demo data? This action cannot be undone."
+msgstr "Êtes-vous sûr de vouloir effacer toutes les données de démonstration ? Cette action ne peut pas être annulée."
+
+msgid "Demo data populated successfully!"
+msgstr "Données de démonstration ajoutées avec succès !"
+
+msgid "Demo data cleared successfully!"
+msgstr "Données de démonstration supprimées avec succès !"
+
+msgid "An error occurred. Please try again."
+msgstr "Une erreur s'est produite. Veuillez réessayer."
+
+# Email
+#, php-format
+msgid "Your Weekly InterSoccer Report - %s"
+msgstr "Votre rapport hebdomadaire InterSoccer - %s"
+
+msgid "New Partnership Connection!"
+msgstr "Nouvelle connexion de partenariat !"
+
+msgid "Partnership Update"
+msgstr "Mise à jour du partenariat"
+
+# Checkout - Referral Code
+msgid "Coach Referral Code (Optional)"
+msgstr "Code de parrainage de l'entraîneur (Facultatif)"
+
+msgid "Support your favorite coach! Enter their referral code to give them credit for this purchase."
+msgstr "Soutenez votre entraîneur préféré ! Entrez son code de parrainage pour lui accorder un crédit pour cet achat."
+
+msgid "Apply Code"
+msgstr "Appliquer le code"
+
+# Checkout - Loyalty Points
+msgid "Use Loyalty Points"
+msgstr "Utiliser les points de fidélité"
+
+#, php-format
+msgid "You have %s points available"
+msgstr "Vous avez %s points disponibles"
+
+msgid "Apply All"
+msgstr "Appliquer tout"
+
+msgid "Apply All Available"
+msgstr "Appliquer tous les disponibles"
+
+msgid "Or enter custom amount:"
+msgstr "Ou entrez un montant personnalisé :"
+
+# Points Validation
+msgid "Invalid points amount."
+msgstr "Montant de points invalide."
+
+msgid "Points redemption cannot exceed your cart total."
+msgstr "L'échange de points ne peut pas dépasser le total de votre panier."
+
+msgid "You can redeem up to your cart total or available points, whichever is less."
+msgstr "Vous pouvez échanger jusqu'au total de votre panier ou vos points disponibles, selon le montant le plus bas."
+
+msgid "Points must be whole numbers only. Fractional values are not allowed."
+msgstr "Les points doivent être des nombres entiers uniquement. Les valeurs décimales ne sont pas autorisées."
+
+msgid "You don't have enough points available."
+msgstr "Vous n'avez pas assez de points disponibles."
+
+msgid "Please enter the number of credits to redeem."
+msgstr "Veuillez entrer le nombre de crédits à échanger."
+
+# Order Notes
+#, php-format
+msgid "Customer redeemed %d referral credits."
+msgstr "Le client a échangé %d crédits de parrainage."
+
+msgid "Referral Credits Discount"
+msgstr "Réduction de crédits de parrainage"
+
+#, php-format
+msgid "Deducted %d credits from customer balance. New balance: %d"
+msgstr "%d crédits déduits du solde du client. Nouveau solde : %d"
+
+#, php-format
+msgid "Awarded %d bonus points to coach %s for referral code usage. New balance: %d"
+msgstr "%d points bonus attribués à l'entraîneur %s pour l'utilisation du code de parrainage. Nouveau solde : %d"
+
+#, php-format
+msgid "Awarded %d points to coach %s for customer purchase (CHF %.2f). New balance: %d"
+msgstr "%d points attribués à l'entraîneur %s pour l'achat du client (CHF %.2f). Nouveau solde : %d"
+
+# Cart Fees
+#, php-format
+msgid "Referral code applied! You will receive a discount from coach %s."
+msgstr "Code de parrainage appliqué ! Vous recevrez une réduction de l'entraîneur %s."
+
+msgid "Coach Referral Discount"
+msgstr "Réduction de parrainage d'entraîneur"
+
+msgid "Points Discount"
+msgstr "Réduction de points"
+
+# Points Manager
+msgid "Insufficient points balance."
+msgstr "Solde de points insuffisant."
+
+msgid "Points redemption exceeds allowed limits."
+msgstr "L'échange de points dépasse les limites autorisées."
+
+msgid "Points discount cannot exceed order total."
+msgstr "La réduction de points ne peut pas dépasser le total de la commande."
+
+#, php-format
+msgid "Redeemed %d points for %.2f CHF discount"
+msgstr "%d points échangés pour %.2f CHF de réduction"
+
+msgid "No events added yet"
+msgstr "Aucun événement ajouté pour l'instant"
+
+msgid "Add the events you coach so we can generate direct referral links for customers."
+msgstr "Ajoutez les événements que vous encadrez afin que nous puissions générer des liens de parrainage directs pour les clients."
+
+msgid "Copy"
+msgstr "Copier"
+
+msgid "Open"
+msgstr "Ouvrir"
+
+msgid "Remove"
+msgstr "Supprimer"
+
+msgid "Please enter at least two characters to search."
+msgstr "Veuillez saisir au moins deux caractères pour lancer la recherche."
+
+msgid "Searching..."
+msgstr "Recherche en cours..."
+
+msgid "No events found."
+msgstr "Aucun événement trouvé."
+
+msgid "Search failed. Please try again."
+msgstr "La recherche a échoué. Veuillez réessayer."
+
+msgid "Event selected. Click \"Request Event\" to submit."
+msgstr "Événement sélectionné. Cliquez sur \"Demander l'événement\" pour l'envoyer."
+
+msgid "Please select an event before requesting."
+msgstr "Veuillez sélectionner un événement avant de l'envoyer."
+
+msgid "Event request submitted. Awaiting approval."
+msgstr "Demande d'événement envoyée. En attente de validation."
+
+msgid "Unable to request event."
+msgstr "Impossible d'envoyer la demande d'événement."
+
+msgid "Network error. Please try again."
+msgstr "Erreur réseau. Veuillez réessayer."
+
+msgid "Event link copied to clipboard!"
+msgstr "Lien de l'événement copié dans le presse-papiers !"
+
+msgid "Remove this event from your list?"
+msgstr "Retirer cet événement de votre liste ?"
+
+msgid "Event removed."
+msgstr "Événement supprimé."
+
+msgid "Unable to remove event."
+msgstr "Impossible de supprimer l'événement."
+
+msgid "Unable to refresh events."
+msgstr "Impossible d'actualiser les événements."
+
+msgid "Referral link copied to clipboard!"
+msgstr "Lien de parrainage copié dans le presse-papiers !"
+
+msgid "ID: %1$s • %2$s"
+msgstr "ID : %1$s • %2$s"
+
+msgid "Create Social Media Post"
+msgstr "Créer une publication pour les réseaux sociaux"
+
+msgid "Instagram Post"
+msgstr "Publication Instagram"
+
+msgid "Transform your game with personalized soccer training! Join me at InterSoccer - link in bio!"
+msgstr "Améliore ton jeu avec un coaching personnalisé ! Rejoins-moi chez InterSoccer - lien en bio !"
+
+msgid "Facebook Post"
+msgstr "Publication Facebook"
+
+msgid "Looking to improve your soccer skills? I'm now partnering with InterSoccer to offer personalized training programs. Click here to get started: %s"
+msgstr "Tu veux progresser en football ? Je me suis associé avec InterSoccer pour proposer des programmes personnalisés. Clique ici pour commencer : %s"
+
+msgid "Twitter Post"
+msgstr "Publication Twitter"
+
+msgid "Level up your soccer game! Join InterSoccer for personalized training. Link: %s #SoccerTraining #InterSoccer"
+msgstr "Fais passer ton football au niveau supérieur ! Rejoins InterSoccer pour un coaching personnalisé. Lien : %s #SoccerTraining #InterSoccer"
+
+msgid "Copy Post"
+msgstr "Copier la publication"
+
+msgid "Share Now"
+msgstr "Partager maintenant"
+
+msgid "Post copied to clipboard!"
+msgstr "Publication copiée dans le presse-papiers !"
+
+msgid "Post copied! Share it on your favorite social platform."
+msgstr "Publication copiée ! Partage-la sur ton réseau préféré."
+
+msgid "Send Referral Email"
+msgstr "Envoyer l'e-mail de parrainage"
+
+msgid "Recipient Email"
+msgstr "Adresse e-mail du destinataire"
+
+msgid "friend@example.com"
+msgstr "ami@example.ch"
+
+msgid "Subject"
+msgstr "Objet"
+
+msgid "Join me at InterSoccer!"
+msgstr "Rejoins-moi chez InterSoccer !"
+
+msgid "Message"
+msgstr "Message"
+
+msgid "Hi there!\n\nI thought you'd be interested in InterSoccer's personalized soccer training programs. I've been really enjoying the coaching and wanted to share this opportunity with you.\n\nClick here to check it out: %1$s\n\nBest regards,\n%2$s"
+msgstr "Bonjour !\n\nJ'aimerais te faire découvrir les programmes d'entraînement personnalisés d'InterSoccer. J'apprécie vraiment ce coaching et je voulais partager cette opportunité avec toi.\n\nClique ici pour en savoir plus : %1$s\n\nÀ bientôt,\n%2$s"
+
+msgid "Send Email"
+msgstr "Envoyer l'e-mail"
+
+msgid "Cancel"
+msgstr "Annuler"
+
+msgid "Sending..."
+msgstr "Envoi en cours..."
+
+msgid "Email sent successfully!"
+msgstr "E-mail envoyé avec succès !"
+
+msgid "Failed to send email"
+msgstr "Échec de l'envoi de l'e-mail"
+
+msgid "Failed to send email. Please try again."
+msgstr "Échec de l'envoi de l'e-mail. Veuillez réessayer."
+
+msgid "Contact Support"
+msgstr "Contacter le support"
+
+msgid "Live Chat"
+msgstr "Chat en direct"
+
+msgid "Get instant help from our support team"
+msgstr "Obtenez l'aide immédiate de notre équipe support"
+
+msgid "Start Chat"
+msgstr "Lancer le chat"
+
+msgid "Email Support"
+msgstr "Support par e-mail"
+
+msgid "Send us a detailed message"
+msgstr "Envoyez-nous un message détaillé"
+
+msgid "FAQ"
+msgstr "FAQ"
+
+msgid "Browse our knowledge base"
+msgstr "Consultez notre base de connaissances"
+
+msgid "View FAQ"
+msgstr "Consulter la FAQ"
+
+msgid "Close modal"
+msgstr "Fermer la fenêtre"
+
+msgid "Referrals"
+msgstr "Parrainages"
+
+msgid "Credits Earned"
+msgstr "Crédits gagnés"
+
+msgid "Full Leaderboard"
+msgstr "Classement complet"
+
+msgid "Loading leaderboard..."
+msgstr "Chargement du classement..."
+
+msgid "You"
+msgstr "Vous"
+
+msgid "%1$s referrals • %2$s CHF"
+msgstr "%1$s parrainages • %2$s CHF"
+
+msgid "Coach Referral Dashboard"
+msgstr "Tableau de bord du parrainage coach"
+
+msgid "Total Credits: %s CHF"
+msgstr "Total des crédits : %s CHF"
+
+msgid "Your Referral Link:"
+msgstr "Votre lien de parrainage :"
+
+msgid "Recent Referrals"
+msgstr "Parrainages récents"
+
+msgid "Order ID"
+msgstr "N° de commande"
+
+msgid "Commission"
+msgstr "Commission"
+
+msgid "Date"
+msgstr "Date"
+
+msgid "Welcome back, %s! 👋"
+msgstr "Bon retour, %s ! 👋"
+
+msgid "Here's what's happening with your referral program today"
+msgstr "Voici l'actualité de votre programme de parrainage aujourd'hui"
+
+msgid "Share your referral link"
+msgstr "Partager votre lien de parrainage"
+
+msgid "View detailed analytics"
+msgstr "Afficher les analyses détaillées"
+
+msgid "Toggle theme"
+msgstr "Changer de thème"
+
+msgid "Copy to clipboard"
+msgstr "Copier dans le presse-papiers"
+
+msgid "Show QR code"
+msgstr "Afficher le code QR"
+
+msgid "Referral Link QR Code"
+msgstr "Code QR du lien de parrainage"
+
+msgid "Scan this QR code to access your referral link."
+msgstr "Scannez ce code QR pour accéder à votre lien de parrainage."
+
+msgid "Download QR Code"
+msgstr "Télécharger le code QR"
+
+msgid "Share QR Code"
+msgstr "Partager le code QR"
+
+msgid "Are you sure you want to select %s as your coach partner?"
+msgstr "Voulez-vous vraiment sélectionner %s comme coach partenaire ?"
+
+msgid "Refer & Earn"
+msgstr "Parrainer et gagner"
+
