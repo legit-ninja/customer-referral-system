@@ -6,6 +6,7 @@ class InterSoccer_Referral_Handler {
     public function __construct() {
         add_action('init', [$this, 'handle_referral_cookie']);
         add_action('woocommerce_thankyou', [$this, 'process_referral_order']);
+        add_action('woocommerce_order_status_completed', [$this, 'process_referral_order']);
         // Disabled old credit discount system - replaced with points system in admin dashboard
         // add_action('woocommerce_cart_calculate_fees', [$this, 'apply_credit_discount']);
         // Disabled old slider interface - replaced with Amazon Prime style in admin dashboard
@@ -212,13 +213,33 @@ class InterSoccer_Referral_Handler {
     // Process referral on order completion
     public function process_referral_order($order_id) {
         $order = wc_get_order($order_id);
-        $customer_id = $order->get_customer_id();
+        if (!$order) {
+            return;
+        }
+
+        if ('yes' === get_post_meta($order_id, '_intersoccer_referral_processed', true)) {
+            return;
+        }
+
         $referral_payload = $this->get_referral_payload();
+        if (!empty($referral_payload['code'])) {
+            update_post_meta($order_id, '_intersoccer_referral_payload', $referral_payload);
+        } else {
+            $stored_payload = get_post_meta($order_id, '_intersoccer_referral_payload', true);
+            if (is_array($stored_payload)) {
+                $referral_payload = $this->normalize_referral_payload($stored_payload);
+            }
+        }
 
         if (empty($referral_payload['code'])) {
             return;
         }
 
+        if (!$order->has_status(['completed', 'wc-completed'])) {
+            return;
+        }
+
+        $customer_id = $order->get_customer_id();
         $ref_code = $referral_payload['code'];
         $event_id = $referral_payload['event_id'] ?? null;
         $coach_event_id = $referral_payload['coach_event_id'] ?? null;
@@ -227,6 +248,14 @@ class InterSoccer_Referral_Handler {
         $table_name = $wpdb->prefix . 'intersoccer_referrals';
         $referrer = $this->get_referrer_by_code($ref_code);
         if (!$referrer) return;
+
+        update_post_meta($order_id, '_intersoccer_referral_code', $ref_code);
+        update_post_meta($order_id, '_intersoccer_referrer_type', $referrer['type']);
+        if ($referrer['type'] === 'coach') {
+            update_post_meta($order_id, '_intersoccer_referring_coach_id', $referrer['id']);
+        } else {
+            delete_post_meta($order_id, '_intersoccer_referring_coach_id');
+        }
 
         $eligibility = $this->evaluate_referral_eligibility($customer_id, $order_id);
         $is_customer_referrer = ($referrer['type'] === 'customer');
@@ -261,6 +290,10 @@ class InterSoccer_Referral_Handler {
 
         // Auto-assign partnership if referred by coach and customer doesn't have one
         if ($referrer['type'] === 'coach' && $is_first_purchase) {
+            if ($customer_id) {
+                update_user_meta($customer_id, 'intersoccer_first_order_discount_consumed', 1);
+            }
+
             $existing_partnership = get_user_meta($customer_id, 'intersoccer_partnership_coach_id', true);
             if (!$existing_partnership) {
                 update_user_meta($customer_id, 'intersoccer_partnership_coach_id', $referrer['id']);
@@ -346,7 +379,7 @@ class InterSoccer_Referral_Handler {
         if (
             $referrer['type'] === 'coach'
             && class_exists('InterSoccer_Commission_Manager')
-            && $order->has_status(['processing', 'completed'])
+            && $order->has_status(['completed', 'wc-completed'])
         ) {
             $commission_manager = InterSoccer_Commission_Manager::get_instance();
             if (method_exists($commission_manager, 'process_referral_commissions')) {
@@ -357,8 +390,13 @@ class InterSoccer_Referral_Handler {
             }
         }
         
-        // Clear referral session
-        WC()->session->__unset('intersoccer_referral');
+        update_post_meta($order_id, '_intersoccer_referral_processed', 'yes');
+        delete_post_meta($order_id, '_intersoccer_referral_payload');
+
+        if (function_exists('WC') && WC()->session) {
+            WC()->session->__unset('intersoccer_referral');
+        }
+
         $this->clear_referral_cookie();
     }
 
