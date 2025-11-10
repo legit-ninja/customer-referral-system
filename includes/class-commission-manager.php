@@ -24,7 +24,6 @@ class InterSoccer_Commission_Manager {
         self::$instance = $this;
 
         // Hook into order processing for commission calculations
-        add_action('woocommerce_order_status_processing', [$this, 'process_referral_commissions']);
         add_action('woocommerce_order_status_completed', [$this, 'process_referral_commissions']);
 
         // Hook for referral rewards (coach points from referral codes)
@@ -200,7 +199,7 @@ class InterSoccer_Commission_Manager {
                 $referral->purchase_count
             );
 
-            if (!$order->has_status(['processing', 'completed', 'wc-processing', 'wc-completed'])) {
+            if (!$order->has_status(['completed', 'wc-completed'])) {
                 do_action('intersoccer_commission_skipped', $order_id, $referral->coach_id, 'order_not_completed');
                 return;
             }
@@ -263,9 +262,21 @@ class InterSoccer_Commission_Manager {
         $customer_id = $order->get_customer_id();
         if (!$customer_id) return;
 
-        // Check if this customer used a referral code
-        $referral_code = WC()->session->get('intersoccer_applied_referral_code');
-        $referral_coach_id = WC()->session->get('intersoccer_referral_coach_id');
+        $referral_code = null;
+        $referral_coach_id = null;
+
+        if (function_exists('WC') && WC()->session) {
+            $referral_code = WC()->session->get('intersoccer_applied_referral_code');
+            $referral_coach_id = WC()->session->get('intersoccer_referral_coach_id');
+        }
+
+        if (empty($referral_code)) {
+            $referral_code = get_post_meta($order_id, '_intersoccer_referral_code', true);
+        }
+
+        if (empty($referral_coach_id)) {
+            $referral_coach_id = get_post_meta($order_id, '_intersoccer_referring_coach_id', true);
+        }
 
         if ($referral_code && $referral_coach_id) {
             // Check if this is the customer's first completed order
@@ -309,9 +320,10 @@ class InterSoccer_Commission_Manager {
                     $new_coach_points
                 ));
 
-                // Clear referral session data
-                WC()->session->set('intersoccer_applied_referral_code', null);
-                WC()->session->set('intersoccer_referral_coach_id', null);
+                if (function_exists('WC') && WC()->session) {
+                    WC()->session->set('intersoccer_applied_referral_code', null);
+                    WC()->session->set('intersoccer_referral_coach_id', null);
+                }
 
                 if (defined('WP_DEBUG') && WP_DEBUG) {
                     error_log("InterSoccer Referral: Referral reward - Coach {$referral_coach_id} earned {$points_to_award} points for referral code usage on order {$order_id}");
@@ -327,7 +339,7 @@ class InterSoccer_Commission_Manager {
         $order = wc_get_order($order_id);
         if (!$order) return;
 
-        if (!$order->has_status(['processing', 'completed', 'wc-processing', 'wc-completed'])) {
+        if (!$order->has_status(['completed', 'wc-completed'])) {
             do_action('intersoccer_commission_skipped', $order_id, 0, 'order_not_completed');
             return;
         }
