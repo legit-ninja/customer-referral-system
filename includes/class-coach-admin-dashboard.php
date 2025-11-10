@@ -1502,13 +1502,7 @@ class InterSoccer_Coach_Admin_Dashboard {
                         'referrals' => $this->get_chart_data(get_current_user_id(), 30, 'referrals'),
                         'credits' => $this->get_chart_data(get_current_user_id(), 30, 'credits')
                     ],
-                    'i18n' => [
-                        'no_events_title' => __('No events added yet', 'intersoccer-referral'),
-                        'no_events_description' => __('Add the events you coach so we can generate direct referral links for customers.', 'intersoccer-referral'),
-                        'copy' => __('Copy', 'intersoccer-referral'),
-                        'open' => __('Open', 'intersoccer-referral'),
-                        'remove' => __('Remove', 'intersoccer-referral')
-                    ]
+                    'i18n' => function_exists('intersoccer_referral_get_dashboard_i18n') ? intersoccer_referral_get_dashboard_i18n() : []
                 ]);
             }
 
