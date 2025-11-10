@@ -332,9 +332,26 @@ class ReferralHandlerTest extends TestCase {
         // Mock order and session
         $order = new WC_Order();
         $order->set_total(100);
+        $order->set_status('completed');
+        $order->set_id(123);
+        $order->set_customer_id(1);
 
-        global $mock_session;
+        global $mock_session, $mock_wc_order_override, $mock_post_meta, $mock_user_meta, $mock_users;
         $mock_session = ['intersoccer_referral' => 'coach_1_test'];
+        $mock_post_meta = [];
+        $mock_user_meta = [];
+        $mock_users = [
+            1 => (object) [
+                'ID' => 1,
+                'roles' => ['coach'],
+                'display_name' => 'Coach One',
+                'first_name' => 'Coach',
+                'last_name' => 'One',
+                'user_email' => 'coach1@example.com'
+            ]
+        ];
+        update_user_meta(1, 'referral_code', 'COACH_1_TEST');
+        $mock_wc_order_override = $order;
 
         global $mock_orders;
         $mock_orders = []; // First purchase
@@ -345,6 +362,52 @@ class ReferralHandlerTest extends TestCase {
         // Verify partnership was auto-assigned
         global $mock_user_meta;
         $this->assertEquals(1, $mock_user_meta[1]['intersoccer_partnership_coach_id']);
+        $this->assertSame('yes', $mock_post_meta[123]['_intersoccer_referral_processed']);
+
+        $mock_wc_order_override = null;
+    }
+
+    public function testReferralProcessingWaitsForCompletedStatus() {
+        $handler = new InterSoccer_Referral_Handler();
+
+        $order = new WC_Order();
+        $order->set_total(120);
+        $order->set_status('processing');
+        $order->set_customer_id(1);
+        $order->set_id(456);
+
+        global $mock_session, $mock_orders, $mock_post_meta, $mock_user_meta, $mock_wc_order_override, $mock_users;
+        $mock_session = ['intersoccer_referral' => 'coach_1_test'];
+        $mock_orders = [];
+        $mock_post_meta = [];
+        $mock_user_meta = [];
+        $mock_users = [
+            1 => (object) [
+                'ID' => 1,
+                'roles' => ['coach'],
+                'display_name' => 'Coach One',
+                'first_name' => 'Coach',
+                'last_name' => 'One',
+                'user_email' => 'coach1@example.com'
+            ]
+        ];
+        update_user_meta(1, 'referral_code', 'COACH_1_TEST');
+        $mock_wc_order_override = $order;
+
+        $handler->process_referral_order(456);
+
+        $this->assertArrayHasKey('_intersoccer_referral_payload', $mock_post_meta[456]);
+        $this->assertArrayNotHasKey('_intersoccer_referral_processed', $mock_post_meta[456] ?? [], 'Order should not be marked processed before completion');
+        $this->assertArrayNotHasKey('intersoccer_partnership_coach_id', $mock_user_meta[1] ?? [], 'Partnership should wait until completion');
+
+        $order->set_status('completed');
+        $handler->process_referral_order(456);
+
+        $this->assertEquals(1, $mock_user_meta[1]['intersoccer_partnership_coach_id']);
+        $this->assertSame('yes', $mock_post_meta[456]['_intersoccer_referral_processed']);
+        $this->assertArrayNotHasKey('_intersoccer_referral_payload', $mock_post_meta[456] ?? [], 'Payload cache should be cleared after processing');
+
+        $mock_wc_order_override = null;
     }
 
     /**

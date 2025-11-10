@@ -58,6 +58,60 @@ if (!function_exists('update_option')) {
     }
 }
 
+// Mock post meta storage
+global $mock_post_meta;
+$mock_post_meta = [];
+
+if (!function_exists('get_post_meta')) {
+    function get_post_meta($post_id, $key = '', $single = false) {
+        global $mock_post_meta;
+        $post_id = (int) $post_id;
+        if (!isset($mock_post_meta[$post_id])) {
+            return $single ? '' : [];
+        }
+
+        if ($key === '') {
+            return $mock_post_meta[$post_id];
+        }
+
+        if (!array_key_exists($key, $mock_post_meta[$post_id])) {
+            return $single ? '' : [];
+        }
+
+        $value = $mock_post_meta[$post_id][$key];
+        return $single ? $value : [$value];
+    }
+}
+
+if (!function_exists('update_post_meta')) {
+    function update_post_meta($post_id, $key, $value) {
+        global $mock_post_meta;
+        $post_id = (int) $post_id;
+        if (!isset($mock_post_meta[$post_id])) {
+            $mock_post_meta[$post_id] = [];
+        }
+        $mock_post_meta[$post_id][$key] = $value;
+        return true;
+    }
+}
+
+if (!function_exists('delete_post_meta')) {
+    function delete_post_meta($post_id, $key, $value = '') {
+        global $mock_post_meta;
+        $post_id = (int) $post_id;
+        if (!isset($mock_post_meta[$post_id]) || !array_key_exists($key, $mock_post_meta[$post_id])) {
+            return false;
+        }
+
+        if ($value !== '' && $mock_post_meta[$post_id][$key] !== $value) {
+            return false;
+        }
+
+        unset($mock_post_meta[$post_id][$key]);
+        return true;
+    }
+}
+
 if (!function_exists('is_ssl')) {
     function is_ssl() {
         return false;
@@ -102,6 +156,13 @@ if (!class_exists('WC_Order')) {
         private $total = 100;
         private $tax = 10;
         private $created_at = '2025-01-01 12:00:00';
+        private $status = 'pending';
+        private $id = 0;
+        private $customer_id = 1;
+
+        public function __construct($id = 0) {
+            $this->id = (int) $id;
+        }
 
         public function get_total() {
             return $this->total;
@@ -112,7 +173,7 @@ if (!class_exists('WC_Order')) {
         }
 
         public function get_customer_id() {
-            return 1;
+            return $this->customer_id;
         }
 
         public function get_date_created() {
@@ -127,8 +188,50 @@ if (!class_exists('WC_Order')) {
             $this->tax = $tax;
         }
 
+        public function set_customer_id($customer_id) {
+            $this->customer_id = (int) $customer_id;
+        }
+
         public function set_date_created($date_string) {
             $this->created_at = $date_string;
+        }
+
+        public function set_status($status) {
+            $this->status = ltrim((string) $status, 'wc-') ?: 'pending';
+        }
+
+        public function get_status() {
+            return $this->status ?: 'pending';
+        }
+
+        public function has_status($statuses) {
+            $current = $this->get_status();
+            $current = ltrim($current, 'wc-');
+
+            if (is_string($statuses)) {
+                $statuses = [$statuses];
+            }
+
+            if (!is_array($statuses)) {
+                return false;
+            }
+
+            foreach ($statuses as $status) {
+                $normalized = ltrim((string) $status, 'wc-');
+                if ($normalized === $current) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public function set_id($id) {
+            $this->id = (int) $id;
+        }
+
+        public function get_id() {
+            return $this->id ?: 123;
         }
     }
 }

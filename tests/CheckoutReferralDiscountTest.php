@@ -37,11 +37,12 @@ class CheckoutReferralDiscountTest extends TestCase {
         $reflection = new ReflectionClass(InterSoccer_Referral_Admin_Dashboard::class);
         $this->dashboard = $reflection->newInstanceWithoutConstructor();
 
-        global $mock_session, $mock_user_meta, $mock_users, $mock_current_user_id;
+        global $mock_session, $mock_user_meta, $mock_users, $mock_current_user_id, $mock_orders;
         $mock_session = [];
         $mock_user_meta = [];
         $mock_users = [];
         $mock_current_user_id = 501;
+        $mock_orders = [];
 
         $coach = (object) [
             'ID' => 902,
@@ -70,10 +71,11 @@ class CheckoutReferralDiscountTest extends TestCase {
     }
 
     protected function tearDown(): void {
-        global $mock_session, $mock_user_meta, $mock_users;
+        global $mock_session, $mock_user_meta, $mock_users, $mock_orders;
         $mock_session = [];
         $mock_user_meta = [];
         $mock_users = [];
+        $mock_orders = [];
         WC()->cart = null;
     }
 
@@ -90,6 +92,7 @@ class CheckoutReferralDiscountTest extends TestCase {
         $this->assertSame(902, $mock_session['intersoccer_referral_coach_id']);
         $this->assertTrue(WC()->cart->calculate_called);
         $this->assertTrue(WC()->cart->set_session_called);
+        $this->assertSame(10, $result['discount_amount']);
 
         // Applying fees should add the 10 CHF discount.
         $this->dashboard->apply_points_discount_as_fee(WC()->cart);
@@ -126,5 +129,29 @@ class CheckoutReferralDiscountTest extends TestCase {
 
         $this->assertFalse($result['success']);
         $this->assertStringContainsString('Invalid referral code', $result['message']);
+    }
+
+    public function testCoachReferralDiscountNotAppliedAfterFirstOrder() {
+        global $mock_orders;
+        $mock_orders = [1234]; // simulate existing completed order
+
+        $result = $this->invokeApplyInternal('COACHSWIFT', [
+            'recalculate' => true,
+            'context' => 'test'
+        ]);
+
+        $this->assertTrue($result['success']);
+        $this->assertSame(0, $result['discount_amount']);
+        $this->assertStringContainsString('First-time discount already used', $result['message']);
+
+        // Ensure no coach discount fee is added when calculating totals
+        WC()->cart->fees = [];
+        $this->dashboard->apply_points_discount_as_fee(WC()->cart);
+
+        $coachFee = array_filter(WC()->cart->fees, function($fee) {
+            return $fee['name'] === 'Coach Referral Discount';
+        });
+
+        $this->assertEmpty($coachFee, 'Coach referral fee should not be added for returning customers');
     }
 }
