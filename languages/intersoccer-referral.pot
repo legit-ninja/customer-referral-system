@@ -74,3 +74,246 @@ msgstr ""
 msgid "Your Weekly InterSoccer Report - %s"
 msgstr ""
 
+msgid "No events added yet"
+msgstr ""
+
+msgid "Add the events you coach so we can generate direct referral links for customers."
+msgstr ""
+
+msgid "Copy"
+msgstr ""
+
+msgid "Open"
+msgstr ""
+
+msgid "Remove"
+msgstr ""
+
+msgid "Please enter at least two characters to search."
+msgstr ""
+
+msgid "Searching..."
+msgstr ""
+
+msgid "No events found."
+msgstr ""
+
+msgid "Search failed. Please try again."
+msgstr ""
+
+msgid "Event selected. Click \"Request Event\" to submit."
+msgstr ""
+
+msgid "Please select an event before requesting."
+msgstr ""
+
+msgid "Event request submitted. Awaiting approval."
+msgstr ""
+
+msgid "Unable to request event."
+msgstr ""
+
+msgid "Network error. Please try again."
+msgstr ""
+
+msgid "Event link copied to clipboard!"
+msgstr ""
+
+msgid "Remove this event from your list?"
+msgstr ""
+
+msgid "Event removed."
+msgstr ""
+
+msgid "Unable to remove event."
+msgstr ""
+
+msgid "Unable to refresh events."
+msgstr ""
+
+msgid "Referral link copied to clipboard!"
+msgstr ""
+
+msgid "ID: %1$s • %2$s"
+msgstr ""
+
+msgid "Create Social Media Post"
+msgstr ""
+
+msgid "Instagram Post"
+msgstr ""
+
+msgid "Transform your game with personalized soccer training! Join me at InterSoccer - link in bio!"
+msgstr ""
+
+msgid "Facebook Post"
+msgstr ""
+
+msgid "Looking to improve your soccer skills? I'm now partnering with InterSoccer to offer personalized training programs. Click here to get started: %s"
+msgstr ""
+
+msgid "Twitter Post"
+msgstr ""
+
+msgid "Level up your soccer game! Join InterSoccer for personalized training. Link: %s #SoccerTraining #InterSoccer"
+msgstr ""
+
+msgid "Copy Post"
+msgstr ""
+
+msgid "Share Now"
+msgstr ""
+
+msgid "Post copied to clipboard!"
+msgstr ""
+
+msgid "Post copied! Share it on your favorite social platform."
+msgstr ""
+
+msgid "Send Referral Email"
+msgstr ""
+
+msgid "Recipient Email"
+msgstr ""
+
+msgid "friend@example.com"
+msgstr ""
+
+msgid "Subject"
+msgstr ""
+
+msgid "Join me at InterSoccer!"
+msgstr ""
+
+msgid "Message"
+msgstr ""
+
+msgid "Hi there!\n\nI thought you'd be interested in InterSoccer's personalized soccer training programs. I've been really enjoying the coaching and wanted to share this opportunity with you.\n\nClick here to check it out: %1$s\n\nBest regards,\n%2$s"
+msgstr ""
+
+msgid "Send Email"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Sending..."
+msgstr ""
+
+msgid "Email sent successfully!"
+msgstr ""
+
+msgid "Failed to send email"
+msgstr ""
+
+msgid "Failed to send email. Please try again."
+msgstr ""
+
+msgid "Contact Support"
+msgstr ""
+
+msgid "Live Chat"
+msgstr ""
+
+msgid "Get instant help from our support team"
+msgstr ""
+
+msgid "Start Chat"
+msgstr ""
+
+msgid "Email Support"
+msgstr ""
+
+msgid "Send us a detailed message"
+msgstr ""
+
+msgid "FAQ"
+msgstr ""
+
+msgid "Browse our knowledge base"
+msgstr ""
+
+msgid "View FAQ"
+msgstr ""
+
+msgid "Close modal"
+msgstr ""
+
+msgid "Referrals"
+msgstr ""
+
+msgid "Credits Earned"
+msgstr ""
+
+msgid "Full Leaderboard"
+msgstr ""
+
+msgid "Loading leaderboard..."
+msgstr ""
+
+msgid "You"
+msgstr ""
+
+msgid "%1$s referrals • %2$s CHF"
+msgstr ""
+
+msgid "Coach Referral Dashboard"
+msgstr ""
+
+msgid "Total Credits: %s CHF"
+msgstr ""
+
+msgid "Your Referral Link:"
+msgstr ""
+
+msgid "Recent Referrals"
+msgstr ""
+
+msgid "Order ID"
+msgstr ""
+
+msgid "Commission"
+msgstr ""
+
+msgid "Date"
+msgstr ""
+
+msgid "Welcome back, %s! 👋"
+msgstr ""
+
+msgid "Here's what's happening with your referral program today"
+msgstr ""
+
+msgid "Share your referral link"
+msgstr ""
+
+msgid "View detailed analytics"
+msgstr ""
+
+msgid "Toggle theme"
+msgstr ""
+
+msgid "Copy to clipboard"
+msgstr ""
+
+msgid "Show QR code"
+msgstr ""
+
+msgid "Referral Link QR Code"
+msgstr ""
+
+msgid "Scan this QR code to access your referral link."
+msgstr ""
+
+msgid "Download QR Code"
+msgstr ""
+
+msgid "Share QR Code"
+msgstr ""
+
+msgid "Are you sure you want to select %s as your coach partner?"
+msgstr ""
+
+msgid "Refer & Earn"
+msgstr ""
+
