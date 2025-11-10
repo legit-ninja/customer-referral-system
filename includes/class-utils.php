@@ -473,3 +473,77 @@ class InterSoccer_Database_Optimizer {
         ];
     }
 }
+
+if (!function_exists('intersoccer_referral_get_dashboard_i18n')) {
+    /**
+     * Retrieve i18n strings for the modern coach dashboard interfaces.
+     *
+     * @return array
+     */
+    function intersoccer_referral_get_dashboard_i18n() {
+        return [
+            'no_events_title' => __('No events added yet', 'intersoccer-referral'),
+            'no_events_description' => __('Add the events you coach so we can generate direct referral links for customers.', 'intersoccer-referral'),
+            'copy' => __('Copy', 'intersoccer-referral'),
+            'open' => __('Open', 'intersoccer-referral'),
+            'remove' => __('Remove', 'intersoccer-referral'),
+            'search_prompt' => __('Please enter at least two characters to search.', 'intersoccer-referral'),
+            'searching' => __('Searching...', 'intersoccer-referral'),
+            'no_results' => __('No events found.', 'intersoccer-referral'),
+            'search_failed' => __('Search failed. Please try again.', 'intersoccer-referral'),
+            'event_selected' => __('Event selected. Click "Request Event" to submit.', 'intersoccer-referral'),
+            'select_event_first' => __('Please select an event before requesting.', 'intersoccer-referral'),
+            'request_success' => __('Event request submitted. Awaiting approval.', 'intersoccer-referral'),
+            'request_error' => __('Unable to request event.', 'intersoccer-referral'),
+            'network_error' => __('Network error. Please try again.', 'intersoccer-referral'),
+            'event_link_copied' => __('Event link copied to clipboard!', 'intersoccer-referral'),
+            'remove_confirm' => __('Remove this event from your list?', 'intersoccer-referral'),
+            'remove_success' => __('Event removed.', 'intersoccer-referral'),
+            'remove_error' => __('Unable to remove event.', 'intersoccer-referral'),
+            'refresh_error' => __('Unable to refresh events.', 'intersoccer-referral'),
+            'referral_link_copied' => __('Referral link copied to clipboard!', 'intersoccer-referral'),
+            'event_result_meta_pattern' => __('ID: %1$s • %2$s', 'intersoccer-referral'),
+            'social_modal_title' => __('Create Social Media Post', 'intersoccer-referral'),
+            'social_instagram_title' => __('Instagram Post', 'intersoccer-referral'),
+            'social_instagram_body' => __('Transform your game with personalized soccer training! Join me at InterSoccer - link in bio!', 'intersoccer-referral'),
+            'social_facebook_title' => __('Facebook Post', 'intersoccer-referral'),
+            'social_facebook_body' => __('Looking to improve your soccer skills? I\'m now partnering with InterSoccer to offer personalized training programs. Click here to get started: %s', 'intersoccer-referral'),
+            'social_twitter_title' => __('Twitter Post', 'intersoccer-referral'),
+            'social_twitter_body' => __('Level up your soccer game! Join InterSoccer for personalized training. Link: %s #SoccerTraining #InterSoccer', 'intersoccer-referral'),
+            'social_copy_post' => __('Copy Post', 'intersoccer-referral'),
+            'social_share_now' => __('Share Now', 'intersoccer-referral'),
+            'social_copy_success' => __('Post copied to clipboard!', 'intersoccer-referral'),
+            'social_share_copy_success' => __('Post copied! Share it on your favorite social platform.', 'intersoccer-referral'),
+            'email_modal_title' => __('Send Referral Email', 'intersoccer-referral'),
+            'email_recipient_label' => __('Recipient Email', 'intersoccer-referral'),
+            'email_recipient_placeholder' => __('friend@example.com', 'intersoccer-referral'),
+            'email_subject_label' => __('Subject', 'intersoccer-referral'),
+            'email_subject_default' => __('Join me at InterSoccer!', 'intersoccer-referral'),
+            'email_message_label' => __('Message', 'intersoccer-referral'),
+            'email_message_default' => __("Hi there!\n\nI thought you'd be interested in InterSoccer's personalized soccer training programs. I've been really enjoying the coaching and wanted to share this opportunity with you.\n\nClick here to check it out: %1$s\n\nBest regards,\n%2$s", 'intersoccer-referral'),
+            'email_send_button' => __('Send Email', 'intersoccer-referral'),
+            'cancel_button' => __('Cancel', 'intersoccer-referral'),
+            'email_sending' => __('Sending...', 'intersoccer-referral'),
+            'email_sent_success' => __('Email sent successfully!', 'intersoccer-referral'),
+            'email_send_failed' => __('Failed to send email', 'intersoccer-referral'),
+            'email_send_retry' => __('Failed to send email. Please try again.', 'intersoccer-referral'),
+            'support_modal_title' => __('Contact Support', 'intersoccer-referral'),
+            'support_live_chat_title' => __('Live Chat', 'intersoccer-referral'),
+            'support_live_chat_description' => __('Get instant help from our support team', 'intersoccer-referral'),
+            'support_live_chat_action' => __('Start Chat', 'intersoccer-referral'),
+            'support_email_title' => __('Email Support', 'intersoccer-referral'),
+            'support_email_description' => __('Send us a detailed message', 'intersoccer-referral'),
+            'support_email_action' => __('Send Email', 'intersoccer-referral'),
+            'support_faq_title' => __('FAQ', 'intersoccer-referral'),
+            'support_faq_description' => __('Browse our knowledge base', 'intersoccer-referral'),
+            'support_faq_action' => __('View FAQ', 'intersoccer-referral'),
+            'modal_close_label' => __('Close modal', 'intersoccer-referral'),
+            'chart_referrals_label' => __('Referrals', 'intersoccer-referral'),
+            'chart_credits_label' => __('Credits Earned', 'intersoccer-referral'),
+            'leaderboard_modal_title' => __('Full Leaderboard', 'intersoccer-referral'),
+            'leaderboard_loading' => __('Loading leaderboard...', 'intersoccer-referral'),
+            'leaderboard_you_badge' => __('You', 'intersoccer-referral'),
+            'leaderboard_stats_pattern' => __('%1$s referrals • %2$s CHF', 'intersoccer-referral'),
+        ];
+    }
+}
