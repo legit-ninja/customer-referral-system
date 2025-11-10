@@ -75,21 +75,30 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                     <div class="online-status online"></div>
                 </div>
                 <div class="welcome-text">
-                    <h1>Welcome back, <?php echo esc_html($user->first_name ?: $user->display_name); ?>! 👋</h1>
-                    <p class="welcome-subtitle">Here's what's happening with your referral program today</p>
+                    <h1>
+                        <?php
+                        printf(
+                            esc_html__('Welcome back, %s! 👋', 'intersoccer-referral'),
+                            esc_html($user->first_name ?: $user->display_name)
+                        );
+                        ?>
+                    </h1>
+                    <p class="welcome-subtitle">
+                        <?php esc_html_e("Here's what's happening with your referral program today", 'intersoccer-referral'); ?>
+                    </p>
                 </div>
             </div>
 
             <div class="header-actions" id="tour-actions">
-                <button class="action-btn primary" id="share-link-btn" data-tooltip="Share your referral link">
+                <button class="action-btn primary" id="share-link-btn" data-tooltip="<?php echo esc_attr__('Share your referral link', 'intersoccer-referral'); ?>">
                     <i class="icon-share"></i>
-                    <span>Share Link</span>
+                    <span><?php esc_html_e('Share Link', 'intersoccer-referral'); ?></span>
                 </button>
-                <button class="action-btn secondary" id="view-analytics-btn" data-tooltip="View detailed analytics">
+                <button class="action-btn secondary" id="view-analytics-btn" data-tooltip="<?php echo esc_attr__('View detailed analytics', 'intersoccer-referral'); ?>">
                     <i class="icon-analytics"></i>
-                    <span>Analytics</span>
+                    <span><?php esc_html_e('Analytics', 'intersoccer-referral'); ?></span>
                 </button>
-                <button class="action-btn secondary" id="theme-toggle" data-tooltip="Toggle theme">
+                <button class="action-btn secondary" id="theme-toggle" data-tooltip="<?php echo esc_attr__('Toggle theme', 'intersoccer-referral'); ?>">
                     <i class="icon-theme"></i>
                 </button>
             </div>
@@ -106,10 +115,10 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                 <div class="stat-value" data-counter="<?php echo number_format($points_balance, 0); ?>">
                     <?php echo number_format($points_balance, 0); ?>
                 </div>
-                <div class="stat-label">Points Balance</div>
+                <div class="stat-label"><?php esc_html_e('Points Balance', 'intersoccer-referral'); ?></div>
                 <div class="stat-change positive">
                     <i class="icon-trend-up"></i>
-                    +12% this month
+                    <?php esc_html_e('+12% this month', 'intersoccer-referral'); ?>
                 </div>
             </div>
             <div class="stat-sparkline">
@@ -125,10 +134,15 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                 <div class="stat-value" data-counter="<?php echo $referral_count; ?>">
                     <?php echo $referral_count; ?>
                 </div>
-                <div class="stat-label">Total Referrals</div>
+                <div class="stat-label"><?php esc_html_e('Total Referrals', 'intersoccer-referral'); ?></div>
                 <div class="stat-change positive">
                     <i class="icon-trend-up"></i>
-                    +<?php echo $monthly_stats['new_referrals']; ?> this month
+                    <?php
+                    printf(
+                        esc_html__('+%s this month', 'intersoccer-referral'),
+                        esc_html($monthly_stats['new_referrals'])
+                    );
+                    ?>
                 </div>
             </div>
             <div class="stat-sparkline">
@@ -142,12 +156,17 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
             </div>
             <div class="stat-content">
                 <div class="stat-value tier-badge <?php echo strtolower($tier); ?>">
-                    <?php echo $tier; ?>
+                    <?php echo esc_html($tier); ?>
                 </div>
-                <div class="stat-label">Current Tier</div>
+                <div class="stat-label"><?php esc_html_e('Current Tier', 'intersoccer-referral'); ?></div>
                 <div class="stat-change neutral">
                     <i class="icon-rank"></i>
-                    Rank #<?php echo $coach_rank; ?>
+                    <?php
+                    printf(
+                        esc_html__('Rank #%s', 'intersoccer-referral'),
+                        esc_html($coach_rank)
+                    );
+                    ?>
                 </div>
             </div>
             <div class="tier-progress">
@@ -166,12 +185,17 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
             </div>
             <div class="stat-content">
                 <div class="stat-value">
-                    <?php echo $monthly_stats['conversion_rate']; ?>%
+                    <?php echo esc_html($monthly_stats['conversion_rate']); ?>%
                 </div>
-                <div class="stat-label">Conversion Rate</div>
+                <div class="stat-label"><?php esc_html_e('Conversion Rate', 'intersoccer-referral'); ?></div>
                 <div class="stat-change <?php echo $monthly_stats['conversion_trend'] > 0 ? 'positive' : 'negative'; ?>">
                     <i class="icon-trend-<?php echo $monthly_stats['conversion_trend'] > 0 ? 'up' : 'down'; ?>"></i>
-                    <?php echo abs($monthly_stats['conversion_trend']); ?>% vs last month
+                    <?php
+                    printf(
+                        esc_html__('%s%% vs last month', 'intersoccer-referral'),
+                        esc_html(abs($monthly_stats['conversion_trend']))
+                    );
+                    ?>
                 </div>
             </div>
             <div class="conversion-chart">
@@ -184,13 +208,13 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                 <i class="icon-customers"></i>
             </div>
             <div class="stat-content">
-                <div class="stat-value" data-counter="<?php echo $this->get_linked_customers_count($user_id); ?>">
-                    <?php echo $this->get_linked_customers_count($user_id); ?>
+                <div class="stat-value" data-counter="<?php echo esc_attr($this->get_linked_customers_count($user_id)); ?>">
+                    <?php echo esc_html($this->get_linked_customers_count($user_id)); ?>
                 </div>
-                <div class="stat-label">Linked Customers</div>
+                <div class="stat-label"><?php esc_html_e('Linked Customers', 'intersoccer-referral'); ?></div>
                 <div class="stat-change positive">
                     <i class="icon-trend-up"></i>
-                    Ongoing earnings
+                    <?php esc_html_e('Ongoing earnings', 'intersoccer-referral'); ?>
                 </div>
             </div>
             <div class="customer-chart">
@@ -204,12 +228,12 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
         <!-- Referral Link Section -->
         <div class="dashboard-card referral-link-card" data-aos="fade-right">
             <div class="card-header">
-                <h3><i class="icon-link"></i> Your Referral Link</h3>
+                <h3><i class="icon-link"></i> <?php esc_html_e('Your Referral Link', 'intersoccer-referral'); ?></h3>
                 <div class="card-actions">
-                    <button class="btn-icon" id="copy-link" data-tooltip="Copy to clipboard">
+                    <button class="btn-icon" id="copy-link" data-tooltip="<?php echo esc_attr__('Copy to clipboard', 'intersoccer-referral'); ?>">
                         <i class="icon-copy"></i>
                     </button>
-                    <button class="btn-icon" id="show-qr" data-tooltip="Show QR code">
+                    <button class="btn-icon" id="show-qr" data-tooltip="<?php echo esc_attr__('Show QR code', 'intersoccer-referral'); ?>">
                         <i class="icon-qr"></i>
                     </button>
                 </div>
@@ -218,8 +242,8 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
             <div class="referral-link-container">
                 <input type="text" id="referral-link-input" value="<?php echo esc_attr($referral_link); ?>" readonly>
                 <div class="link-actions">
-                    <button class="btn-primary" id="copy-link-text">Copy Link</button>
-                    <button class="btn-secondary" id="customize-link">Customize</button>
+                    <button class="btn-primary" id="copy-link-text"><?php esc_html_e('Copy Link', 'intersoccer-referral'); ?></button>
+                    <button class="btn-secondary" id="customize-link"><?php esc_html_e('Customize', 'intersoccer-referral'); ?></button>
                 </div>
             </div>
 
@@ -227,13 +251,13 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                 <div class="referral-code-header">
                     <span class="code-icon" aria-hidden="true">🏷️</span>
                     <div>
-                        <h4>Share Your Referral Code</h4>
-                        <p class="code-subtitle">Customers can enter this code directly at checkout.</p>
+                        <h4><?php esc_html_e('Share Your Referral Code', 'intersoccer-referral'); ?></h4>
+                        <p class="code-subtitle"><?php esc_html_e('Customers can enter this code directly at checkout.', 'intersoccer-referral'); ?></p>
                     </div>
                 </div>
                 <div class="referral-code-body">
                     <span class="code-value" id="referral-code-value"><?php echo esc_html($referral_code); ?></span>
-                    <button class="btn-tertiary" id="copy-code">Copy Code</button>
+                    <button class="btn-tertiary" id="copy-code"><?php esc_html_e('Copy Code', 'intersoccer-referral'); ?></button>
                 </div>
             </div>
 
@@ -241,17 +265,17 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
             <div id="qr-modal" class="modal">
                 <div class="modal-content qr-modal-content">
                     <div class="modal-header">
-                        <h3>QR Code for Your Referral Link</h3>
-                        <button class="modal-close">&times;</button>
+                        <h3><?php esc_html_e('QR Code for Your Referral Link', 'intersoccer-referral'); ?></h3>
+                        <button class="modal-close" type="button" aria-label="<?php echo esc_attr__('Close modal', 'intersoccer-referral'); ?>">&times;</button>
                     </div>
                     <div class="modal-body">
                         <div class="qr-code-container">
-                            <img src="<?php echo esc_attr($qr_code_url); ?>" alt="Referral Link QR Code">
-                            <p>Scan this QR code to access your referral link</p>
+                            <img src="<?php echo esc_attr($qr_code_url); ?>" alt="<?php echo esc_attr__('Referral Link QR Code', 'intersoccer-referral'); ?>">
+                            <p><?php esc_html_e('Scan this QR code to access your referral link.', 'intersoccer-referral'); ?></p>
                         </div>
                         <div class="qr-actions">
-                            <button class="btn-primary" id="download-qr">Download QR Code</button>
-                            <button class="btn-secondary" id="share-qr">Share QR Code</button>
+                            <button class="btn-primary" id="download-qr" type="button"><?php esc_html_e('Download QR Code', 'intersoccer-referral'); ?></button>
+                            <button class="btn-secondary" id="share-qr" type="button"><?php esc_html_e('Share QR Code', 'intersoccer-referral'); ?></button>
                         </div>
                     </div>
                 </div>
@@ -341,38 +365,57 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
         <!-- Recent Activity -->
         <div class="dashboard-card activity-card" data-aos="fade-left">
             <div class="card-header">
-                <h3><i class="icon-activity"></i> Recent Activity</h3>
+                <h3><i class="icon-activity"></i> <?php esc_html_e('Recent Activity', 'intersoccer-referral'); ?></h3>
                 <div class="card-actions">
-                    <button class="btn-link" id="view-all-activity">View All</button>
+                    <button class="btn-link" id="view-all-activity" type="button"><?php esc_html_e('View All', 'intersoccer-referral'); ?></button>
                 </div>
             </div>
 
             <div class="activity-feed">
                 <?php if (!empty($recent_referrals)): ?>
                     <?php foreach ($recent_referrals as $referral): ?>
+                        <?php
+                        $customer_name = $this->get_customer_name($referral->customer_id);
+                        $time_diff = human_time_diff(strtotime($referral->created_at), current_time('timestamp'));
+                        ?>
                         <div class="activity-item">
                             <div class="activity-icon success">
                                 <i class="icon-check"></i>
                             </div>
                             <div class="activity-content">
                                 <div class="activity-title">
-                                    New referral from <?php echo esc_html($this->get_customer_name($referral->customer_id)); ?>
+                                    <?php
+                                    printf(
+                                        esc_html__('New referral from %s', 'intersoccer-referral'),
+                                        esc_html($customer_name)
+                                    );
+                                    ?>
                                 </div>
                                 <div class="activity-meta">
-                                    Order #<?php echo esc_html($referral->order_id); ?> •
-                                    <?php echo human_time_diff(strtotime($referral->created_at), current_time('timestamp')); ?> ago
+                                    <?php
+                                    printf(
+                                        esc_html__('Order #%1$s • %2$s ago', 'intersoccer-referral'),
+                                        esc_html($referral->order_id),
+                                        esc_html($time_diff)
+                                    );
+                                    ?>
                                 </div>
                             </div>
                             <div class="activity-amount">
-                                +<?php echo number_format($referral->commission_amount, 2); ?> CHF
+                                <?php
+                                printf(
+                                    esc_html__('+%s CHF', 'intersoccer-referral'),
+                                    esc_html(number_format($referral->commission_amount, 2))
+                                );
+                                ?>
                             </div>
                         </div>
                     <?php endforeach; ?>
                 <?php else: ?>
                     <div class="empty-state">
                         <i class="icon-activity-empty"></i>
-                        <h4>No recent activity</h4>
-                        <p>Your referral activity will appear here once people start using your link.</p>
+                        <h4><?php esc_html_e('No recent activity', 'intersoccer-referral'); ?></h4>
+                        <p><?php esc_html_e('Your referral activity will appear here once people start using your link.', 'intersoccer-referral'); ?></p>
                     </div>
                 <?php endif; ?>
             </div>
@@ -381,47 +424,47 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
         <!-- Quick Actions -->
         <div class="dashboard-card actions-card" data-aos="fade-up">
             <div class="card-header">
-                <h3><i class="icon-actions"></i> Quick Actions</h3>
+                <h3><i class="icon-actions"></i> <?php esc_html_e('Quick Actions', 'intersoccer-referral'); ?></h3>
             </div>
 
             <div class="quick-actions-grid">
-                <button class="action-tile" id="create-post">
+                <button class="action-tile" id="create-post" type="button">
                     <div class="action-icon">
                         <i class="icon-social"></i>
                     </div>
                     <div class="action-content">
-                        <h4>Social Media Post</h4>
-                        <p>Create engaging posts for your referral link</p>
+                        <h4><?php esc_html_e('Social Media Post', 'intersoccer-referral'); ?></h4>
+                        <p><?php esc_html_e('Create engaging posts for your referral link.', 'intersoccer-referral'); ?></p>
                     </div>
                 </button>
 
-                <button class="action-tile" id="send-email">
+                <button class="action-tile" id="send-email" type="button">
                     <div class="action-icon">
                         <i class="icon-email"></i>
                     </div>
                     <div class="action-content">
-                        <h4>Email Campaign</h4>
-                        <p>Send personalized emails to potential customers</p>
+                        <h4><?php esc_html_e('Email Campaign', 'intersoccer-referral'); ?></h4>
+                        <p><?php esc_html_e('Send personalized emails to potential customers.', 'intersoccer-referral'); ?></p>
                     </div>
                 </button>
 
-                <button class="action-tile" id="view-resources" data-tour="resources">
+                <button class="action-tile" id="view-resources" data-tour="resources" type="button">
                     <div class="action-icon">
                         <i class="icon-resources"></i>
                     </div>
                     <div class="action-content">
-                        <h4>Marketing Resources</h4>
-                        <p>Access templates, guides, and promotional materials</p>
+                        <h4><?php esc_html_e('Marketing Resources', 'intersoccer-referral'); ?></h4>
+                        <p><?php esc_html_e('Access templates, guides, and promotional materials.', 'intersoccer-referral'); ?></p>
                     </div>
                 </button>
 
-                <button class="action-tile" id="contact-support">
+                <button class="action-tile" id="contact-support" type="button">
                     <div class="action-icon">
                         <i class="icon-support"></i>
                     </div>
                     <div class="action-content">
-                        <h4>Get Support</h4>
-                        <p>Need help? Contact our support team</p>
+                        <h4><?php esc_html_e('Get Support', 'intersoccer-referral'); ?></h4>
+                        <p><?php esc_html_e('Need help? Contact our support team.', 'intersoccer-referral'); ?></p>
                     </div>
                 </button>
             </div>
@@ -430,12 +473,12 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
         <!-- Performance Chart -->
         <div class="dashboard-card chart-card" data-aos="fade-up">
             <div class="card-header">
-                <h3><i class="icon-chart"></i> Performance Overview</h3>
+                <h3><i class="icon-chart"></i> <?php esc_html_e('Performance Overview', 'intersoccer-referral'); ?></h3>
                 <div class="card-actions">
                     <select id="chart-period">
-                        <option value="7">Last 7 days</option>
-                        <option value="30" selected>Last 30 days</option>
-                        <option value="90">Last 3 months</option>
+                        <option value="7"><?php esc_html_e('Last 7 days', 'intersoccer-referral'); ?></option>
+                        <option value="30" selected><?php esc_html_e('Last 30 days', 'intersoccer-referral'); ?></option>
+                        <option value="90"><?php esc_html_e('Last 3 months', 'intersoccer-referral'); ?></option>
                     </select>
                 </div>
             </div>
@@ -448,9 +491,9 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
         <!-- Leaderboard -->
         <div class="dashboard-card leaderboard-card" data-aos="fade-up">
             <div class="card-header">
-                <h3><i class="icon-leaderboard"></i> Top Performers</h3>
+                <h3><i class="icon-leaderboard"></i> <?php esc_html_e('Top Performers', 'intersoccer-referral'); ?></h3>
                 <div class="card-actions">
-                    <button class="btn-link" id="view-full-leaderboard">View Full List</button>
+                    <button class="btn-link" id="view-full-leaderboard" type="button"><?php esc_html_e('View Full List', 'intersoccer-referral'); ?></button>
                 </div>
             </div>
 
@@ -465,17 +508,22 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                             <div class="performer-name">
                                 <?php echo esc_html($performer->display_name); ?>
                                 <?php if ($performer->ID == $user_id): ?>
-                                    <span class="you-badge">You</span>
+                                    <span class="you-badge"><?php esc_html_e('You', 'intersoccer-referral'); ?></span>
                                 <?php endif; ?>
                             </div>
                             <div class="performer-stats">
-                                <?php echo $performer->referral_count; ?> referrals •
-                                <?php echo number_format($performer->total_credits, 0); ?> CHF
+                                <?php
+                                printf(
+                                    esc_html__('%1$s referrals • %2$s CHF', 'intersoccer-referral'),
+                                    esc_html($performer->referral_count),
+                                    esc_html(number_format($performer->total_credits, 0))
+                                );
+                                ?>
                             </div>
                         </div>
                         <div class="performer-tier">
                             <span class="tier-badge <?php echo strtolower($performer->tier); ?>">
-                                <?php echo $performer->tier; ?>
+                                <?php echo esc_html($performer->tier); ?>
                             </span>
                         </div>
                     </div>
@@ -487,21 +535,21 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
 
     <!-- Achievement Badges Section -->
     <div class="achievements-section" data-aos="fade-up">
-        <h3><i class="icon-achievements"></i> Your Achievements</h3>
+        <h3><i class="icon-achievements"></i> <?php esc_html_e('Your Achievements', 'intersoccer-referral'); ?></h3>
         <div class="achievements-grid">
             <?php foreach ($achievements as $achievement): ?>
                 <div class="achievement-badge <?php echo $achievement['unlocked'] ? 'unlocked' : 'locked'; ?>">
                     <div class="badge-icon">
-                        <i class="icon-<?php echo $achievement['icon']; ?>"></i>
+                        <i class="icon-<?php echo esc_attr($achievement['icon']); ?>"></i>
                     </div>
                     <div class="badge-content">
                         <h4><?php echo esc_html($achievement['title']); ?></h4>
                         <p><?php echo esc_html($achievement['description']); ?></p>
                         <?php if (!$achievement['unlocked']): ?>
                             <div class="progress-bar">
-                                <div class="progress-fill" style="width: <?php echo $achievement['progress']; ?>%"></div>
+                                <div class="progress-fill" style="width: <?php echo esc_attr($achievement['progress']); ?>%"></div>
                             </div>
-                            <div class="progress-text"><?php echo $achievement['progress_text']; ?></div>
+                            <div class="progress-text"><?php echo esc_html($achievement['progress_text']); ?></div>
                         <?php endif; ?>
                     </div>
                 </div>

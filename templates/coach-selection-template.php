@@ -168,8 +168,9 @@ jQuery(document).ready(function($) {
         var coachId = $(this).data('coach-id');
         var coachCard = $(this).closest('.coach-card');
         var coachName = coachCard.find('h4').text();
+        var selectCoachConfirm = <?php echo wp_json_encode(__('Are you sure you want to select %s as your coach partner?', 'intersoccer-referral')); ?>;
 
-        if (confirm('<?php _e('Are you sure you want to select', 'intersoccer-referral'); ?> ' + coachName + ' <?php _e('as your coach partner?', 'intersoccer-referral'); ?>')) {
+        if (confirm(selectCoachConfirm.replace('%s', coachName))) {
             selectCoach(coachId);
         }
     });
