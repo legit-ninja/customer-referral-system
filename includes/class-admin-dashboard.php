@@ -987,20 +987,30 @@ class InterSoccer_Referral_Admin_Dashboard {
             return;
         }
 
-        // Apply referral code discount
-        $referral_code = WC()->session->get('intersoccer_applied_referral_code');
-        if ($referral_code) {
+        if (!function_exists('WC') || !WC()->session) {
+            return;
+        }
+
+        $session = WC()->session;
+
+        // Apply referral code discount only for first purchase
+        $referral_code = $session->get('intersoccer_applied_referral_code');
+        $current_user_id = get_current_user_id();
+        $eligible_for_discount = $this->customer_is_eligible_for_first_order_discount($current_user_id);
+
+        if ($referral_code && $eligible_for_discount) {
             $discount_amount = -10; // 10 CHF discount for referral codes
             $cart->add_fee(__('Coach Referral Discount', 'intersoccer-referral'), $discount_amount, true, '');
-            
-            // Debug logging (only in debug mode to prevent excessive disk I/O)
+
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log("InterSoccer Referral: Applying referral discount - code=$referral_code, discount=$discount_amount");
+                error_log("InterSoccer Referral: Applying first-order referral discount - user=$current_user_id, code=$referral_code, discount=$discount_amount");
             }
+        } elseif ($referral_code && defined('WP_DEBUG') && WP_DEBUG) {
+            error_log("InterSoccer Referral: Skipping referral discount - user=$current_user_id, code=$referral_code, eligible=" . ($eligible_for_discount ? 'yes' : 'no'));
         }
 
         // Apply points discount
-        $points_to_redeem = WC()->session->get('intersoccer_points_to_redeem', 0);
+        $points_to_redeem = $session->get('intersoccer_points_to_redeem', 0);
         $is_checkout_context = (function_exists('is_checkout') && is_checkout());
 
         if (!$is_checkout_context && wp_doing_ajax() && isset($_REQUEST['wc-ajax'])) {
@@ -1019,6 +1029,37 @@ class InterSoccer_Referral_Admin_Dashboard {
                 error_log("InterSoccer Referral: Applying points discount as fee - points=$points_to_redeem, discount=$discount_amount");
             }
         }
+    }
+
+    private function customer_is_eligible_for_first_order_discount($user_id) {
+        if (empty($user_id) || !is_user_logged_in()) {
+            return false;
+        }
+
+        $consumed = get_user_meta($user_id, 'intersoccer_first_order_discount_consumed', true);
+        if (!empty($consumed)) {
+            return false;
+        }
+
+        if (!function_exists('wc_get_orders')) {
+            return true;
+        }
+
+        $orders = wc_get_orders([
+            'customer' => $user_id,
+            'status' => [
+                'wc-processing',
+                'processing',
+                'wc-completed',
+                'completed',
+                'wc-on-hold',
+                'on-hold',
+            ],
+            'limit' => 1,
+            'return' => 'ids',
+        ]);
+
+        return empty($orders);
     }
 
     /**
@@ -1211,10 +1252,24 @@ class InterSoccer_Referral_Admin_Dashboard {
         $session->set('intersoccer_applied_referral_code', $referral_code);
         $session->set('intersoccer_referral_coach_id', $coach->ID);
         $session->set('coach_referral_code', $referral_code);
-        $session->set('intersoccer_referral_status_message', sprintf(
-            __('Referral code applied! You will receive a discount from coach %s.', 'intersoccer-referral'),
-            $coach_name
-        ));
+
+        $current_user_id = get_current_user_id();
+        $eligible_for_discount = $this->customer_is_eligible_for_first_order_discount($current_user_id);
+
+        if ($eligible_for_discount) {
+            $status_message = sprintf(
+                __('Referral code applied! You will receive a discount from coach %s.', 'intersoccer-referral'),
+                $coach_name
+            );
+        } else {
+            $status_message = sprintf(
+                __('Referral code saved! Coach %s will still receive credit on this order. First-time discount already used.', 'intersoccer-referral'),
+                $coach_name
+            );
+        }
+
+        $session->set('intersoccer_referral_status_message', $status_message);
+        $session->set('intersoccer_first_order_discount_available', $eligible_for_discount ? 'yes' : 'no');
 
         update_user_meta(get_current_user_id(), 'intersoccer_preferred_coach', $coach->ID);
 
@@ -1227,9 +1282,9 @@ class InterSoccer_Referral_Admin_Dashboard {
 
         return [
             'success' => true,
-            'message' => sprintf(__('Referral code applied! You will receive a discount from coach %s.', 'intersoccer-referral'), $coach_name),
+            'message' => $status_message,
             'coach_name' => $coach_name,
-            'discount_amount' => 10
+            'discount_amount' => $eligible_for_discount ? 10 : 0
         ];
     }
 }
