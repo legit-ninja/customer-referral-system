@@ -3,7 +3,7 @@
  * Plugin Name: InterSoccer Referral System
  * Plugin URI: https://intersoccer.ch
  * Description: Advanced coach referral program with gamification and comprehensive analytics.
- * Version: 1.11.4
+ * Version: 1.11.11
  * Author: Jeremy Lee
  * Author URI: https://github.com/legit-ninja
  * License: GPL-2.0+
