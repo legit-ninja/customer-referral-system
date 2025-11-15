@@ -24,80 +24,86 @@ class InterSoccer_Admin_Coach_Events {
             wp_die(__('You do not have sufficient permissions to access this page.', 'intersoccer-referral'));
         }
 
+        echo '<div class="wrap intersoccer-coach-events">';
+        echo '<h1>' . esc_html__('Coach Event Participation', 'intersoccer-referral') . '</h1>';
+        echo '<p>' . esc_html__('Manage which events coaches are associated with. Coaches can request new events which appear as Pending; administrators can approve, deactivate or remove them.', 'intersoccer-referral') . '</p>';
+        $this->render_section();
+        echo '</div>';
+    }
+
+    /**
+     * Render the coach events UI without the outer admin wrap.
+     */
+    public function render_section() {
         $coaches = $this->get_all_coaches();
         $assignments = InterSoccer_Coach_Events_Manager::get_assignments();
         $nonce = wp_create_nonce('intersoccer_coach_events_nonce');
 
         ?>
-        <div class="wrap intersoccer-coach-events">
-            <h1><?php esc_html_e('Coach Event Participation', 'intersoccer-referral'); ?></h1>
-            <p><?php esc_html_e('Manage which events coaches are associated with. Coaches can request new events which appear as Pending; administrators can approve, deactivate or remove them.', 'intersoccer-referral'); ?></p>
+        <div class="coach-events-grid">
+            <div class="coach-events-form">
+                <h2><?php esc_html_e('Add Event Participation', 'intersoccer-referral'); ?></h2>
+                <form id="coach-events-form">
+                    <?php wp_nonce_field('intersoccer_coach_events_nonce', 'nonce'); ?>
 
-            <div class="coach-events-grid">
-                <div class="coach-events-form">
-                    <h2><?php esc_html_e('Add Event Participation', 'intersoccer-referral'); ?></h2>
-                    <form id="coach-events-form">
-                        <?php wp_nonce_field('intersoccer_coach_events_nonce', 'nonce'); ?>
+                    <table class="form-table" role="presentation">
+                        <tbody>
+                        <tr>
+                            <th scope="row"><label for="coach-id"><?php esc_html_e('Coach', 'intersoccer-referral'); ?> *</label></th>
+                            <td>
+                                <select id="coach-id" name="coach_id" required>
+                                    <option value=""><?php esc_html_e('Select a coach…', 'intersoccer-referral'); ?></option>
+                                    <?php foreach ($coaches as $coach): ?>
+                                    <option value="<?php echo esc_attr($coach->ID); ?>">
+                                        <?php echo esc_html($coach->display_name . ' (' . $coach->user_email . ')'); ?>
+                                    </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="event-search-input"><?php esc_html_e('Event', 'intersoccer-referral'); ?> *</label></th>
+                            <td>
+                                <div class="event-search-control">
+                                    <input type="text" id="event-search-input" placeholder="<?php esc_attr_e('Search by event or product name…', 'intersoccer-referral'); ?>">
+                                    <button type="button" class="button" id="event-search-button"><?php esc_html_e('Search', 'intersoccer-referral'); ?></button>
+                                    <input type="hidden" id="event-id" name="event_id" value="">
+                                    <input type="hidden" id="event-type" name="event_type" value="product">
+                                </div>
+                                <p class="description"><?php esc_html_e('Search WooCommerce products or other supported event post types.', 'intersoccer-referral'); ?></p>
+                                <div id="event-search-results" class="event-search-results" aria-live="polite"></div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="event-status"><?php esc_html_e('Status', 'intersoccer-referral'); ?></label></th>
+                            <td>
+                                <select id="event-status" name="status">
+                                    <option value="active"><?php esc_html_e('Active', 'intersoccer-referral'); ?></option>
+                                    <option value="pending"><?php esc_html_e('Pending', 'intersoccer-referral'); ?></option>
+                                    <option value="inactive"><?php esc_html_e('Inactive', 'intersoccer-referral'); ?></option>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><label for="event-notes"><?php esc_html_e('Notes', 'intersoccer-referral'); ?></label></th>
+                            <td>
+                                <textarea id="event-notes" name="notes" rows="3" class="large-text" placeholder="<?php esc_attr_e('Optional notes or context for this assignment.', 'intersoccer-referral'); ?>"></textarea>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
 
-                        <table class="form-table" role="presentation">
-                            <tbody>
-                            <tr>
-                                <th scope="row"><label for="coach-id"><?php esc_html_e('Coach', 'intersoccer-referral'); ?> *</label></th>
-                                <td>
-                                    <select id="coach-id" name="coach_id" required>
-                                        <option value=""><?php esc_html_e('Select a coach…', 'intersoccer-referral'); ?></option>
-                                        <?php foreach ($coaches as $coach): ?>
-                                            <option value="<?php echo esc_attr($coach->ID); ?>">
-                                                <?php echo esc_html($coach->display_name . ' (' . $coach->user_email . ')'); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row"><label for="event-search-input"><?php esc_html_e('Event', 'intersoccer-referral'); ?> *</label></th>
-                                <td>
-                                    <div class="event-search-control">
-                                        <input type="text" id="event-search-input" placeholder="<?php esc_attr_e('Search by event or product name…', 'intersoccer-referral'); ?>">
-                                        <button type="button" class="button" id="event-search-button"><?php esc_html_e('Search', 'intersoccer-referral'); ?></button>
-                                        <input type="hidden" id="event-id" name="event_id" value="">
-                                        <input type="hidden" id="event-type" name="event_type" value="product">
-                                    </div>
-                                    <p class="description"><?php esc_html_e('Search WooCommerce products or other supported event post types.', 'intersoccer-referral'); ?></p>
-                                    <div id="event-search-results" class="event-search-results" aria-live="polite"></div>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row"><label for="event-status"><?php esc_html_e('Status', 'intersoccer-referral'); ?></label></th>
-                                <td>
-                                    <select id="event-status" name="status">
-                                        <option value="active"><?php esc_html_e('Active', 'intersoccer-referral'); ?></option>
-                                        <option value="pending"><?php esc_html_e('Pending', 'intersoccer-referral'); ?></option>
-                                        <option value="inactive"><?php esc_html_e('Inactive', 'intersoccer-referral'); ?></option>
-                                    </select>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row"><label for="event-notes"><?php esc_html_e('Notes', 'intersoccer-referral'); ?></label></th>
-                                <td>
-                                    <textarea id="event-notes" name="notes" rows="3" class="large-text" placeholder="<?php esc_attr_e('Optional notes or context for this assignment.', 'intersoccer-referral'); ?>"></textarea>
-                                </td>
-                            </tr>
-                            </tbody>
-                        </table>
+                    <p class="submit">
+                        <button type="submit" class="button button-primary"><?php esc_html_e('Add Event Participation', 'intersoccer-referral'); ?></button>
+                        <span class="spinner" id="coach-events-spinner"></span>
+                    </p>
+                </form>
+            </div>
 
-                        <p class="submit">
-                            <button type="submit" class="button button-primary"><?php esc_html_e('Add Event Participation', 'intersoccer-referral'); ?></button>
-                            <span class="spinner" id="coach-events-spinner"></span>
-                        </p>
-                    </form>
-                </div>
-
-                <div class="coach-events-list">
-                    <h2><?php esc_html_e('Current Assignments', 'intersoccer-referral'); ?></h2>
-                    <div id="coach-events-list" class="coach-events-table-wrapper">
-                        <?php echo $this->render_events_table($assignments); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
-                    </div>
+            <div class="coach-events-list">
+                <h2><?php esc_html_e('Current Assignments', 'intersoccer-referral'); ?></h2>
+                <div id="coach-events-list" class="coach-events-table-wrapper">
+                    <?php echo $this->render_events_table($assignments); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?>
                 </div>
             </div>
         </div>

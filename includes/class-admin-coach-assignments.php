@@ -13,103 +13,104 @@ class InterSoccer_Admin_Coach_Assignments {
     }
 
     /**
-     * Render the coach assignments admin page
+     * Render the coach assignments admin page wrapper.
      */
     public function render_page() {
         if (!current_user_can('manage_options')) {
             wp_die(__('You do not have sufficient permissions to access this page.'));
         }
 
-        // Get all coaches
+        echo '<div class="wrap">';
+        echo '<h1>' . esc_html__('Coach Assignments', 'intersoccer-referral') . '</h1>';
+        echo '<p>' . esc_html__('Manage which coaches are assigned to specific venues, camps, and courses. Coaches will only see rosters for events they are assigned to.', 'intersoccer-referral') . '</p>';
+        $this->render_section();
+        echo '</div>';
+    }
+
+    /**
+     * Render the core assignments UI (without outer wrap so it can be embedded elsewhere).
+     */
+    public function render_section() {
         $coaches = $this->get_all_coaches();
-
-        // Get all venues from rosters table
         $venues = $this->get_all_venues();
-
-        // Get existing assignments
         $assignments = $this->get_all_assignments();
 
         ?>
-        <div class="wrap">
-            <h1><?php _e('Coach Assignments', 'intersoccer-referral'); ?></h1>
-            <p><?php _e('Manage which coaches are assigned to specific venues, camps, and courses. Coaches will only see rosters for events they are assigned to.', 'intersoccer-referral'); ?></p>
+        <div class="coach-assignments-container">
+            <div class="assignments-form">
+                <h2><?php _e('Add New Assignment', 'intersoccer-referral'); ?></h2>
+                <form id="coach-assignment-form">
+                    <?php wp_nonce_field('coach_assignments_nonce', 'nonce'); ?>
 
-            <div class="coach-assignments-container">
-                <div class="assignments-form">
-                    <h2><?php _e('Add New Assignment', 'intersoccer-referral'); ?></h2>
-                    <form id="coach-assignment-form">
-                        <?php wp_nonce_field('coach_assignments_nonce', 'nonce'); ?>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row">
+                                <label for="coach_id"><?php _e('Coach', 'intersoccer-referral'); ?> *</label>
+                            </th>
+                            <td>
+                                <select name="coach_id" id="coach_id" required>
+                                    <option value=""><?php _e('Select a coach...', 'intersoccer-referral'); ?></option>
+                                    <?php foreach ($coaches as $coach): ?>
+                                        <option value="<?php echo esc_attr($coach->ID); ?>">
+                                            <?php echo esc_html($coach->display_name . ' (' . $coach->user_email . ')'); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="venue"><?php _e('Venue/Camp/Course', 'intersoccer-referral'); ?> *</label>
+                            </th>
+                            <td>
+                                <select name="venue" id="venue" required>
+                                    <option value=""><?php _e('Select a venue...', 'intersoccer-referral'); ?></option>
+                                    <?php foreach ($venues as $venue): ?>
+                                        <option value="<?php echo esc_attr($venue); ?>">
+                                            <?php echo esc_html($venue); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <p class="description"><?php _e('Select the venue, camp, or course this coach is assigned to.', 'intersoccer-referral'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="assignment_type"><?php _e('Assignment Type', 'intersoccer-referral'); ?> *</label>
+                            </th>
+                            <td>
+                                <select name="assignment_type" id="assignment_type" required>
+                                    <option value="venue"><?php _e('Venue', 'intersoccer-referral'); ?></option>
+                                    <option value="camp"><?php _e('Camp', 'intersoccer-referral'); ?></option>
+                                    <option value="course"><?php _e('Course', 'intersoccer-referral'); ?></option>
+                                    <option value="event"><?php _e('Event', 'intersoccer-referral'); ?></option>
+                                </select>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="canton"><?php _e('Canton (Optional)', 'intersoccer-referral'); ?></label>
+                            </th>
+                            <td>
+                                <input type="text" name="canton" id="canton" class="regular-text"
+                                       placeholder="<?php _e('e.g., Zurich, Bern, Geneva', 'intersoccer-referral'); ?>">
+                                <p class="description"><?php _e('Specify the canton for regional filtering.', 'intersoccer-referral'); ?></p>
+                            </td>
+                        </tr>
+                    </table>
 
-                        <table class="form-table">
-                            <tr>
-                                <th scope="row">
-                                    <label for="coach_id"><?php _e('Coach', 'intersoccer-referral'); ?> *</label>
-                                </th>
-                                <td>
-                                    <select name="coach_id" id="coach_id" required>
-                                        <option value=""><?php _e('Select a coach...', 'intersoccer-referral'); ?></option>
-                                        <?php foreach ($coaches as $coach): ?>
-                                            <option value="<?php echo esc_attr($coach->ID); ?>">
-                                                <?php echo esc_html($coach->display_name . ' (' . $coach->user_email . ')'); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">
-                                    <label for="venue"><?php _e('Venue/Camp/Course', 'intersoccer-referral'); ?> *</label>
-                                </th>
-                                <td>
-                                    <select name="venue" id="venue" required>
-                                        <option value=""><?php _e('Select a venue...', 'intersoccer-referral'); ?></option>
-                                        <?php foreach ($venues as $venue): ?>
-                                            <option value="<?php echo esc_attr($venue); ?>">
-                                                <?php echo esc_html($venue); ?>
-                                            </option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <p class="description"><?php _e('Select the venue, camp, or course this coach is assigned to.', 'intersoccer-referral'); ?></p>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">
-                                    <label for="assignment_type"><?php _e('Assignment Type', 'intersoccer-referral'); ?> *</label>
-                                </th>
-                                <td>
-                                    <select name="assignment_type" id="assignment_type" required>
-                                        <option value="venue"><?php _e('Venue', 'intersoccer-referral'); ?></option>
-                                        <option value="camp"><?php _e('Camp', 'intersoccer-referral'); ?></option>
-                                        <option value="course"><?php _e('Course', 'intersoccer-referral'); ?></option>
-                                        <option value="event"><?php _e('Event', 'intersoccer-referral'); ?></option>
-                                    </select>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th scope="row">
-                                    <label for="canton"><?php _e('Canton (Optional)', 'intersoccer-referral'); ?></label>
-                                </th>
-                                <td>
-                                    <input type="text" name="canton" id="canton" class="regular-text"
-                                           placeholder="<?php _e('e.g., Zurich, Bern, Geneva', 'intersoccer-referral'); ?>">
-                                    <p class="description"><?php _e('Specify the canton for regional filtering.', 'intersoccer-referral'); ?></p>
-                                </td>
-                            </tr>
-                        </table>
+                    <p class="submit">
+                        <input type="submit" name="submit" id="submit" class="button button-primary"
+                               value="<?php _e('Add Assignment', 'intersoccer-referral'); ?>">
+                        <span id="assignment-spinner" class="spinner" style="float: none; margin-top: 0;"></span>
+                    </p>
+                </form>
+            </div>
 
-                        <p class="submit">
-                            <input type="submit" name="submit" id="submit" class="button button-primary"
-                                   value="<?php _e('Add Assignment', 'intersoccer-referral'); ?>">
-                            <span id="assignment-spinner" class="spinner" style="float: none; margin-top: 0;"></span>
-                        </p>
-                    </form>
-                </div>
-
-                <div class="current-assignments">
-                    <h2><?php _e('Current Assignments', 'intersoccer-referral'); ?></h2>
-                    <div id="assignments-list">
-                        <?php $this->render_assignments_list($assignments, $coaches); ?>
-                    </div>
+            <div class="current-assignments">
+                <h2><?php _e('Current Assignments', 'intersoccer-referral'); ?></h2>
+                <div id="assignments-list">
+                    <?php $this->render_assignments_list($assignments, $coaches); ?>
                 </div>
             </div>
         </div>

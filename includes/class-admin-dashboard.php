@@ -150,6 +150,17 @@ class InterSoccer_Referral_Admin_Dashboard {
             [$this->points, 'render_points_page']
         );
 
+        if ($this->coach_assignments && $this->coach_events) {
+            add_submenu_page(
+                'intersoccer-referrals',
+                __('Coach Event Assignments', 'intersoccer-referral'),
+                __('Coach Event Assignments', 'intersoccer-referral'),
+                'manage_options',
+                'intersoccer-coach-event-assignments',
+                [$this, 'render_coach_event_assignments_page']
+            );
+        }
+
         add_submenu_page(
             'intersoccer-referrals',
             'Settings',
@@ -158,29 +169,83 @@ class InterSoccer_Referral_Admin_Dashboard {
             'intersoccer-settings',
             [$this->settings, 'render_settings_page']
         );
+    }
 
-        // Only add coach assignments menu if class is available
-        if ($this->coach_assignments) {
-            add_submenu_page(
-                'intersoccer-referrals',
-                'Coach Assignments',
-                'Coach Assignments',
-                'manage_options',
-                'intersoccer-coach-assignments',
-                [$this->coach_assignments, 'render_page']
-            );
+    public function render_coach_event_assignments_page() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('You do not have sufficient permissions to access this page.'));
         }
 
-        if ($this->coach_events) {
-            add_submenu_page(
-                'intersoccer-referrals',
-                __('Coach Events', 'intersoccer-referral'),
-                __('Coach Events', 'intersoccer-referral'),
-                'manage_options',
-                'intersoccer-coach-events',
-                [$this->coach_events, 'render_page']
-            );
-        }
+        ?>
+        <div class="wrap coach-event-assignments-page">
+            <h1><?php esc_html_e('Coach Event Assignments', 'intersoccer-referral'); ?></h1>
+            <p class="description">
+                <?php esc_html_e('Manage venue/camp/course assignments as well as specific event participation from a single workspace.', 'intersoccer-referral'); ?>
+            </p>
+
+            <h2 class="nav-tab-wrapper coach-event-tabs">
+                <a href="#" class="nav-tab nav-tab-active" data-target="coach-assignments-panel">
+                    <?php esc_html_e('Venue & Course Assignments', 'intersoccer-referral'); ?>
+                </a>
+                <a href="#" class="nav-tab" data-target="coach-events-panel">
+                    <?php esc_html_e('Event Participation', 'intersoccer-referral'); ?>
+                </a>
+            </h2>
+
+            <div class="coach-event-tab-panels">
+                <section id="coach-assignments-panel" class="coach-event-panel active" aria-label="<?php esc_attr_e('Venue and course assignments', 'intersoccer-referral'); ?>">
+                    <?php
+                    if ($this->coach_assignments && method_exists($this->coach_assignments, 'render_section')) {
+                        $this->coach_assignments->render_section();
+                    }
+                    ?>
+                </section>
+
+                <section id="coach-events-panel" class="coach-event-panel" aria-label="<?php esc_attr_e('Event participation assignments', 'intersoccer-referral'); ?>">
+                    <?php
+                    if ($this->coach_events && method_exists($this->coach_events, 'render_section')) {
+                        $this->coach_events->render_section();
+                    }
+                    ?>
+                </section>
+            </div>
+        </div>
+
+        <style>
+            .coach-event-assignments-page .coach-event-tabs {
+                margin-bottom: 0;
+            }
+            .coach-event-panel {
+                display: none;
+                margin-top: 0;
+            }
+            .coach-event-panel.active {
+                display: block;
+            }
+        </style>
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const tabs = document.querySelectorAll('.coach-event-tabs .nav-tab');
+                const panels = document.querySelectorAll('.coach-event-panel');
+
+                tabs.forEach(tab => {
+                    tab.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        const targetId = tab.getAttribute('data-target');
+
+                        tabs.forEach(t => t.classList.remove('nav-tab-active'));
+                        panels.forEach(panel => panel.classList.remove('active'));
+
+                        tab.classList.add('nav-tab-active');
+                        const panel = document.getElementById(targetId);
+                        if (panel) {
+                            panel.classList.add('active');
+                        }
+                    });
+                });
+            });
+        </script>
+        <?php
     }
 
     public function enqueue_admin_assets($hook) {

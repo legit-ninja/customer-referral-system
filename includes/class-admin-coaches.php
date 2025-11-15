@@ -19,6 +19,18 @@ class InterSoccer_Admin_Coaches {
                 </button>
             </div>
 
+            <div class="intersoccer-coaches-search">
+                <label for="coach-search-input" class="screen-reader-text">Search coaches</label>
+                <span class="dashicons dashicons-search"></span>
+                <input
+                    type="search"
+                    id="coach-search-input"
+                    placeholder="Search coaches by name or email..."
+                    autocomplete="off"
+                />
+            </div>
+            <p class="coaches-search-status" aria-live="polite"></p>
+
             <div class="intersoccer-coaches-grid">
                 <?php $this->display_coaches_list(); ?>
             </div>
@@ -37,7 +49,84 @@ class InterSoccer_Admin_Coaches {
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             overflow: hidden;
         }
+
+        .intersoccer-coaches-search {
+            margin: 0 0 15px 0;
+            position: relative;
+            max-width: 420px;
+        }
+
+        .intersoccer-coaches-search .dashicons {
+            position: absolute;
+            top: 50%;
+            left: 10px;
+            transform: translateY(-50%);
+            color: #7f8c8d;
+        }
+
+        #coach-search-input {
+            width: 100%;
+            padding: 10px 12px 10px 35px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        #coach-search-input:focus {
+            outline: none;
+            border-color: #3273dc;
+            box-shadow: 0 0 0 2px rgba(50,115,220,0.15);
+        }
+
+        .coaches-search-status {
+            margin: 0 0 10px 2px;
+            font-size: 13px;
+            color: #6b7280;
+        }
         </style>
+
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('coach-search-input');
+            const statusEl = document.querySelector('.coaches-search-status');
+            const cards = Array.from(document.querySelectorAll('.coach-card'));
+
+            if (!searchInput || cards.length === 0) {
+                return;
+            }
+
+            function updateStatus(filteredCount) {
+                if (!statusEl) {
+                    return;
+                }
+                if (searchInput.value.trim() === '') {
+                    statusEl.textContent = '';
+                } else if (filteredCount === 0) {
+                    statusEl.textContent = 'No coaches match your search.';
+                } else {
+                    statusEl.textContent = `${filteredCount} coach${filteredCount === 1 ? '' : 'es'} found.`;
+                }
+            }
+
+            function filterCoaches() {
+                const term = searchInput.value.trim().toLowerCase();
+                let visible = 0;
+
+                cards.forEach(card => {
+                    const haystack = (card.dataset.search || '').toLowerCase();
+                    const matches = term === '' || haystack.includes(term);
+                    card.style.display = matches ? '' : 'none';
+                    if (matches) {
+                        visible++;
+                    }
+                });
+
+                updateStatus(visible);
+            }
+
+            searchInput.addEventListener('input', filterCoaches);
+        });
+        </script>
         <?php
     }
 
@@ -69,9 +158,10 @@ class InterSoccer_Admin_Coaches {
             $tier = intersoccer_get_coach_tier($coach->ID);
             $recent_referrals = $this->get_coach_recent_referrals($coach->ID, 3);
             $active_partnerships = $this->get_coach_active_partnerships($coach->ID);
+            $search_tokens = strtolower($coach->display_name . ' ' . $coach->user_email);
 
             ?>
-            <div class="coach-card" data-coach-id="<?php echo $coach->ID; ?>">
+            <div class="coach-card" data-coach-id="<?php echo $coach->ID; ?>" data-search="<?php echo esc_attr($search_tokens); ?>">
                 <div class="coach-card-header">
                     <div class="coach-avatar">
                         <?php echo get_avatar($coach->ID, 60); ?>

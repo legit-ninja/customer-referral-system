@@ -448,7 +448,28 @@ class InterSoccer_Coach_Events_Manager {
             'type' => ['simple', 'variable'],
         ];
 
-        $products = wc_get_products(apply_filters('intersoccer_coach_events_search_args', $product_args, $term));
+        $maybe_switch_back_to = null;
+        $default_language = apply_filters('wpml_default_language', null);
+        $current_language = apply_filters('wpml_current_language', null);
+
+        if (!empty($default_language) && !empty($current_language) && $default_language !== $current_language) {
+            /**
+             * Force queries to run in the default (English) language so coaches only
+             * associate events with the canonical product. WPML listeners will no-op
+             * if the plugin is not active.
+             */
+            do_action('wpml_switch_language', $default_language);
+            $maybe_switch_back_to = $current_language;
+        }
+
+        try {
+            $products = wc_get_products(apply_filters('intersoccer_coach_events_search_args', $product_args, $term));
+        } finally {
+            if ($maybe_switch_back_to) {
+                do_action('wpml_switch_language', $maybe_switch_back_to);
+            }
+        }
+
         if (empty($products)) {
             return [];
         }
