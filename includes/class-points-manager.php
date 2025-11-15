@@ -4,7 +4,7 @@
 class InterSoccer_Points_Manager {
 
     private $points_log_table;
-    private $points_per_currency = 0.1; // 1 point per 10 CHF spent
+    private $points_per_currency = 0.1; // 1 point per 10 CHF spent (legacy ratio metadata)
 
     public function __construct() {
         global $wpdb;
@@ -53,7 +53,18 @@ class InterSoccer_Points_Manager {
             return;
         }
 
-        $order_total = $order->get_total();
+        $order_total = max(0, $order->get_total());
+        $allocation_mode = $this->get_allocation_mode();
+        $allocation_meta = [
+            'method' => $allocation_mode,
+        ];
+
+        if ($allocation_mode === 'percentage') {
+            $allocation_meta['percentage_rate'] = $this->get_points_percentage_rate($customer_id);
+        } else {
+            $allocation_meta['points_rate'] = $this->get_points_rate_for_user($customer_id);
+        }
+
         $points_to_allocate = $this->calculate_points_from_amount($order_total, $customer_id);
 
         if ($points_to_allocate > 0) {
@@ -69,7 +80,13 @@ class InterSoccer_Points_Manager {
                 [
                     'order_total' => $order_total,
                     'currency' => $order->get_currency(),
-                    'points_rate' => $this->points_per_currency
+                    'points_rate' => $allocation_meta['method'] === 'ratio'
+                        ? $allocation_meta['points_rate']
+                        : null,
+                    'percentage_rate' => $allocation_meta['method'] === 'percentage'
+                        ? $allocation_meta['percentage_rate']
+                        : null,
+                    'allocation_method' => $allocation_meta['method']
                 ]
             );
 
@@ -124,11 +141,26 @@ class InterSoccer_Points_Manager {
      * @return int The number of points earned (integer only)
      */
     private function calculate_points_from_amount($amount, $user_id = null) {
-        // Get rate based on user role (if user_id provided)
-        $rate = $this->get_points_rate_for_user($user_id);
-        
-        // Use floor() to ensure integer points
-        // Example: CHF 95 at rate of 10 = floor(95/10) = 9 points
+        $amount = max(0, (float) $amount);
+        $mode = $this->get_allocation_mode();
+
+        if ($mode === 'percentage') {
+            $percentage = $this->get_points_percentage_rate($user_id);
+
+            if ($percentage <= 0) {
+                return 0;
+            }
+
+            $points_value = max(0.0001, $this->get_redemption_rate()); // CHF per point
+            $raw_points = ($amount * ($percentage / 100)) / $points_value;
+
+            return (int) floor($raw_points);
+        }
+
+        // Default ratio-based allocation
+        $rate = max(1, $this->get_points_rate_for_user($user_id));
+
+        // Use floor() to ensure integer points (no fractional points)
         return (int) floor($amount / $rate);
     }
 
@@ -167,6 +199,53 @@ class InterSoccer_Points_Manager {
 
         // Fallback to customer rate
         return intval(get_option('intersoccer_points_rate_customer', 10));
+    }
+
+    /**
+     * Retrieve the active points allocation mode.
+     *
+     * @return string ratio|percentage
+     */
+    private function get_allocation_mode() {
+        $mode = get_option('intersoccer_points_allocation_mode', 'ratio');
+
+        if (!in_array($mode, ['ratio', 'percentage'], true)) {
+            return 'ratio';
+        }
+
+        return $mode;
+    }
+
+    /**
+     * Get percentage-based allocation rate.
+     *
+     * @param int|null $user_id Optional for future role-specific overrides
+     * @return float Percentage value (0-100)
+     */
+    private function get_points_percentage_rate($user_id = null) {
+        $percentage = (float) get_option('intersoccer_points_percentage_rate', 0);
+
+        /**
+         * Filter the percentage-based allocation rate.
+         *
+         * @since 1.0.0
+         *
+         * @param float $percentage Configured percentage (0-100)
+         * @param int|null $user_id Optional user ID
+         */
+        if (function_exists('apply_filters')) {
+            $percentage = apply_filters('intersoccer_points_percentage_rate', $percentage, $user_id);
+        }
+
+        if ($percentage < 0) {
+            return 0;
+        }
+
+        if ($percentage > 100) {
+            return 100;
+        }
+
+        return $percentage;
     }
 
     /**

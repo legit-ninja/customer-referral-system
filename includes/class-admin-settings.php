@@ -23,21 +23,11 @@ class InterSoccer_Admin_Settings {
         // Add hook for the role migration action
         add_action('admin_post_migrate_coach_roles', [$this, 'migrate_coach_roles']);
 
-        // Add points migration actions
-        add_action('wp_ajax_run_points_migration', [$this, 'run_points_migration_ajax']);
-        add_action('wp_ajax_get_migration_status', [$this, 'get_migration_status_ajax']);
-
         // Add action for restoring coach roles
         add_action('wp_ajax_restore_coach_roles', [$this, 'restore_coach_roles_ajax']);
         
         // Phase 0: Role-specific point rates
         add_action('wp_ajax_save_points_rates', [$this, 'save_points_rates_ajax']);
-        
-        // Add actions for integer migration (Phase 0)
-        add_action('wp_ajax_run_integer_migration', [$this, 'run_integer_migration_ajax']);
-        add_action('wp_ajax_get_integer_migration_status', [$this, 'get_integer_migration_status_ajax']);
-        add_action('wp_ajax_verify_integer_migration', [$this, 'verify_integer_migration_ajax']);
-        add_action('wp_ajax_rollback_integer_migration', [$this, 'rollback_integer_migration_ajax']);
     }
 
     public function render_settings_page() {
@@ -287,6 +277,10 @@ class InterSoccer_Admin_Settings {
             <div class="intersoccer-settings-section">
                 <h2>Points Configuration</h2>
                 <?php
+                $allocation_mode = get_option('intersoccer_points_allocation_mode', 'ratio');
+                $allocation_summary = $allocation_mode === 'percentage'
+                    ? __('Current mode: Percentage of order total', 'intersoccer-referral')
+                    : __('Current mode: CHF per point ratio', 'intersoccer-referral');
                 $go_live_option = get_option('intersoccer_points_golive_date', '');
                 $go_live_status = __('Points accumulation is active immediately.', 'intersoccer-referral');
 
@@ -335,6 +329,49 @@ class InterSoccer_Admin_Settings {
                                 </p>
                             </td>
                         </tr>
+                        <tr>
+                            <th scope="row">
+                                <label><?php esc_html_e('Points Allocation Method', 'intersoccer-referral'); ?></label>
+                            </th>
+                            <td>
+                                <fieldset>
+                                    <label>
+                                        <input type="radio"
+                                               name="intersoccer_points_allocation_mode"
+                                               value="ratio"
+                                               <?php checked($allocation_mode, 'ratio'); ?> />
+                                        <?php esc_html_e('CHF per point ratio (uses role-based rates below)', 'intersoccer-referral'); ?>
+                                    </label><br>
+                                    <label>
+                                        <input type="radio"
+                                               name="intersoccer_points_allocation_mode"
+                                               value="percentage"
+                                               <?php checked($allocation_mode, 'percentage'); ?> />
+                                        <?php esc_html_e('Percentage of order total', 'intersoccer-referral'); ?>
+                                    </label>
+                                </fieldset>
+                                <p class="description">
+                                    <?php echo esc_html($allocation_summary); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="points-percentage-rate"><?php esc_html_e('Percentage-based Points Rate', 'intersoccer-referral'); ?></label>
+                            </th>
+                            <td>
+                                <input type="number"
+                                       id="points-percentage-rate"
+                                       name="intersoccer_points_percentage_rate"
+                                       value="<?php echo esc_attr(get_option('intersoccer_points_percentage_rate', 0)); ?>"
+                                       min="0"
+                                       max="100"
+                                       step="0.1">
+                                <p class="description">
+                                    <?php esc_html_e('When percentage mode is enabled, customers earn this percentage of the order total as points. Points are rounded down to avoid fractions.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
                     </table>
                     <?php submit_button(__('Save Points Configuration', 'intersoccer-referral')); ?>
                 </form>
@@ -365,122 +402,6 @@ class InterSoccer_Admin_Settings {
                 </div>
             </div>
 
-            <!-- Points Migration -->
-            <div class="intersoccer-settings-section">
-                <h2>Points System Migration</h2>
-                <div class="migration-notice">
-                    <div class="notice notice-warning">
-                        <p><strong>Important:</strong> This migration updates the points system from 1 CHF = 1 point to 10 CHF = 1 point ratio.</p>
-                        <p><strong>What it does:</strong></p>
-                        <ul>
-                            <li>Creates a backup of current points data</li>
-                            <li>Recalculates all point balances and transactions</li>
-                            <li>Updates user point balances</li>
-                            <li>This action cannot be easily undone</li>
-                        </ul>
-                        <p><strong>⚠️ Backup your database before proceeding!</strong></p>
-                    </div>
-                </div>
-
-                <div class="migration-controls">
-                    <div class="migration-card">
-                        <h3>Points Ratio Migration</h3>
-                        <p>Migrate from 1:1 to 10:1 points ratio (10 CHF = 1 point)</p>
-                        <div class="migration-status" id="migration-status">
-                            <span class="status-indicator status-ready">Ready to migrate</span>
-                        </div>
-                        <button id="run-points-migration" class="button button-primary button-hero">
-                            <span class="dashicons dashicons-update"></span>
-                            Run Points Migration
-                        </button>
-                        <div id="migration-progress" style="display: none; margin-top: 20px;">
-                            <div class="progress-container">
-                                <div class="progress-bar">
-                                    <div class="progress-fill" id="migration-progress-fill" style="width: 0%"></div>
-                                </div>
-                                <div class="progress-text" id="migration-progress-text">Initializing migration...</div>
-                            </div>
-                            <div class="migration-details" id="migration-details" style="margin-top: 15px;">
-                                <div class="detail-item"><strong>Transactions Processed:</strong> <span id="transactions-processed">0</span></div>
-                                <div class="detail-item"><strong>Users Updated:</strong> <span id="users-updated">0</span></div>
-                                <div class="detail-item"><strong>Backup Created:</strong> <span id="backup-created">No</span></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="migration-card">
-                        <h3>Migration Status</h3>
-                        <div id="migration-info">
-                            <p>Loading migration status...</p>
-                        </div>
-                        <button id="refresh-migration-status" class="button">Refresh Status</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Phase 0: Integer Points Migration -->
-            <div class="intersoccer-settings-section">
-                <h2>⭐ Phase 0: Integer Points Migration (CRITICAL)</h2>
-                <div class="migration-notice">
-                    <div class="notice notice-error">
-                        <p><strong>🚨 CRITICAL - Required Before Production!</strong></p>
-                        <p><strong>What this does:</strong></p>
-                        <ul>
-                            <li>Converts all points from DECIMAL to INT (95.50 points → 95 points)</li>
-                            <li>Updates database schema: DECIMAL(10,2) → INT(11)</li>
-                            <li>Creates timestamped backup tables before changes</li>
-                            <li>Uses floor() logic: 95 CHF = 9 points (not 9.5)</li>
-                            <li>Updates 3 tables: points_log, referral_rewards, user_meta</li>
-                            <li>Can be rolled back if issues occur</li>
-                        </ul>
-                        <p><strong>⚠️ Backup your database before proceeding!</strong></p>
-                        <p><strong>Why this is needed:</strong> Fractional points cause accounting issues and user confusion.</p>
-                    </div>
-                </div>
-
-                <div class="migration-controls">
-                    <div class="migration-card">
-                        <h3>Convert Points to Integers</h3>
-                        <p>Migrate from fractional points to integer-only points</p>
-                        <div class="migration-status" id="integer-migration-status">
-                            <span class="status-indicator status-ready">Ready to migrate</span>
-                        </div>
-                        <button id="run-integer-migration" class="button button-primary button-hero" style="background: #dc3545; border-color: #dc3545;">
-                            <span class="dashicons dashicons-update"></span>
-                            Run Integer Migration
-                        </button>
-                        <button id="verify-integer-migration" class="button button-secondary" style="margin-left: 10px; display: none;">
-                            <span class="dashicons dashicons-yes-alt"></span>
-                            Verify Migration
-                        </button>
-                        <button id="rollback-integer-migration" class="button button-secondary" style="margin-left: 10px; display: none; background: #856404; border-color: #856404; color: white;">
-                            <span class="dashicons dashicons-undo"></span>
-                            Rollback Migration
-                        </button>
-                        <div id="integer-migration-progress" style="display: none; margin-top: 20px;">
-                            <div class="progress-container">
-                                <div class="progress-bar">
-                                    <div class="progress-fill" id="integer-migration-progress-fill" style="width: 0%"></div>
-                                </div>
-                                <div class="progress-text" id="integer-migration-progress-text">Initializing migration...</div>
-                            </div>
-                            <div class="migration-details" id="integer-migration-details" style="margin-top: 15px;">
-                                <div class="detail-item"><strong>Records Converted:</strong> <span id="integer-records-converted">0</span></div>
-                                <div class="detail-item"><strong>Backup Tables:</strong> <span id="integer-backup-tables">None</span></div>
-                                <div class="detail-item"><strong>Status:</strong> <span id="integer-status">Pending</span></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="migration-card">
-                        <h3>Integer Migration Status</h3>
-                        <div id="integer-migration-info">
-                            <p>Loading migration status...</p>
-                        </div>
-                        <button id="refresh-integer-migration-status" class="button">Refresh Status</button>
-                    </div>
-                </div>
-            </div>
 
             <!-- Phase 0: Role-Specific Point Acquisition Rates -->
             <div class="intersoccer-settings-section">
@@ -953,255 +874,6 @@ class InterSoccer_Admin_Settings {
                 window.open(intersoccer_admin.ajax_url + '?action=export_audit_log&nonce=' + intersoccer_admin.nonce, '_blank');
             });
 
-            // Points migration functionality
-            $('#run-points-migration').on('click', function(e) {
-                e.preventDefault();
-
-                if (!confirm('This will migrate the points system from 1:1 to 10:1 ratio. A backup will be created, but this action cannot be easily undone. Continue?')) {
-                    return;
-                }
-
-                const $button = $(this);
-                const $progress = $('#migration-progress');
-                const $status = $('#migration-status');
-                const $progressFill = $('#migration-progress-fill');
-                const $progressText = $('#migration-progress-text');
-
-                // Update status
-                $status.html('<span class="status-indicator status-running">Running migration...</span>');
-                $button.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> Running Migration...');
-
-                $progress.show();
-                $progressFill.css('width', '0%');
-                $progressText.text('Initializing points migration...');
-
-                // Start the migration
-                runPointsMigration();
-            });
-
-            function runPointsMigration() {
-                $.ajax({
-                    url: intersoccer_admin.ajax_url,
-                    type: 'POST',
-                    data: {
-                        action: 'run_points_migration',
-                        nonce: intersoccer_admin.nonce
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            $('#migration-progress-fill').css('width', '100%');
-                            $('#migration-progress-text').text('Migration completed successfully!');
-                            $('#migration-status').html('<span class="status-indicator status-success">Migration completed</span>');
-                            $('#run-points-migration').prop('disabled', false).html('<span class="dashicons dashicons-yes"></span> Migration Complete');
-
-                            // Update details
-                            $('#transactions-processed').text(response.data.transactions_processed || 0);
-                            $('#users-updated').text(response.data.users_updated || 0);
-                            $('#backup-created').text(response.data.backup_created ? 'Yes' : 'No');
-
-                            // Show success message
-                            setTimeout(() => {
-                                alert(response.data.message);
-                                loadMigrationStatus();
-                            }, 1000);
-                        } else {
-                            $('#migration-status').html('<span class="status-indicator status-error">Migration failed</span>');
-                            $('#run-points-migration').prop('disabled', false).html('<span class="dashicons dashicons-warning"></span> Retry Migration');
-                            alert('Migration failed: ' + (response.data?.message || 'Unknown error'));
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        $('#migration-status').html('<span class="status-indicator status-error">Migration error</span>');
-                        $('#run-points-migration').prop('disabled', false).html('<span class="dashicons dashicons-warning"></span> Retry Migration');
-                        $('#migration-progress-text').text('Error occurred during migration');
-                        alert('AJAX Error: ' + error);
-                    }
-                });
-            }
-
-            // Load migration status
-            function loadMigrationStatus() {
-                $('#migration-info').html('<p>Loading migration status...</p>');
-                $.ajax({
-                    url: intersoccer_admin.ajax_url,
-                    type: 'POST',
-                    data: {
-                        action: 'get_migration_status',
-                        nonce: intersoccer_admin.nonce
-                    },
-                    success: function(response) {
-                        $('#migration-info').html(response.data.html);
-                    },
-                    error: function() {
-                        $('#migration-info').html('<p>Error loading migration status</p>');
-                    }
-                });
-            }
-
-            $('#refresh-migration-status').on('click', loadMigrationStatus);
-
-            // ============================================================
-            // Phase 0: Integer Points Migration Handlers
-            // ============================================================
-
-            // Run integer migration
-            $('#run-integer-migration').on('click', function(e) {
-                e.preventDefault();
-
-                if (!confirm('⚠️ CRITICAL MIGRATION\n\nThis will convert all points to integers (95.5 → 95).\n\nA backup will be created, but you should backup your database first!\n\nContinue?')) {
-                    return;
-                }
-
-                const $button = $(this);
-                const $progress = $('#integer-migration-progress');
-                const $status = $('#integer-migration-status');
-                const $progressFill = $('#integer-migration-progress-fill');
-                const $progressText = $('#integer-migration-progress-text');
-
-                $status.html('<span class="status-indicator status-running">Running migration...</span>');
-                $button.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> Running...');
-
-                $progress.show();
-                $progressFill.css('width', '0%');
-                $progressText.text('Creating backups...');
-
-                $.ajax({
-                    url: intersoccer_admin.ajax_url,
-                    type: 'POST',
-                    data: {
-                        action: 'run_integer_migration',
-                        nonce: intersoccer_admin.nonce
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            $('#integer-migration-progress-fill').css('width', '100%');
-                            $('#integer-migration-progress-text').text('Migration completed successfully!');
-                            $('#integer-migration-status').html('<span class="status-indicator status-success">Migration completed</span>');
-                            $button.hide();
-
-                            // Show verify and rollback buttons
-                            $('#verify-integer-migration').show();
-                            $('#rollback-integer-migration').show();
-
-                            // Update details
-                            $('#integer-records-converted').text(response.data.records_converted || 0);
-                            $('#integer-backup-tables').text((response.data.backup_tables || []).join(', '));
-                            $('#integer-status').text('Completed');
-
-                            setTimeout(() => {
-                                alert('✅ ' + response.data.message);
-                                loadIntegerMigrationStatus();
-                            }, 1000);
-                        } else {
-                            $('#integer-migration-status').html('<span class="status-indicator status-error">Migration failed</span>');
-                            $button.prop('disabled', false).html('<span class="dashicons dashicons-warning"></span> Retry Migration');
-                            alert('❌ Migration failed: ' + (response.data?.message || 'Unknown error'));
-                        }
-                    },
-                    error: function(xhr, status, error) {
-                        $('#integer-migration-status').html('<span class="status-indicator status-error">Migration error</span>');
-                        $button.prop('disabled', false).html('<span class="dashicons dashicons-warning"></span> Retry Migration');
-                        alert('❌ AJAX Error: ' + error);
-                    }
-                });
-            });
-
-            // Verify integer migration
-            $('#verify-integer-migration').on('click', function(e) {
-                e.preventDefault();
-
-                const $button = $(this);
-                $button.prop('disabled', true).text('Verifying...');
-
-                $.ajax({
-                    url: intersoccer_admin.ajax_url,
-                    type: 'POST',
-                    data: {
-                        action: 'verify_integer_migration',
-                        nonce: intersoccer_admin.nonce
-                    },
-                    success: function(response) {
-                        if (response.success && response.data.success) {
-                            alert('✅ Verification passed!\n\n' + response.data.message + '\n\nIssues: ' + (response.data.issues.length || 0));
-                        } else {
-                            alert('⚠️ Verification found issues:\n\n' + (response.data.issues || []).join('\n'));
-                        }
-                        $button.prop('disabled', false).text('Verify Migration');
-                    },
-                    error: function() {
-                        alert('Error verifying migration');
-                        $button.prop('disabled', false).text('Verify Migration');
-                    }
-                });
-            });
-
-            // Rollback integer migration
-            $('#rollback-integer-migration').on('click', function(e) {
-                e.preventDefault();
-
-                if (!confirm('⚠️ ROLLBACK MIGRATION\n\nThis will restore from backup and undo all integer migration changes.\n\nContinue?')) {
-                    return;
-                }
-
-                const $button = $(this);
-                $button.prop('disabled', true).text('Rolling back...');
-
-                $.ajax({
-                    url: intersoccer_admin.ajax_url,
-                    type: 'POST',
-                    data: {
-                        action: 'rollback_integer_migration',
-                        nonce: intersoccer_admin.nonce
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            alert('✅ ' + response.data.message);
-                            location.reload();
-                        } else {
-                            alert('❌ Rollback failed: ' + (response.data?.message || 'Unknown error'));
-                            $button.prop('disabled', false).text('Rollback Migration');
-                        }
-                    },
-                    error: function() {
-                        alert('Error during rollback');
-                        $button.prop('disabled', false).text('Rollback Migration');
-                    }
-                });
-            });
-
-            // Load integer migration status
-            function loadIntegerMigrationStatus() {
-                $('#integer-migration-info').html('<p>Loading status...</p>');
-                $.ajax({
-                    url: intersoccer_admin.ajax_url,
-                    type: 'POST',
-                    data: {
-                        action: 'get_integer_migration_status',
-                        nonce: intersoccer_admin.nonce
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            $('#integer-migration-info').html(response.data.html);
-                            
-                            // Update button visibility based on status
-                            if (response.data.status === 'completed') {
-                                $('#run-integer-migration').hide();
-                                $('#verify-integer-migration').show();
-                                $('#rollback-integer-migration').show();
-                                $('#integer-migration-status').html('<span class="status-indicator status-success">Completed</span>');
-                            }
-                        }
-                    },
-                    error: function() {
-                        $('#integer-migration-info').html('<p>Error loading status</p>');
-                    }
-                });
-            }
-
-            $('#refresh-integer-migration-status').on('click', loadIntegerMigrationStatus);
-
-            // Initialize integer migration status on page load
-            loadIntegerMigrationStatus();
 
             // Coach Import Form Handler
             $('#import-submit-btn').on('click', function(e) {
@@ -1356,7 +1028,6 @@ class InterSoccer_Admin_Settings {
             loadCoachStats();
             loadAuditLog();
             loadPointsStats();
-            loadMigrationStatus();
         });
         </script>
 
@@ -1569,51 +1240,6 @@ class InterSoccer_Admin_Settings {
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
-        }
-
-        .migration-notice {
-            margin-bottom: 25px;
-        }
-
-        .migration-controls {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 25px;
-        }
-
-        .migration-card {
-            background: #f8f9fa;
-            padding: 25px;
-            border-radius: 8px;
-            border: 1px solid #e1e1e1;
-        }
-
-        .migration-card h3 {
-            margin-top: 0;
-            color: #23282d;
-            margin-bottom: 15px;
-        }
-
-        .migration-status {
-            margin: 15px 0;
-        }
-
-        .migration-details {
-            background: white;
-            padding: 15px;
-            border-radius: 6px;
-            border: 1px solid #dee2e6;
-        }
-
-        .migration-details .detail-item {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            font-size: 14px;
-        }
-
-        .migration-details .detail-item:last-child {
-            margin-bottom: 0;
         }
 
         .role-restore-notice {
@@ -2452,6 +2078,18 @@ class InterSoccer_Admin_Settings {
             'sanitize_callback' => [$this, 'sanitize_non_negative_int_option']
         ]);
 
+        register_setting('intersoccer_points_configuration', 'intersoccer_points_allocation_mode', [
+            'type' => 'string',
+            'default' => 'ratio',
+            'sanitize_callback' => [$this, 'sanitize_allocation_mode_option']
+        ]);
+
+        register_setting('intersoccer_points_configuration', 'intersoccer_points_percentage_rate', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => [$this, 'sanitize_percentage_option']
+        ]);
+
         register_setting('intersoccer_points_configuration', 'intersoccer_points_golive_date', [
             'type' => 'string',
             'default' => '',
@@ -2483,62 +2121,6 @@ class InterSoccer_Admin_Settings {
             'migrated' => $migrated
         ], admin_url('admin.php')));
         exit;
-    }
-
-    /**
-     * Run points migration via AJAX
-     */
-    public function run_points_migration_ajax() {
-        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => 'Unauthorized']);
-        }
-
-        try {
-            $migration = new InterSoccer_Points_Migration();
-            $migration->run_migration();
-
-            $status = $migration->get_migration_status();
-
-            wp_send_json_success([
-                'message' => 'Points migration completed successfully!',
-                'transactions_processed' => 'All',
-                'users_updated' => 'All',
-                'backup_created' => !empty($status['backup_table'])
-            ]);
-        } catch (Exception $e) {
-            error_log('InterSoccer Migration Error: ' . $e->getMessage());
-            wp_send_json_error(['message' => 'Migration failed: ' . $e->getMessage()]);
-        }
-    }
-
-    /**
-     * Get migration status via AJAX
-     */
-    public function get_migration_status_ajax() {
-        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => 'Unauthorized']);
-        }
-
-        $migration = new InterSoccer_Points_Migration();
-        $status = $migration->get_migration_status();
-
-        $html = "
-            <div class='migration-details'>
-                <div class='detail-item'>
-                    <strong>Migration Completed:</strong> " . ($status['completed'] ? date('Y-m-d H:i:s', strtotime($status['completed'])) : 'Not yet') . "
-                </div>
-                <div class='detail-item'>
-                    <strong>Current Version:</strong> " . $status['version'] . "
-                </div>
-                <div class='detail-item'>
-                    <strong>Backup Table:</strong> " . ($status['backup_table'] ?: 'None') . "
-                </div>
-            </div>
-        ";
-
-        wp_send_json_success(['html' => $html]);
     }
 
     /**
@@ -2583,120 +2165,6 @@ class InterSoccer_Admin_Settings {
             'coaches_found' => $coaches_found,
             'roles_restored' => $roles_restored
         ]);
-    }
-
-    /**
-     * Run integer migration via AJAX (Phase 0)
-     */
-    public function run_integer_migration_ajax() {
-        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => 'Unauthorized']);
-        }
-
-        try {
-            $migration = new InterSoccer_Points_Migration_Integers();
-            $result = $migration->run_migration();
-
-            if ($result['success']) {
-                $this->log_audit('integer_migration', 'Successfully completed integer points migration');
-                wp_send_json_success($result);
-            } else {
-                $this->log_audit('integer_migration', 'Integer migration failed: ' . $result['message']);
-                wp_send_json_error($result);
-            }
-        } catch (Exception $e) {
-            error_log('InterSoccer Integer Migration Error: ' . $e->getMessage());
-            $this->log_audit('integer_migration', 'Integer migration exception: ' . $e->getMessage());
-            wp_send_json_error(['message' => 'Migration failed: ' . $e->getMessage()]);
-        }
-    }
-
-    /**
-     * Get integer migration status via AJAX
-     */
-    public function get_integer_migration_status_ajax() {
-        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => 'Unauthorized']);
-        }
-
-        $migration = new InterSoccer_Points_Migration_Integers();
-        $status = $migration->get_migration_status();
-
-        $html = "
-            <div class='migration-details'>
-                <div class='detail-item'>
-                    <strong>Status:</strong> " . ucfirst($status['status']) . "
-                </div>
-                <div class='detail-item'>
-                    <strong>Started:</strong> " . ($status['started_at'] ?: 'Not started') . "
-                </div>
-                <div class='detail-item'>
-                    <strong>Completed:</strong> " . ($status['completed_at'] ?: 'Not completed') . "
-                </div>
-                <div class='detail-item'>
-                    <strong>Records Converted:</strong> " . ($status['records_converted'] ?: 0) . "
-                </div>
-                <div class='detail-item'>
-                    <strong>Backup Tables:</strong> " . (is_array($status['backup_tables']) ? implode(', ', $status['backup_tables']) : 'None') . "
-                </div>
-                <div class='detail-item'>
-                    <strong>Errors:</strong> " . (is_array($status['errors']) && !empty($status['errors']) ? implode(', ', $status['errors']) : 'None') . "
-                </div>
-            </div>
-        ";
-
-        wp_send_json_success([
-            'html' => $html,
-            'status' => $status['status']
-        ]);
-    }
-
-    /**
-     * Verify integer migration via AJAX
-     */
-    public function verify_integer_migration_ajax() {
-        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => 'Unauthorized']);
-        }
-
-        try {
-            $migration = new InterSoccer_Points_Migration_Integers();
-            $result = $migration->verify_migration();
-            
-            $this->log_audit('integer_migration_verify', 'Verification: ' . $result['message']);
-            wp_send_json_success($result);
-        } catch (Exception $e) {
-            error_log('InterSoccer Integer Migration Verification Error: ' . $e->getMessage());
-            wp_send_json_error(['message' => 'Verification failed: ' . $e->getMessage()]);
-        }
-    }
-
-    /**
-     * Rollback integer migration via AJAX
-     */
-    public function rollback_integer_migration_ajax() {
-        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error(['message' => 'Unauthorized']);
-        }
-
-        if (!confirm('Are you absolutely sure you want to rollback the integer migration? This will restore decimal points.')) {
-            wp_send_json_error(['message' => 'Rollback cancelled']);
-        }
-
-        try {
-            $migration = new InterSoccer_Points_Migration_Integers();
-            $result = $migration->rollback_migration();
-            
-            $this->log_audit('integer_migration_rollback', 'Rollback: ' . $result['message']);
-            wp_send_json_success($result);
-        } catch (Exception $e) {
-            error_log('InterSoccer Integer Migration Rollback Error: ' . $e->getMessage());
-            wp_send_json_error(['message' => 'Rollback failed: ' . $e->getMessage()]);
-        }
     }
 
     /**
@@ -2781,5 +2249,41 @@ class InterSoccer_Admin_Settings {
         }
 
         return $value;
+    }
+
+    /**
+     * Sanitize allocation mode option.
+     *
+     * @param mixed $value
+     * @return string
+     */
+    public function sanitize_allocation_mode_option($value) {
+        $value = is_string($value) ? strtolower($value) : 'ratio';
+
+        return in_array($value, ['ratio', 'percentage'], true) ? $value : 'ratio';
+    }
+
+    /**
+     * Sanitize percentage option to stay within 0-100 range.
+     *
+     * @param mixed $value
+     * @return float
+     */
+    public function sanitize_percentage_option($value) {
+        if (!is_numeric($value)) {
+            return 0.0;
+        }
+
+        $value = (float) $value;
+
+        if ($value < 0) {
+            $value = 0.0;
+        }
+
+        if ($value > 100) {
+            $value = 100.0;
+        }
+
+        return round($value, 1);
     }
 }
