@@ -48,8 +48,6 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-audit-logger.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-audit.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-dashboard.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-admin-dashboard.php';
-require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-migration.php';
-require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-migration-integers.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-user-roles.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-utils.php';
 error_log('All plugin files loaded, Referral Handler exists: ' . class_exists('InterSoccer_Referral_Handler'));
