@@ -10,6 +10,14 @@ class PointsManagerTest extends TestCase {
     protected function setUp(): void {
         // Include the points manager class
         require_once __DIR__ . '/../includes/class-points-manager.php';
+        update_option('intersoccer_points_allocation_mode', 'ratio');
+        update_option('intersoccer_points_percentage_rate', 0);
+    }
+
+    protected function tearDown(): void {
+        update_option('intersoccer_points_allocation_mode', 'ratio');
+        update_option('intersoccer_points_percentage_rate', 0);
+        parent::tearDown();
     }
 
     /**
@@ -52,6 +60,25 @@ class PointsManagerTest extends TestCase {
         $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [150]);
         $this->assertEquals(15, $points);
         $this->assertIsInt($points, 'Points must be integer only');
+    }
+
+    /**
+     * Test points calculation when percentage-based allocation is enabled
+     */
+    public function testCalculatePointsFromAmountPercentageMode() {
+        update_option('intersoccer_points_allocation_mode', 'percentage');
+        update_option('intersoccer_points_percentage_rate', 12.5);
+
+        $points_manager = new InterSoccer_Points_Manager();
+
+        $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [200]);
+        $this->assertEquals(25, $points, '200 CHF at 12.5% should yield 25 points');
+        $this->assertIsInt($points);
+
+        // Ensure flooring (no fractional points)
+        $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [99]);
+        $this->assertEquals(12, $points, '99 CHF at 12.5% should floor to 12 points');
+        $this->assertIsInt($points);
     }
 
     /**
