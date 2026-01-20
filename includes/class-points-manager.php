@@ -10,7 +10,16 @@ class InterSoccer_Points_Manager {
         global $wpdb;
         $this->points_log_table = $wpdb->prefix . 'intersoccer_points_log';
 
-        add_action('woocommerce_order_status_completed', [$this, 'allocate_points_for_order'], 10, 1);
+        // Check allocation method - instant or deferred
+        $allocation_method = get_option('intersoccer_points_allocation_method', 'instant');
+        
+        if ($allocation_method === 'instant') {
+            add_action('woocommerce_order_status_completed', [$this, 'allocate_points_for_order'], 10, 1);
+        } else {
+            // For deferred, store order IDs for later processing
+            add_action('woocommerce_order_status_completed', [$this, 'queue_order_for_points_allocation'], 10, 1);
+        }
+        
         add_action('woocommerce_order_status_refunded', [$this, 'deduct_points_for_refund'], 10, 1);
         add_action('wp_ajax_get_points_balance', [$this, 'get_points_balance_ajax']);
         add_action('wp_ajax_get_points_history', [$this, 'get_points_history_ajax']);
@@ -21,6 +30,14 @@ class InterSoccer_Points_Manager {
         // add_action('woocommerce_checkout_create_order', [$this, 'process_points_redemption'], 10, 2);
         add_action('woocommerce_order_status_cancelled', [$this, 'refund_points_on_cancellation'], 10, 1);
         add_action('woocommerce_order_status_failed', [$this, 'refund_points_on_failure'], 10, 1);
+        
+        // Schedule weekly deferred allocation if not already scheduled
+        if ($allocation_method === 'deferred' && !wp_next_scheduled('intersoccer_deferred_points_allocation')) {
+            wp_schedule_event(time(), 'weekly', 'intersoccer_deferred_points_allocation');
+        }
+        
+        // Hook into the scheduled event
+        add_action('intersoccer_deferred_points_allocation', [$this, 'process_deferred_points_allocation']);
     }
 
     /**
@@ -59,13 +76,16 @@ class InterSoccer_Points_Manager {
             'method' => $allocation_mode,
         ];
 
+        $is_first_time = false; // Default to false
         if ($allocation_mode === 'percentage') {
             $allocation_meta['percentage_rate'] = $this->get_points_percentage_rate($customer_id);
         } else {
-            $allocation_meta['points_rate'] = $this->get_points_rate_for_user($customer_id);
+            // Check if this is a first-time customer
+            $is_first_time = $this->is_first_time_customer($customer_id, $order_id);
+            $allocation_meta['points_rate'] = $this->get_points_rate_for_user($customer_id, 'purchase', $is_first_time);
         }
 
-        $points_to_allocate = $this->calculate_points_from_amount($order_total, $customer_id);
+        $points_to_allocate = $this->calculate_points_from_amount($order_total, $customer_id, $is_first_time);
 
         if ($points_to_allocate > 0) {
             // Log points earning for audit
@@ -96,6 +116,77 @@ class InterSoccer_Points_Manager {
             // Log the allocation
             error_log("InterSoccer: Allocated {$points_to_allocate} points to customer {$customer_id} for order {$order_id}");
         }
+    }
+
+    /**
+     * Queue order for deferred points allocation
+     * Stores order ID in a transient for weekly processing
+     */
+    public function queue_order_for_points_allocation($order_id) {
+        $order = wc_get_order($order_id);
+        if (!$order) return;
+
+        $customer_id = $order->get_customer_id();
+        if (!$customer_id) return;
+
+        // Check if points already allocated
+        if ($this->order_has_points_allocated($order_id)) {
+            return;
+        }
+
+        // Get existing queued orders
+        $queued_orders = get_transient('intersoccer_queued_points_orders');
+        if (!is_array($queued_orders)) {
+            $queued_orders = [];
+        }
+
+        // Add order ID if not already queued
+        if (!in_array($order_id, $queued_orders)) {
+            $queued_orders[] = $order_id;
+            set_transient('intersoccer_queued_points_orders', $queued_orders, WEEK_IN_SECONDS * 2);
+            error_log("InterSoccer: Queued order {$order_id} for deferred points allocation");
+        }
+    }
+
+    /**
+     * Process deferred points allocation for all queued orders
+     * Called by wp_cron weekly
+     */
+    public function process_deferred_points_allocation() {
+        $queued_orders = get_transient('intersoccer_queued_points_orders');
+        
+        if (!is_array($queued_orders) || empty($queued_orders)) {
+            error_log("InterSoccer: No orders queued for deferred points allocation");
+            return;
+        }
+
+        $processed = 0;
+        $failed = 0;
+
+        foreach ($queued_orders as $order_id) {
+            try {
+                // Check if points already allocated (in case it was processed elsewhere)
+                if (!$this->order_has_points_allocated($order_id)) {
+                    $this->allocate_points_for_order($order_id);
+                    $processed++;
+                }
+            } catch (Exception $e) {
+                error_log("InterSoccer: Failed to allocate points for order {$order_id}: " . $e->getMessage());
+                $failed++;
+            }
+        }
+
+        // Clear the queue after processing
+        delete_transient('intersoccer_queued_points_orders');
+
+        error_log("InterSoccer: Deferred points allocation completed. Processed: {$processed}, Failed: {$failed}");
+        
+        // Log audit event
+        do_action('intersoccer_audit_log', 'deferred_points_allocation', [
+            'processed' => $processed,
+            'failed' => $failed,
+            'timestamp' => current_time('mysql')
+        ]);
     }
 
     /**
@@ -140,7 +231,7 @@ class InterSoccer_Points_Manager {
      * @param int $user_id Optional user ID to apply role-specific rate
      * @return int The number of points earned (integer only)
      */
-    private function calculate_points_from_amount($amount, $user_id = null) {
+    private function calculate_points_from_amount($amount, $user_id = null, $is_first_time = false) {
         $amount = max(0, (float) $amount);
         $mode = $this->get_allocation_mode();
 
@@ -158,7 +249,10 @@ class InterSoccer_Points_Manager {
         }
 
         // Default ratio-based allocation
-        $rate = max(1, $this->get_points_rate_for_user($user_id));
+        // For purchases, use purchase rate; for referrals, use referral rate
+        // First-time customers get special rate if applicable
+        $context = 'purchase'; // Default to purchase context
+        $rate = max(1, $this->get_points_rate_for_user($user_id, $context, $is_first_time));
 
         // Use floor() to ensure integer points (no fractional points)
         return (int) floor($amount / $rate);
@@ -172,33 +266,78 @@ class InterSoccer_Points_Manager {
      * @param int $user_id User ID
      * @return int Points rate (CHF per point)
      */
-    private function get_points_rate_for_user($user_id) {
+    private function get_points_rate_for_user($user_id, $context = 'purchase', $is_first_time = false) {
         // Default rate if no user specified
         if (!$user_id) {
-            return intval(get_option('intersoccer_points_rate_customer', 10));
+            // For purchases, check if first-time customer
+            if ($context === 'purchase' && $is_first_time) {
+                return intval(get_option('intersoccer_points_rate_first_time_customer', 10));
+            }
+            // For purchases, use purchase rate; for referrals, use referral rate
+            if ($context === 'referral') {
+                return intval(get_option('intersoccer_points_rate_customer_referral', 10));
+            }
+            return intval(get_option('intersoccer_points_rate_customer_purchase', 10));
         }
 
         $user = get_userdata($user_id);
         if (!$user) {
-            return intval(get_option('intersoccer_points_rate_customer', 10));
+            // For purchases, check if first-time customer
+            if ($context === 'purchase' && $is_first_time) {
+                return intval(get_option('intersoccer_points_rate_first_time_customer', 10));
+            }
+            // For purchases, use purchase rate; for referrals, use referral rate
+            if ($context === 'referral') {
+                return intval(get_option('intersoccer_points_rate_customer_referral', 10));
+            }
+            return intval(get_option('intersoccer_points_rate_customer_purchase', 10));
         }
 
-        // Check roles in priority order
-        $role_priority = [
-            'partner' => 'intersoccer_points_rate_partner',
-            'social_influencer' => 'intersoccer_points_rate_social_influencer',
-            'coach' => 'intersoccer_points_rate_coach',
-            'customer' => 'intersoccer_points_rate_customer',
+        // Note: Coaches, Partners, and Social Influencers use customer rates when making purchases.
+        // They are rewarded through commission tiers (see Commission Manager) rather than special point rates.
+        
+        // Check if first-time customer (only for purchase context)
+        if ($context === 'purchase' && $is_first_time) {
+            return intval(get_option('intersoccer_points_rate_first_time_customer', 10));
+        }
+
+        // Use customer rate based on context
+        if ($context === 'referral') {
+            return intval(get_option('intersoccer_points_rate_customer_referral', 10));
+        }
+        return intval(get_option('intersoccer_points_rate_customer_purchase', 10));
+    }
+
+    /**
+     * Check if a customer is a first-time customer (no previous completed orders)
+     * 
+     * @param int $customer_id Customer user ID
+     * @param int|null $current_order_id Current order ID to exclude from check
+     * @return bool True if first-time customer, false otherwise
+     */
+    private function is_first_time_customer($customer_id, $current_order_id = null) {
+        if (empty($customer_id)) {
+            return true; // Guest checkout treated as first-time
+        }
+
+        if (!function_exists('wc_get_orders')) {
+            return true; // WooCommerce not available, assume first-time
+        }
+
+        $query_args = [
+            'customer' => $customer_id,
+            'status' => ['wc-completed', 'completed', 'wc-processing', 'processing', 'wc-on-hold', 'on-hold'],
+            'limit' => 1,
+            'return' => 'ids',
         ];
 
-        foreach ($role_priority as $role => $option_name) {
-            if (in_array($role, $user->roles)) {
-                return intval(get_option($option_name, 10));
-            }
+        if (!empty($current_order_id)) {
+            $query_args['exclude'] = [$current_order_id];
         }
 
-        // Fallback to customer rate
-        return intval(get_option('intersoccer_points_rate_customer', 10));
+        $previous_orders = wc_get_orders($query_args);
+
+        return empty($previous_orders);
     }
 
     /**

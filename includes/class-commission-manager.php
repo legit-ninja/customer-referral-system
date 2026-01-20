@@ -52,16 +52,66 @@ class InterSoccer_Commission_Manager {
         // Get coach's customer count to determine tier
         $customer_count = self::get_coach_customer_count($coach_id);
 
-        // Tiered commission rates based on recruited customers
-        if ($customer_count >= 25) {
-            $commission_rate = 0.20; // 20% for 25+ customers
-        } elseif ($customer_count >= 11) {
-            $commission_rate = 0.15; // 15% for 11-24 customers
-        } else {
-            $commission_rate = 0.10; // 10% for 1-10 customers
-        }
+        // Determine role and get commission rate from role-specific tiers
+        $role = self::get_user_role_for_commission($coach_id);
+        $commission_rate = self::get_commission_rate_for_customer_count($customer_count, $role);
 
         return $commissionable * $commission_rate;
+    }
+
+    /**
+     * Get user role for commission calculation (coach, partner, or social_influencer)
+     * 
+     * @param int $user_id User ID
+     * @return string Role name
+     */
+    private static function get_user_role_for_commission($user_id) {
+        $user = get_userdata($user_id);
+        if (!$user) {
+            return 'coach'; // Default fallback
+        }
+
+        // Check roles in priority order
+        if (in_array('partner', $user->roles)) {
+            return 'partner';
+        } elseif (in_array('social_influencer', $user->roles)) {
+            return 'social_influencer';
+        } elseif (in_array('coach', $user->roles)) {
+            return 'coach';
+        }
+
+        return 'coach'; // Default fallback
+    }
+
+    /**
+     * Get commission rate for a given customer count using role-specific customizable tiers
+     * 
+     * @param int $customer_count Number of customers recruited
+     * @param string $role Role name (coach, partner, social_influencer)
+     * @return float Commission rate as decimal (e.g., 0.10 for 10%)
+     */
+    public static function get_commission_rate_for_customer_count($customer_count, $role = 'coach') {
+        // Get role-specific tiers from database, with defaults
+        $option_name = 'intersoccer_commission_tiers_' . $role;
+        $tiers = get_option($option_name, [
+            ['min_customers' => 1, 'max_customers' => 10, 'rate' => 10],
+            ['min_customers' => 11, 'max_customers' => 24, 'rate' => 15],
+            ['min_customers' => 25, 'max_customers' => 999999, 'rate' => 20],
+        ]);
+
+        // Find the first matching tier
+        foreach ($tiers as $tier) {
+            $min = intval($tier['min_customers'] ?? 1);
+            $max = intval($tier['max_customers'] ?? 999999);
+            
+            if ($customer_count >= $min && $customer_count <= $max) {
+                // Convert percentage to decimal (e.g., 10% -> 0.10)
+                return floatval($tier['rate'] ?? 10) / 100;
+            }
+        }
+
+        // Fallback to default rate if no tier matches
+        return 0.10; // 10%
     }
 
     /**
@@ -107,66 +157,52 @@ class InterSoccer_Commission_Manager {
 
     /**
      * Calculate partnership commission (ongoing commission based on coach tier)
+     * Uses role-specific Commission Tiers (no separate tier bonuses)
      */
     public static function calculate_partnership_commission($order, $coach_id) {
         $commissionable = self::get_commissionable_amount($order);
 
-        // Use same tiered rates as regular commissions for partnerships
+        // Use role-specific Commission Tiers (already includes tier-based rates)
         $customer_count = self::get_coach_customer_count($coach_id);
-        if ($customer_count >= 25) {
-            $base_rate = 0.20; // 20% for 25+ customers
-        } elseif ($customer_count >= 11) {
-            $base_rate = 0.15; // 15% for 11-24 customers
-        } else {
-            $base_rate = 0.10; // 10% for 1-10 customers
-        }
+        $role = self::get_user_role_for_commission($coach_id);
+        $commission_rate = self::get_commission_rate_for_customer_count($customer_count, $role);
 
-        // Apply tier multiplier (additional bonus)
-        $tier_bonus = self::calculate_tier_bonus($coach_id, $commissionable * $base_rate);
+        $total_commission = $commissionable * $commission_rate;
 
         return [
-            'base_commission' => round($commissionable * $base_rate, 2),
-            'tier_bonus' => round($tier_bonus, 2),
-            'total_amount' => round(($commissionable * $base_rate) + $tier_bonus, 2)
+            'base_commission' => round($total_commission, 2),
+            'tier_bonus' => 0.0, // Deprecated - Commission Tiers handle tiering
+            'total_amount' => round($total_commission, 2)
         ];
     }
 
     /**
      * Calculate tier bonus multiplier
+     * @deprecated Tier bonuses are deprecated. Commission Tiers now handle all tiering.
+     * This method is kept for backward compatibility but returns 0.
      */
     public static function calculate_tier_bonus($coach_id, $base_amount) {
-        $tier = self::get_coach_tier($coach_id);
-
-        $multipliers = [
-            'Bronze' => 0,      // Base rate
-            'Silver' => 0.02,   // +2%
-            'Gold' => 0.05,     // +5%
-            'Platinum' => 0.10  // +10%
-        ];
-
-        $multiplier = $multipliers[$tier] ?? 0;
-        return $base_amount * $multiplier;
+        // Tier bonuses are deprecated - Commission Tiers handle all tiering
+        return 0.0;
     }
 
     /**
-     * Get coach tier based on performance
+     * Get coach tier name based on customer count (for display purposes only)
+     * Note: Commission rates are determined by Commission Tiers, not this method
+     * 
+     * @param int $coach_id Coach user ID
+     * @return string Tier name (Bronze, Silver, Gold, Platinum)
      */
     public static function get_coach_tier($coach_id) {
-        global $wpdb;
-        $referrals_table = $wpdb->prefix . 'intersoccer_referrals';
-
-        // Get coach's total successful referrals
-        $referral_count = $wpdb->get_var($wpdb->prepare("
-            SELECT COUNT(*) FROM $referrals_table
-            WHERE coach_id = %d AND status = 'completed'
-        ", $coach_id));
-
-        // Tier thresholds
-        if ($referral_count >= get_option('intersoccer_tier_platinum', 20)) {
+        $customer_count = self::get_coach_customer_count($coach_id);
+        
+        // Use Commission Tier thresholds for display purposes
+        // These match the default Commission Tier thresholds
+        if ($customer_count >= get_option('intersoccer_tier_platinum', 20)) {
             return 'Platinum';
-        } elseif ($referral_count >= get_option('intersoccer_tier_gold', 10)) {
+        } elseif ($customer_count >= get_option('intersoccer_tier_gold', 10)) {
             return 'Gold';
-        } elseif ($referral_count >= get_option('intersoccer_tier_silver', 5)) {
+        } elseif ($customer_count >= get_option('intersoccer_tier_silver', 5)) {
             return 'Silver';
         } else {
             return 'Bronze';
@@ -594,13 +630,15 @@ class InterSoccer_Commission_Manager {
 
     /**
      * Calculate complete commission structure for an order
+     * Note: Base commission already includes tier-based rates from Commission Tiers
      */
     public static function calculate_total_commission($order, $coach_id, $customer_id, $purchase_count) {
         $base_commission = self::calculate_base_commission($order, $coach_id);
         $loyalty_bonus = self::calculate_loyalty_bonus($order, $purchase_count);
         $retention_bonus = self::calculate_retention_bonus($customer_id, date('Y'));
         $network_bonus = self::calculate_network_bonus($customer_id);
-        $tier_bonus = self::calculate_tier_bonus($coach_id, $base_commission);
+        // Tier bonuses deprecated - Commission Tiers handle tiering
+        $tier_bonus = 0.0;
         $seasonal_bonus = self::calculate_seasonal_bonus($base_commission);
         $weekend_bonus = self::calculate_weekend_bonus($base_commission);
 
@@ -609,10 +647,10 @@ class InterSoccer_Commission_Manager {
             'loyalty_bonus' => round($loyalty_bonus, 2),
             'retention_bonus' => round($retention_bonus, 2),
             'network_bonus' => round($network_bonus, 2),
-            'tier_bonus' => round($tier_bonus, 2),
+            'tier_bonus' => 0.0, // Deprecated - Commission Tiers handle tiering
             'seasonal_bonus' => round($seasonal_bonus, 2),
             'weekend_bonus' => round($weekend_bonus, 2),
-            'total_amount' => round($base_commission + $loyalty_bonus + $retention_bonus + $network_bonus + $tier_bonus + $seasonal_bonus + $weekend_bonus, 2)
+            'total_amount' => round($base_commission + $loyalty_bonus + $retention_bonus + $network_bonus + $seasonal_bonus + $weekend_bonus, 2)
         ];
     }
 

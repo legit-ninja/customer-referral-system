@@ -3,6 +3,13 @@
 
 class InterSoccer_Admin_Referrals {
 
+    public function __construct() {
+        if (function_exists('add_action')) {
+            add_action('admin_post_intersoccer_export_coach_referrals', [$this, 'handle_export_coach_referrals']);
+            add_action('admin_post_intersoccer_mark_commission_paid', [$this, 'handle_mark_commission_paid']);
+        }
+    }
+
     public function render_coach_referrals_page() {
         if (isset($_GET['referral_notice'])) {
             $notice = sanitize_key($_GET['referral_notice']);
@@ -15,6 +22,15 @@ class InterSoccer_Admin_Referrals {
             } elseif ($notice === 'delete_error') {
                 $message = __('Unable to remove the referral entry. It may already be completed or missing.', 'intersoccer-referral');
                 $class = 'notice-error';
+            } elseif ($notice === 'commission_paid') {
+                $message = __('Commission was marked as paid.', 'intersoccer-referral');
+                $class = 'notice-success';
+            } elseif ($notice === 'commission_error') {
+                $message = __('We could not update the commission status. Please try again.', 'intersoccer-referral');
+                $class = 'notice-error';
+            } elseif ($notice === 'commission_already_paid') {
+                $message = __('This commission has already been marked as paid.', 'intersoccer-referral');
+                $class = 'notice-warning';
             }
 
             if ($message) {
@@ -24,21 +40,32 @@ class InterSoccer_Admin_Referrals {
 
         ?>
         <div class="wrap intersoccer-admin">
-            <h1 class="wp-heading-inline">Coach Referrals</h1>
+            <h1 class="wp-heading-inline"><?php esc_html_e('Coach Referrals', 'intersoccer-referral'); ?></h1>
 
             <div class="intersoccer-filters">
-                <select id="coach-filter">
-                    <option value="">All Coaches</option>
-                    <?php
-                    $coaches = get_users(['role' => 'coach']);
-                    foreach ($coaches as $coach) {
-                        echo '<option value="' . $coach->ID . '">' . esc_html($coach->display_name) . '</option>';
-                    }
-                    ?>
-                </select>
-                <input type="date" id="date-from" placeholder="From Date">
-                <input type="date" id="date-to" placeholder="To Date">
-                <button class="button" id="filter-referrals">Filter</button>
+                <div class="filters-group">
+                    <select id="coach-filter">
+                        <option value=""><?php esc_html_e('All Coaches', 'intersoccer-referral'); ?></option>
+                        <?php
+                        $coaches = get_users(['role' => 'coach']);
+                        foreach ($coaches as $coach) {
+                            echo '<option value="' . esc_attr($coach->ID) . '">' . esc_html($coach->display_name) . '</option>';
+                        }
+                        ?>
+                    </select>
+                    <input type="date" id="date-from" placeholder="<?php esc_attr_e('From Date', 'intersoccer-referral'); ?>">
+                    <input type="date" id="date-to" placeholder="<?php esc_attr_e('To Date', 'intersoccer-referral'); ?>">
+                    <button class="button" id="filter-referrals"><?php esc_html_e('Filter', 'intersoccer-referral'); ?></button>
+                </div>
+                <form class="coach-referrals-export" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                    <?php wp_nonce_field('intersoccer_export_coach_referrals', 'intersoccer_export_coach_referrals_nonce'); ?>
+                    <input type="hidden" name="action" value="intersoccer_export_coach_referrals">
+                    <input type="hidden" name="export_limit" value="500">
+                    <button type="submit" class="button button-secondary">
+                        <span class="dashicons dashicons-download"></span>
+                        <?php esc_html_e('Export to Excel', 'intersoccer-referral'); ?>
+                    </button>
+                </form>
             </div>
 
             <div class="intersoccer-referrals-table">
@@ -55,8 +82,25 @@ class InterSoccer_Admin_Referrals {
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             margin: 20px 0;
             display: flex;
+            flex-wrap: wrap;
             gap: 15px;
             align-items: center;
+            justify-content: space-between;
+        }
+
+        .intersoccer-filters .filters-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .coach-referrals-export {
+            margin-left: auto;
+        }
+
+        .coach-referrals-export .dashicons {
+            margin-right: 4px;
         }
 
         .intersoccer-referrals-table {
@@ -123,23 +167,150 @@ class InterSoccer_Admin_Referrals {
         .actions-column .muted {
             color: #999;
         }
+
+        .payout-controls {
+            margin-bottom: 8px;
+        }
+
+        .payout-status {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+        }
+
+        .payout-status .amount {
+            font-weight: 600;
+        }
+
+        .payout-status small {
+            color: #6b7280;
+        }
+
+        .payout-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            font-weight: 600;
+        }
+
+        .payout-badge.paid {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .payout-badge.pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .payout-form {
+            margin-top: 4px;
+        }
+
+        .payout-form .button-small {
+            line-height: 1.8;
+        }
+
+        .returning-column .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .returning-column .badge.new {
+            background: #ecfdf5;
+            color: #047857;
+        }
+        .returning-column .badge.returning {
+            background: #eef2ff;
+            color: #4338ca;
+        }
+        .eligibility-column small.meta {
+            display: block;
+            margin-top: 4px;
+            color: #6b7280;
+            font-size: 11px;
+        }
         </style>
         <?php
     }
 
     /**
-     * Display coach referrals table
+     * Retrieve coach referral records with optional filters.
+     *
+     * @param array<string,mixed> $args
+     * @return array<stdClass>
      */
-    private function display_coach_referrals_table() {
+    private function get_coach_referrals(array $args = []) {
         global $wpdb;
 
-        $referrals = $wpdb->get_results("
-            SELECT r.*, 
-                   c.display_name as coach_name,
+        if (!method_exists($wpdb, 'prepare') || !method_exists($wpdb, 'get_results')) {
+            return [];
+        }
+
+        $defaults = [
+            'limit'       => 50,
+            'referral_id' => null,
+            'coach_id'    => null,
+            'date_from'   => null,
+            'date_to'     => null,
+        ];
+
+        $args  = wp_parse_args($args, $defaults);
+        $limit = max(1, (int) $args['limit']);
+
+        $conditions = ['1=1'];
+        $params     = [];
+
+        if (!empty($args['referral_id'])) {
+            $conditions[] = 'r.id = %d';
+            $params[]     = (int) $args['referral_id'];
+        }
+
+        if (!empty($args['coach_id'])) {
+            $conditions[] = 'r.coach_id = %d';
+            $params[]     = (int) $args['coach_id'];
+        }
+
+        if (!empty($args['date_from'])) {
+            $conditions[] = 'r.created_at >= %s';
+            $params[]     = sanitize_text_field($args['date_from']);
+        }
+
+        if (!empty($args['date_to'])) {
+            $conditions[] = 'r.created_at <= %s';
+            $params[]     = sanitize_text_field($args['date_to']);
+        }
+
+        $where = 'WHERE ' . implode(' AND ', $conditions);
+
+        $sql = "
+            SELECT r.*,
+                   c.display_name AS coach_name,
                    c.user_email AS coach_email,
-                   u.display_name as customer_name,
+                   u.display_name AS customer_name,
                    u.user_email AS customer_email,
-                   COALESCE(cc.commission_amount, rc.credit_amount) as commission,
+                   COALESCE(cc.commission_amount, rc.credit_amount) AS commission,
+                   cc.commission_amount AS commission_amount_raw,
+                   rc.credit_amount AS credit_amount_raw,
+                   rc.id AS credit_id,
+                   rc.status AS credit_status,
+                   rc.created_at AS credit_created_at,
+                   rc.updated_at AS credit_updated_at,
+                   cc.id AS commission_id,
+                   cc.status AS commission_status,
+                   cc.updated_at AS commission_updated_at,
                    pm.meta_value AS eligibility_meta,
                    ot.meta_value AS order_total,
                    oc.meta_value AS order_currency,
@@ -159,9 +330,22 @@ class InterSoccer_Admin_Referrals {
             LEFT JOIN {$wpdb->postmeta} ot ON ot.post_id = r.order_id AND ot.meta_key = '_order_total'
             LEFT JOIN {$wpdb->postmeta} oc ON oc.post_id = r.order_id AND oc.meta_key = '_order_currency'
             LEFT JOIN {$wpdb->usermeta} code ON code.user_id = r.coach_id AND code.meta_key = 'referral_code'
+            $where
             ORDER BY r.created_at DESC
-            LIMIT 50
-        ");
+            LIMIT %d
+        ";
+
+        $params[] = $limit;
+        $prepared = $wpdb->prepare($sql, $params);
+
+        return $wpdb->get_results($prepared);
+    }
+
+    /**
+     * Display coach referrals table
+     */
+    private function display_coach_referrals_table() {
+        $referrals = $this->get_coach_referrals();
 
         ?>
         <table class="wp-list-table widefat fixed striped">
@@ -176,6 +360,7 @@ class InterSoccer_Admin_Referrals {
                     <th>Commission</th>
                     <th>Status</th>
                     <th>Eligibility</th>
+                    <th>Return Status</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -228,7 +413,11 @@ class InterSoccer_Admin_Referrals {
                         echo $this->build_eligibility_markup($referral->id, $referral->order_id, $eligibility_view);
                         ?>
                     </td>
+                    <td class="returning-column">
+                        <?php echo $this->build_returning_customer_markup($eligibility_data); ?>
+                    </td>
                     <td class="actions-column">
+                        <?php echo $this->build_payout_controls($referral); ?>
                         <?php if ($duplicate_count > 1 && strtolower($referral->status) !== 'completed'): ?>
                             <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                                 <?php wp_nonce_field('intersoccer_delete_referral_' . $referral->id, '_referral_delete_nonce'); ?>
@@ -238,8 +427,6 @@ class InterSoccer_Admin_Referrals {
                                     <?php esc_html_e('Remove Duplicate', 'intersoccer-referral'); ?>
                                 </button>
                             </form>
-                        <?php else: ?>
-                            <span class="muted">&mdash;</span>
                         <?php endif; ?>
                     </td>
                 </tr>
@@ -650,6 +837,151 @@ class InterSoccer_Admin_Referrals {
         return ob_get_clean();
     }
 
+    private function build_returning_customer_markup(array $eligibility) {
+        $meta = $this->get_returning_customer_meta($eligibility);
+
+        ob_start();
+        ?>
+        <span class="<?php echo esc_attr($meta['class']); ?>">
+            <?php echo esc_html($meta['label']); ?>
+        </span>
+        <?php if (!empty($meta['detail'])): ?>
+            <small class="meta"><?php echo esc_html($meta['detail']); ?></small>
+        <?php endif; ?>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * Get structured return status data for reuse.
+     *
+     * @param array<string,mixed> $eligibility
+     * @return array{label:string,class:string,detail:string}
+     */
+    private function get_returning_customer_meta(array $eligibility) {
+        $has_prior_order = !empty($eligibility['last_order_id']);
+        $months          = isset($eligibility['months_since_last']) ? (int) $eligibility['months_since_last'] : null;
+        $reason          = $eligibility['reason'] ?? '';
+
+        if ($reason === 'guest_checkout') {
+            $label = __('Guest checkout', 'intersoccer-referral');
+            $class = 'badge returning';
+        } elseif (!$has_prior_order) {
+            $label = __('New customer', 'intersoccer-referral');
+            $class = 'badge new';
+        } else {
+            $label = __('Returning customer', 'intersoccer-referral');
+            $class = 'badge returning';
+        }
+
+        $detail = '';
+        if ($months !== null) {
+            $detail = sprintf(
+                _n('%d month since last order', '%d months since last order', $months, 'intersoccer-referral'),
+                $months
+            );
+        } elseif ($has_prior_order) {
+            $detail = __('Previous order detected', 'intersoccer-referral');
+        }
+
+        return [
+            'label'  => $label,
+            'class'  => $class,
+            'detail' => $detail,
+        ];
+    }
+
+    private function describe_returning_customer_status(array $eligibility) {
+        $meta = $this->get_returning_customer_meta($eligibility);
+        if (!empty($meta['detail'])) {
+            return sprintf('%1$s — %2$s', $meta['label'], $meta['detail']);
+        }
+        return $meta['label'];
+    }
+
+    private function resolve_commission_amount($referral) {
+        if (isset($referral->commission_amount_raw) && $referral->commission_amount_raw !== null) {
+            return (float) $referral->commission_amount_raw;
+        }
+
+        if (isset($referral->credit_amount_raw) && $referral->credit_amount_raw !== null) {
+            return (float) $referral->credit_amount_raw;
+        }
+
+        if (isset($referral->commission)) {
+            return (float) $referral->commission;
+        }
+
+        return 0.0;
+    }
+
+    private function get_commission_payout_status($referral) {
+        if (!empty($referral->commission_status)) {
+            return strtolower($referral->commission_status);
+        }
+
+        if (!empty($referral->credit_status)) {
+            return strtolower($referral->credit_status);
+        }
+
+        return 'pending';
+    }
+
+    private function is_commission_paid($referral) {
+        return $this->get_commission_payout_status($referral) === 'paid';
+    }
+
+    private function format_commission_status_label($status) {
+        switch ($status) {
+            case 'paid':
+                return __('Paid', 'intersoccer-referral');
+            case 'approved':
+            case 'completed':
+            case 'active':
+            case 'earned':
+            default:
+                return __('Unpaid', 'intersoccer-referral');
+        }
+    }
+
+    private function build_payout_controls($referral) {
+        $amount    = $this->resolve_commission_amount($referral);
+        $status    = $this->get_commission_payout_status($referral);
+        $is_paid   = $status === 'paid';
+        $label     = $this->format_commission_status_label($status);
+        $updated_at = $referral->commission_updated_at ?? $referral->credit_updated_at ?? '';
+
+        ob_start();
+        ?>
+        <div class="payout-status">
+            <span class="payout-badge <?php echo esc_attr($is_paid ? 'paid' : 'pending'); ?>">
+                <?php echo esc_html($label); ?>
+            </span>
+            <?php if ($amount > 0): ?>
+                <span class="amount"><?php echo esc_html(sprintf('%s CHF', number_format_i18n($amount, 2))); ?></span>
+            <?php endif; ?>
+            <?php if ($is_paid && $updated_at): ?>
+                <small><?php printf(esc_html__('Updated %s', 'intersoccer-referral'), esc_html($this->format_datetime($updated_at, true))); ?></small>
+            <?php endif; ?>
+        </div>
+        <?php if (!$is_paid): ?>
+            <?php if ($amount > 0): ?>
+                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="payout-form">
+                    <?php wp_nonce_field('intersoccer_mark_commission_paid_' . (int) $referral->id, '_commission_paid_nonce'); ?>
+                    <input type="hidden" name="action" value="intersoccer_mark_commission_paid">
+                    <input type="hidden" name="referral_id" value="<?php echo (int) $referral->id; ?>">
+                    <button type="submit" class="button button-primary button-small">
+                        <?php esc_html_e('Mark Paid', 'intersoccer-referral'); ?>
+                    </button>
+                </form>
+            <?php else: ?>
+                <span class="muted"><?php esc_html_e('No payable commission', 'intersoccer-referral'); ?></span>
+            <?php endif; ?>
+        <?php endif; ?>
+        <?php
+        return ob_get_clean();
+    }
+
     /**
      * Format eligibility reason label.
      *
@@ -827,6 +1159,151 @@ class InterSoccer_Admin_Referrals {
         $mailto = esc_url('mailto:' . $email);
 
         return sprintf('<a href="%s">%s</a>', $mailto, $escaped);
+    }
+
+    public function handle_export_coach_referrals() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('You do not have permission to export referrals.', 'intersoccer-referral'));
+        }
+
+        if (
+            empty($_POST['intersoccer_export_coach_referrals_nonce']) ||
+            !wp_verify_nonce($_POST['intersoccer_export_coach_referrals_nonce'], 'intersoccer_export_coach_referrals')
+        ) {
+            $this->redirect_with_notice('commission_error');
+        }
+
+        $limit = isset($_POST['export_limit']) ? absint($_POST['export_limit']) : 500;
+        $limit = min(max(1, $limit), 2000);
+
+        $referrals = $this->get_coach_referrals([
+            'limit' => $limit,
+        ]);
+
+        if (function_exists('nocache_headers')) {
+            nocache_headers();
+        }
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="coach-referrals-' . gmdate('Ymd-His') . '.csv"');
+
+        $output = fopen('php://output', 'w');
+        fputcsv($output, [
+            'Date',
+            'Order',
+            'Coach',
+            'Coach Email',
+            'Customer',
+            'Customer Email',
+            'Commission (CHF)',
+            'Referral Status',
+            'Eligibility',
+            'Returning',
+            'Payout Status',
+        ]);
+
+        foreach ($referrals as $referral) {
+            $eligibility_data = $this->normalize_eligibility_data($referral->eligibility_meta);
+            $eligibility_view = $this->prepare_eligibility_view_model($eligibility_data);
+            $eligibility_text = $eligibility_view['status_label'];
+            if (!empty($eligibility_view['reason_label'])) {
+                $eligibility_text .= ' - ' . $eligibility_view['reason_label'];
+            }
+            if (!empty($eligibility_view['months_text'])) {
+                $eligibility_text .= ' (' . $eligibility_view['months_text'] . ')';
+            }
+
+            $return_text = $this->describe_returning_customer_status($eligibility_data);
+            $commission_amount = $this->resolve_commission_amount($referral);
+            $payout_status = $this->format_commission_status_label($this->get_commission_payout_status($referral));
+
+            $date = $referral->created_at ? $this->format_datetime($referral->created_at, true) : '';
+
+            fputcsv($output, [
+                $date,
+                '#' . (int) $referral->order_id,
+                $referral->coach_name,
+                $referral->coach_email,
+                $referral->customer_name,
+                $referral->customer_email,
+                number_format($commission_amount, 2),
+                ucfirst($referral->status),
+                $eligibility_text,
+                $return_text,
+                $payout_status,
+            ]);
+        }
+
+        fclose($output);
+        exit;
+    }
+
+    public function handle_mark_commission_paid() {
+        if (!current_user_can('manage_options')) {
+            wp_die(__('You do not have permission to update commissions.', 'intersoccer-referral'));
+        }
+
+        $referral_id = isset($_POST['referral_id']) ? absint($_POST['referral_id']) : 0;
+        $nonce_action = 'intersoccer_mark_commission_paid_' . $referral_id;
+
+        if (!$referral_id || empty($_POST['_commission_paid_nonce']) || !wp_verify_nonce($_POST['_commission_paid_nonce'], $nonce_action)) {
+            $this->redirect_with_notice('commission_error');
+        }
+
+        $records = $this->get_coach_referrals([
+            'referral_id' => $referral_id,
+            'limit' => 1,
+        ]);
+
+        if (empty($records)) {
+            $this->redirect_with_notice('commission_error');
+        }
+
+        $referral = $records[0];
+
+        if ($this->is_commission_paid($referral)) {
+            $this->redirect_with_notice('commission_already_paid');
+        }
+
+        $amount = $this->resolve_commission_amount($referral);
+        if ($amount <= 0) {
+            $this->redirect_with_notice('commission_error');
+        }
+
+        global $wpdb;
+        $now = current_time('mysql');
+
+        if (!empty($referral->commission_id)) {
+            $wpdb->update(
+                $wpdb->prefix . 'intersoccer_coach_commissions',
+                [
+                    'status' => 'paid',
+                    'updated_at' => $now,
+                ],
+                ['id' => (int) $referral->commission_id]
+            );
+        }
+
+        if (!empty($referral->credit_id)) {
+            $wpdb->update(
+                $wpdb->prefix . 'intersoccer_referral_credits',
+                [
+                    'status' => 'paid',
+                    'updated_at' => $now,
+                ],
+                ['id' => (int) $referral->credit_id]
+            );
+        }
+
+        $coach_id = (int) $referral->coach_id;
+        if ($coach_id > 0) {
+            $current_balance = (float) get_user_meta($coach_id, 'intersoccer_credits', true);
+            $new_balance = max(0, $current_balance - $amount);
+            update_user_meta($coach_id, 'intersoccer_credits', $new_balance);
+        }
+
+        do_action('intersoccer_commission_paid', $coach_id, $amount, $referral->order_id);
+
+        $this->redirect_with_notice('commission_paid');
     }
 
     public function handle_delete_referral() {
