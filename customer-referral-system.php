@@ -38,6 +38,7 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-dashboard-main.ph
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-coaches.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-referrals.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-financial.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-simulator.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-settings.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-points.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-coach-assignments.php';
@@ -158,7 +159,7 @@ class InterSoccer_Referral_System {
         // Customer-facing referral tools (WooCommerce My Account)
         add_action('init', [$this, 'register_customer_account_endpoint']);
         add_filter('query_vars', [$this, 'add_customer_account_query_var']);
-        add_filter('woocommerce_account_menu_items', [$this, 'add_customer_dashboard_menu_item']);
+        add_filter('woocommerce_account_menu_items', [$this, 'add_customer_dashboard_menu_item'], 10);
         add_action('woocommerce_account_referrals_endpoint', [$this, 'render_customer_account_endpoint']);
     }
 
@@ -609,6 +610,7 @@ class InterSoccer_Referral_System {
         add_option('intersoccer_enable_email_notifications', 1);
         add_option('intersoccer_referral_eligibility_months', 18);
         add_option('intersoccer_max_credits_per_order', 9999);
+        add_option('intersoccer_passive_mode', true);
 
         // Upgrade legacy ceiling (pre-unlimited deployments defaulted to 100)
         $legacy_max = get_option('intersoccer_max_credits_per_order', 9999);
@@ -655,7 +657,7 @@ class InterSoccer_Referral_System {
     }
 
     /**
-     * Inject "Refer & Earn" navigation entry into the WooCommerce account menu
+     * Inject "Referrals" navigation entry into the WooCommerce account menu
      *
      * @param array $items
      * @return array
@@ -665,21 +667,25 @@ class InterSoccer_Referral_System {
             return $items;
         }
 
-        $label = __('Refer & Earn', 'intersoccer-referral');
+        // Get translated label - defaults to 'Referrals'
+        $label = __('Referrals', 'intersoccer-referral');
 
+        // WPML translation support
         if (defined('ICL_SITEPRESS_VERSION')) {
+            // Register string for translation (only needs to happen once, but safe to call multiple times)
             do_action(
                 'wpml_register_single_string',
                 'Intersoccer Referral System',
-                'woocommerce_account_menu_refer_and_earn',
+                'woocommerce_account_menu_referrals',
                 $label
             );
 
+            // Get translated string
             $label = apply_filters(
                 'wpml_translate_single_string',
                 $label,
                 'Intersoccer Referral System',
-                'woocommerce_account_menu_refer_and_earn'
+                'woocommerce_account_menu_referrals'
             );
         }
 
@@ -707,6 +713,14 @@ class InterSoccer_Referral_System {
      * @return void
      */
     public function render_customer_account_endpoint() {
+        // Enqueue dashboard assets for My Account page
+        wp_enqueue_style('intersoccer-dashboard-css', INTERSOCCER_REFERRAL_URL . 'assets/css/dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
+        wp_enqueue_script('intersoccer-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/dashboard.js', ['jquery'], INTERSOCCER_REFERRAL_VERSION, true);
+        wp_localize_script('intersoccer-dashboard-js', 'intersoccer_dashboard', [
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('intersoccer_dashboard_nonce'),
+        ]);
+        
         $dashboard = new InterSoccer_Referral_Dashboard();
         echo $dashboard->render_customer_dashboard();
     }
@@ -717,28 +731,18 @@ class InterSoccer_Referral_System {
      * @return bool
      */
     private function should_display_customer_dashboard() {
-        if (!function_exists('is_user_logged_in') || !is_user_logged_in()) {
+        // Must be logged in
+        if (!is_user_logged_in()) {
             return false;
         }
 
-        if (!function_exists('wp_get_current_user')) {
+        // Must have WooCommerce active
+        if (!class_exists('WooCommerce')) {
             return false;
         }
 
-        $user = wp_get_current_user();
-        if (!$user || empty($user->roles)) {
-            return false;
-        }
-
-        $eligible_roles = ['customer', 'subscriber', 'partner', 'social_influencer', 'content_creator'];
-
-        foreach ((array) $user->roles as $role) {
-            if (in_array($role, $eligible_roles, true)) {
-                return true;
-            }
-        }
-
-        return false;
+        // Show to all logged-in users (including admins, coaches, etc.)
+        return true;
     }
 
     /**
