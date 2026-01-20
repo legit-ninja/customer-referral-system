@@ -163,11 +163,20 @@ class InterSoccer_Referral_Admin_Dashboard {
 
         add_submenu_page(
             'intersoccer-referrals',
-            'Settings',
-            'Settings',
+            __('Settings', 'intersoccer-referral'),
+            __('Settings', 'intersoccer-referral'),
             'manage_options',
             'intersoccer-settings',
             [$this->settings, 'render_settings_page']
+        );
+
+        add_submenu_page(
+            'intersoccer-referrals',
+            __('Tools', 'intersoccer-referral'),
+            __('Tools', 'intersoccer-referral'),
+            'manage_options',
+            'intersoccer-tools',
+            [$this->settings, 'render_tools_page']
         );
     }
 
@@ -265,9 +274,9 @@ class InterSoccer_Referral_Admin_Dashboard {
                 'nonce' => wp_create_nonce('intersoccer_admin_nonce')
             ]);
 
-            // Enqueue settings page specific assets
-            if (strpos($hook, 'intersoccer-settings') !== false) {
-                error_log('Enqueueing settings page assets for hook: ' . $hook);
+            // Enqueue settings page and tools page specific assets
+            if (strpos($hook, 'intersoccer-settings') !== false || strpos($hook, 'intersoccer-tools') !== false) {
+                error_log('Enqueueing settings/tools page assets for hook: ' . $hook);
                 wp_enqueue_style('intersoccer-admin-settings-css', INTERSOCCER_REFERRAL_URL . 'assets/css/admin-settings.css', [], INTERSOCCER_REFERRAL_VERSION);
                 wp_enqueue_script('intersoccer-admin-settings-js', INTERSOCCER_REFERRAL_URL . 'assets/js/admin-settings.js', ['jquery'], INTERSOCCER_REFERRAL_VERSION, true);
 
@@ -461,6 +470,11 @@ class InterSoccer_Referral_Admin_Dashboard {
         // Add referral code input field before order review
         if (!is_user_logged_in()) return;
 
+        // Hide checkout fields in passive mode
+        if (get_option('intersoccer_passive_mode', false)) {
+            return;
+        }
+
         $referral_context = $this->get_checkout_referral_context();
         $prefill_code = $referral_context['prefill_code'];
         $is_code_applied = !empty($referral_context['applied_code']);
@@ -517,6 +531,11 @@ class InterSoccer_Referral_Admin_Dashboard {
     public function add_points_redemption_field() {
         // WooCommerce checkout integration
         if (!is_user_logged_in()) return;
+
+        // Hide checkout fields in passive mode
+        if (get_option('intersoccer_passive_mode', false)) {
+            return;
+        }
 
         $user_id = get_current_user_id();
         $available_credits = get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0;

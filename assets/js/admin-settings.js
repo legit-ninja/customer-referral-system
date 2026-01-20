@@ -60,13 +60,24 @@ jQuery(document).ready(function($) {
 
         // Submit the form via AJAX
         console.log('Sending AJAX request to:', intersoccer_admin.ajax_url);
+        
+        // Set a timeout to detect hanging requests
+        const timeoutHandle = setTimeout(function() {
+            clearInterval(progressInterval);
+            importStatus.hide();
+            submitBtn.prop('disabled', false).html(originalText);
+            alert('Import timed out after 60 seconds. The server may still be processing. Please check if coaches were imported and try again if needed.');
+        }, 60000);
+        
         $.ajax({
             url: intersoccer_admin.ajax_url,
             type: 'POST',
             data: formData,
             processData: false,
             contentType: false,
+            timeout: 60000, // 60 second timeout
             success: function(response) {
+                clearTimeout(timeoutHandle);
                 console.log('AJAX success:', response);
                 clearInterval(progressInterval);
                 progressFill.css('width', '100%');
@@ -79,12 +90,17 @@ jQuery(document).ready(function($) {
                     if (response.success) {
                         displayImportResults(response.data);
                         clearBtn.show();
+                        // Refresh coach stats if the function exists (on Tools page)
+                        if (typeof loadCoachStats === 'function') {
+                            loadCoachStats();
+                        }
                     } else {
                         displayImportError(response.data || 'Unknown error occurred');
                     }
                 }, 1000);
             },
             error: function(xhr, status, error) {
+                clearTimeout(timeoutHandle);
                 console.log('AJAX error:', xhr, status, error);
                 console.log('Response text:', xhr.responseText);
                 clearInterval(progressInterval);

@@ -9,14 +9,91 @@ class InterSoccer_Admin_Coaches {
             <h1 class="wp-heading-inline">Coach Management</h1>
 
             <div class="intersoccer-actions">
-                <a href="<?php echo admin_url('admin-post.php?action=import_coaches_from_csv'); ?>" class="button button-primary">
+                <button class="button button-primary" id="import-coaches-btn">
                     <span class="dashicons dashicons-upload"></span>
                     Import Coaches from CSV
-                </a>
+                </button>
                 <button class="button button-secondary" id="add-new-coach">
                     <span class="dashicons dashicons-plus"></span>
                     Add New Coach
                 </button>
+            </div>
+
+            <!-- Coach Import Modal -->
+            <div id="coach-import-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 100000; align-items: center; justify-content: center;">
+                <div style="background: white; padding: 30px; border-radius: 8px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto;">
+                    <h2 style="margin-top: 0;"><?php esc_html_e('Import Coaches from CSV', 'intersoccer-referral'); ?></h2>
+                    <p class="description">
+                        <?php esc_html_e('Upload a CSV file containing coach information. Required columns: First Name, Last Name, Email.', 'intersoccer-referral'); ?>
+                    </p>
+                    
+                    <form id="coach-import-form-modal" method="post" enctype="multipart/form-data">
+                        <?php wp_nonce_field('import_coaches_from_csv', '_wpnonce'); ?>
+                        
+                        <table class="form-table" role="presentation">
+                            <tbody>
+                                <tr>
+                                    <th scope="row">
+                                        <label for="coaches_csv_modal"><?php esc_html_e('CSV File', 'intersoccer-referral'); ?></label>
+                                    </th>
+                                    <td>
+                                        <input type="file" 
+                                               id="coaches_csv_modal" 
+                                               name="coaches_csv" 
+                                               accept=".csv"
+                                               required>
+                                        <p class="description">
+                                            <?php esc_html_e('Select a CSV file containing coach information. Maximum file size: 10MB.', 'intersoccer-referral'); ?>
+                                        </p>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">
+                                        <label for="update_existing_modal"><?php esc_html_e('Update Existing', 'intersoccer-referral'); ?></label>
+                                    </th>
+                                    <td>
+                                        <label>
+                                            <input type="checkbox" 
+                                                   id="update_existing_modal" 
+                                                   name="update_existing" 
+                                                   value="1">
+                                            <?php esc_html_e('Update existing coaches if they already exist (by email)', 'intersoccer-referral'); ?>
+                                        </label>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        
+                        <p class="submit">
+                            <button type="submit" 
+                                    id="import-submit-btn-modal" 
+                                    class="button button-primary">
+                                <span class="dashicons dashicons-upload"></span>
+                                <?php esc_html_e('Import Coaches', 'intersoccer-referral'); ?>
+                            </button>
+                            <button type="button" 
+                                    id="cancel-import-btn" 
+                                    class="button button-secondary">
+                                <?php esc_html_e('Cancel', 'intersoccer-referral'); ?>
+                            </button>
+                        </p>
+                        
+                        <!-- Import Status -->
+                        <div id="import-status-modal" style="display: none; margin-top: 20px;">
+                            <div class="progress-container" style="margin-bottom: 10px;">
+                                <div class="progress-bar" style="background: #f0f0f0; border-radius: 4px; overflow: hidden; height: 30px;">
+                                    <div id="progress-fill-modal" class="progress-fill" style="background: #2271b1; height: 100%; width: 0%; transition: width 0.3s;"></div>
+                                </div>
+                                <div id="progress-text-modal" class="progress-text" style="text-align: center; margin-top: 10px;"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Import Results -->
+                        <div id="import-results-modal" style="display: none; margin-top: 20px;">
+                            <div id="import-summary-content-modal"></div>
+                        </div>
+                    </form>
+                </div>
             </div>
 
             <div class="intersoccer-coaches-search">
@@ -512,6 +589,97 @@ class InterSoccer_Admin_Coaches {
 
         <script>
         jQuery(document).ready(function($) {
+            // Check if intersoccer_admin is available (from wp_localize_script)
+            if (typeof intersoccer_admin === 'undefined') {
+                console.error('intersoccer_admin not defined - coach import will not work');
+                // Fallback: use admin_url if available
+                window.intersoccer_admin = {
+                    ajax_url: '<?php echo esc_js(admin_url('admin-ajax.php')); ?>',
+                    nonce: '<?php echo esc_js(wp_create_nonce('intersoccer_admin_nonce')); ?>'
+                };
+            }
+
+            // Coach Import Modal Handler
+            $('#import-coaches-btn').on('click', function() {
+                $('#coach-import-modal').show();
+            });
+
+            $('#cancel-import-btn').on('click', function() {
+                $('#coach-import-modal').hide();
+                $('#coach-import-form-modal')[0].reset();
+                $('#import-status-modal').hide();
+                $('#import-results-modal').hide();
+            });
+
+            // Coach Import Form Handler (Modal)
+            $('#coach-import-form-modal').on('submit', function(e) {
+                e.preventDefault();
+                
+                const formData = new FormData(this);
+                const submitBtn = $('#import-submit-btn-modal');
+                const originalText = submitBtn.html();
+                const importStatus = $('#import-status-modal');
+                const importResults = $('#import-results-modal');
+                const progressFill = $('#progress-fill-modal');
+                const progressText = $('#progress-text-modal');
+
+                // Add AJAX action
+                formData.append('action', 'import_coaches_from_csv');
+
+                // Reset UI
+                importResults.hide();
+                progressFill.css('width', '0%');
+                progressText.text('Preparing import...');
+                submitBtn.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> Importing...');
+                importStatus.show();
+
+                $.ajax({
+                    url: intersoccer_admin.ajax_url,
+                    type: 'POST',
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        progressFill.css('width', '100%');
+                        progressText.text('Import completed!');
+                        submitBtn.prop('disabled', false).html(originalText);
+
+                        if (response.success) {
+                            let resultsHtml = '<h4>Import Results</h4>';
+                            resultsHtml += '<p><strong>Created:</strong> ' + (response.data.created ? response.data.created.length : 0) + '</p>';
+                            resultsHtml += '<p><strong>Updated:</strong> ' + (response.data.updated ? response.data.updated.length : 0) + '</p>';
+                            resultsHtml += '<p><strong>Skipped:</strong> ' + (response.data.skipped ? response.data.skipped.length : 0) + '</p>';
+                            resultsHtml += '<p><strong>Errors:</strong> ' + (response.data.errors ? response.data.errors.length : 0) + '</p>';
+
+                            if (response.data.errors && response.data.errors.length > 0) {
+                                resultsHtml += '<h5>Errors:</h5><ul>';
+                                response.data.errors.forEach(function(error) {
+                                    resultsHtml += '<li>' + error + '</li>';
+                                });
+                                resultsHtml += '</ul>';
+                            }
+
+                            $('#import-summary-content-modal').html(resultsHtml);
+                            importResults.show();
+                            
+                            // Reload page after 3 seconds if successful
+                            if (response.data.errors.length === 0) {
+                                setTimeout(function() {
+                                    location.reload();
+                                }, 3000);
+                            }
+                        } else {
+                            alert('Import failed: ' + (response.data || 'Unknown error'));
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        importStatus.hide();
+                        submitBtn.prop('disabled', false).html(originalText);
+                        alert('AJAX Error: ' + error + (xhr.responseText ? '\n' + xhr.responseText.substring(0, 200) : ''));
+                    }
+                });
+            });
+
             // Handle coach actions
             $('.edit-coach').on('click', function() {
                 var coachId = $(this).data('coach-id');
