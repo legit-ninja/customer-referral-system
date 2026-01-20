@@ -778,7 +778,7 @@ class InterSoccer_Customer_Dashboard_Widget extends \Elementor\Widget_Base {
         echo '<h3>📤 Share & Earn</h3>';
         echo '<div class="referral-info">';
         echo '<p class="referral-description">';
-        echo '<span class="highlight">Earn 500 points (50 CHF)</span> for every friend who joins InterSoccer! Share your personalized link:';
+        echo '<span class="highlight">' . esc_html__('Earn 10% of their purchase value', 'intersoccer-referral') . '</span> ' . esc_html__('for every friend who makes a purchase!', 'intersoccer-referral') . ' ' . esc_html__('Share your personalized link:', 'intersoccer-referral');
         echo '</p></div>';
         
         echo '<div class="referral-link-container">';
@@ -800,12 +800,12 @@ class InterSoccer_Customer_Dashboard_Widget extends \Elementor\Widget_Base {
         echo '<h3>📈 Your Progress</h3>';
         echo '<div class="progress-container">';
         
-        $next_milestone = 1000;
+        $next_milestone = 100;
         $progress_percentage = min(100, ($credits / $next_milestone) * 100);
         
         echo '<div class="progress-bar-wrapper">';
         echo '<div class="progress-info">';
-        echo '<span>Next milestone: 1000 points for 100 CHF bonus!</span>';
+        echo '<span>' . esc_html__('Next milestone: 100 points for 100 CHF bonus!', 'intersoccer-referral') . '</span>';
         echo '<span class="progress-percentage">' . round($progress_percentage) . '%</span>';
         echo '</div>';
         echo '<div class="progress-bar">';

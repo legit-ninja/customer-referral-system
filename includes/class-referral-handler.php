@@ -262,7 +262,13 @@ class InterSoccer_Referral_Handler {
         $referral_status = 'pending';
 
         $is_first_purchase = $this->is_first_purchase($customer_id, $order_id);
-        $referrer_reward_points = ($is_customer_referrer && $eligibility['eligible']) ? 500 : 0;
+        // Calculate customer referral reward: 10% of purchase value (1 point = 1 CHF)
+        if ($is_customer_referrer && $eligibility['eligible']) {
+            $order_total = $order->get_total();
+            $referrer_reward_points = (int) floor($order_total * 0.10); // 10% of purchase value
+        } else {
+            $referrer_reward_points = 0;
+        }
 
         update_post_meta($order_id, '_intersoccer_referral_eligibility', $eligibility);
 
@@ -448,9 +454,19 @@ class InterSoccer_Referral_Handler {
             return $result;
         }
 
+        $eligible_statuses = apply_filters(
+            'intersoccer_referral_eligibility_statuses',
+            ['wc-completed', 'completed', 'wc-processing', 'processing', 'wc-on-hold', 'on-hold']
+        );
+
+        $eligible_statuses = array_unique(array_filter((array) $eligible_statuses));
+        if (empty($eligible_statuses)) {
+            $eligible_statuses = ['wc-completed', 'completed'];
+        }
+
         $query_args = [
             'customer' => $customer_id,
-            'status' => ['wc-completed', 'completed'],
+            'status' => $eligible_statuses,
             'orderby' => 'date',
             'order' => 'DESC',
             'limit' => 1,

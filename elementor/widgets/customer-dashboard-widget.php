@@ -131,7 +131,7 @@ class InterSoccer_Customer_Dashboard_Widget extends \Elementor\Widget_Base {
             [
                 'label' => esc_html__( 'Referral Description', 'intersoccer-referral' ),
                 'type' => \Elementor\Controls_Manager::TEXTAREA,
-                'default' => esc_html__( 'Earn 500 points (50 CHF) for every friend who joins InterSoccer! Share your personalized link:', 'intersoccer-referral' ),
+                'default' => esc_html__( 'Earn 10% of their purchase value for every friend who makes a purchase! Share your personalized link:', 'intersoccer-referral' ),
                 'placeholder' => esc_html__( 'Enter custom referral text', 'intersoccer-referral' ),
             ]
         );
@@ -203,7 +203,12 @@ class InterSoccer_Customer_Dashboard_Widget extends \Elementor\Widget_Base {
 
         // Apply basic customizations (e.g., replace title)
         $output = str_replace( '<h2>Your Referral Dashboard</h2>', '<h2>' . esc_html( $settings['header_title'] ) . '</h2>', $output );
-        $output = str_replace( '<p class="referral-description"> <span class="highlight">Earn 500 points (50 CHF)</span> for every friend who joins InterSoccer!  Share your personalized link: </p>', '<p class="referral-description">' . wp_kses_post( $settings['referral_description'] ) . '</p>', $output );
+        // Replace the referral description text (matches updated default text structure)
+        $output = preg_replace(
+            '/<p class="referral-description">.*?<span class="highlight">.*?<\/span>.*?<\/p>/s',
+            '<p class="referral-description">' . wp_kses_post( $settings['referral_description'] ) . '</p>',
+            $output
+        );
 
         // Hide sections via inline style (crude but effective; better with modular render in future)
         if ( 'yes' !== $settings['show_stats'] ) {
