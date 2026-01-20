@@ -94,6 +94,12 @@ class ModernCoachDashboard {
             copyLinkText.addEventListener('click', () => this.copyReferralLink());
         }
 
+        // Share link button (top header)
+        const shareLinkBtn = document.getElementById('share-link-btn');
+        if (shareLinkBtn) {
+            shareLinkBtn.addEventListener('click', () => this.copyReferralLink());
+        }
+
         // QR Code modal
         const showQrBtn = document.getElementById('show-qr');
         if (showQrBtn) {

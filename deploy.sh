@@ -4,13 +4,13 @@
 # InterSoccer Referral System - Deployment Script
 ###############################################################################
 #
-# This script deploys the plugin to the dev server and can run tests.
+# This script deploys the plugin to the dev server and runs tests.
 #
 # Usage:
-#   ./deploy.sh                 # Deploy to dev server
-#   ./deploy.sh --test          # Run tests before deploying
+#   ./deploy.sh                 # Deploy to dev server (PHPUnit tests run automatically)
+#   ./deploy.sh --test          # Deploy and run Cypress E2E tests after deployment
 #   ./deploy.sh --no-cache      # Deploy and clear server caches
-#   ./deploy.sh --dry-run       # Show what would be uploaded
+#   ./deploy.sh --dry-run       # Show what would be uploaded (skips tests)
 #
 ###############################################################################
 
@@ -43,7 +43,7 @@ fi
 
 # Parse command line arguments
 DRY_RUN=false
-RUN_TESTS=false
+RUN_CYPRESS_TESTS=false
 CLEAR_CACHE=false
 DROP_TABLES=false
 
@@ -54,7 +54,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --test)
-            RUN_TESTS=true
+            RUN_CYPRESS_TESTS=true
             shift
             ;;
         --no-cache|--clear-cache)
@@ -70,10 +70,12 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --dry-run        Show what would be uploaded without uploading"
-            echo "  --test           Run PHPUnit tests before deploying"
+            echo "  --test           Run Cypress E2E tests after deploying"
             echo "  --clear-cache    Clear server caches after deployment"
             echo "  --drop-tables    Drop plugin tables on the server (use with caution)"
             echo "  --help           Show this help message"
+            echo ""
+            echo "Note: PHPUnit tests run automatically on every deployment."
             exit 0
             ;;
         *)
@@ -520,42 +522,49 @@ run_phpunit_tests() {
 }
 
 run_cypress_tests() {
-    print_header "Cypress Tests (External)"
-    
-    echo -e "${YELLOW}ℹ Cypress tests should be run separately from:${NC}"
-    echo "  Repository: intersoccer-player-management-tests"
-    echo "  Location: ../intersoccer-player-management-tests/"
-    echo ""
-    echo "To run Cypress tests for this deployment:"
-    echo "  1. cd ../intersoccer-player-management-tests"
-    echo "  2. npm test -- --spec 'cypress/e2e/referral-system/**'"
-    echo "  3. npm test -- --spec 'cypress/e2e/points-redemption/**'"
-    echo ""
-    echo -e "${BLUE}→ Phase 0 Recommended Cypress Tests:${NC}"
-    echo "  • Points calculation display (integer only)"
-    echo "  • Points redemption checkout flow"
-    echo "  • Points balance display in account"
-    echo "  • Order completion with points"
-    echo ""
+    print_header "Running Cypress E2E Tests"
     
     # Check if Cypress tests directory exists
-    if [ -d "../intersoccer-player-management-tests" ]; then
-        echo -e "${GREEN}✓ Cypress test repository found${NC}"
-        
-        # Check if Cypress is installed
-        if [ -f "../intersoccer-player-management-tests/package.json" ]; then
-            echo -e "${GREEN}✓ Cypress configuration found${NC}"
-        else
-            echo -e "${YELLOW}⚠ Cypress not configured in test repository${NC}"
-        fi
-    else
-        echo -e "${YELLOW}⚠ Cypress test repository not found at ../intersoccer-player-management-tests${NC}"
-        echo "  Clone from: [repository URL]"
+    if [ ! -d "../intersoccer-ui-tests" ]; then
+        echo -e "${YELLOW}⚠ Cypress test repository not found at ../intersoccer-ui-tests${NC}"
+        echo "  Cypress tests are optional and can be run separately."
+        echo ""
+        echo "To run Cypress tests manually:"
+        echo "  1. cd ../intersoccer-ui-tests"
+        echo "  2. npm test -- --spec 'cypress/e2e/referral-system/**'"
+        echo ""
+        return 0
     fi
     
+    # Check if Cypress is installed
+    if [ ! -f "../intersoccer-ui-tests/package.json" ]; then
+        echo -e "${YELLOW}⚠ Cypress not configured in test repository${NC}"
+        echo "  Run 'npm install' in ../intersoccer-ui-tests to enable Cypress tests."
+        return 0
+    fi
+    
+    echo -e "${BLUE}→ Running Cypress E2E tests...${NC}"
     echo ""
-    echo "Press Enter to continue without Cypress tests, or Ctrl+C to abort..."
-    read -t 5 || true
+    
+    # Change to Cypress test directory and run tests
+    cd ../intersoccer-ui-tests
+    
+    # Run Cypress tests for referral system
+    if npm test -- --spec 'cypress/e2e/referral-system/**' 2>&1; then
+        echo ""
+        echo -e "${GREEN}✓ Cypress tests passed${NC}"
+        CYPRESS_RESULT=0
+    else
+        echo ""
+        echo -e "${YELLOW}⚠ Cypress tests failed (code already deployed)${NC}"
+        echo "  You may need to investigate and redeploy if issues are found."
+        CYPRESS_RESULT=1
+    fi
+    
+    # Return to original directory
+    cd - > /dev/null
+    
+    return $CYPRESS_RESULT
 }
 
 deploy_to_server() {
@@ -830,22 +839,10 @@ echo "  Path: ${SERVER_PATH}"
 echo "  SSH Port: ${SSH_PORT}"
 echo ""
 
-# ⚠️  IMPORTANT: Always run tests before deploying Phase 0 changes!
-if [ "$RUN_TESTS" = false ]; then
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${YELLOW}  ⚠️  WARNING: Deploying without running tests!${NC}"
-    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
-    echo "Phase 0 critical changes require testing before deployment."
-    echo "It is STRONGLY recommended to run: ./deploy.sh --test"
-    echo ""
-    echo -e "${YELLOW}Press Ctrl+C to abort, or Enter to continue anyway...${NC}"
-    read -t 10 || echo ""
-fi
-
-# Run tests if requested or if RUN_TESTS is true
-if [ "$RUN_TESTS" = true ]; then
-    # Run PHPUnit tests (gracefully skips if not configured)
+# ⚠️  IMPORTANT: PHPUnit tests ALWAYS run before deployment
+# This ensures no broken code gets deployed
+if [ "$DRY_RUN" = false ]; then
+    # Run PHPUnit tests (always run, cannot be skipped)
     run_phpunit_tests
     PHPUNIT_RESULT=$?
     
@@ -857,11 +854,8 @@ if [ "$RUN_TESTS" = true ]; then
         exit 1
     fi
     
-    # Show Cypress test reminder
-    run_cypress_tests
-    
     echo ""
-    echo -e "${GREEN}✓ All configured tests passed${NC}"
+    echo -e "${GREEN}✓ All PHPUnit tests passed${NC}"
     echo ""
 fi
 
@@ -876,6 +870,11 @@ fi
 # Clear caches if requested
 if [ "$CLEAR_CACHE" = true ] && [ "$DRY_RUN" = false ]; then
     clear_server_caches
+fi
+
+# Run Cypress E2E tests if requested (after deployment)
+if [ "$RUN_CYPRESS_TESTS" = true ] && [ "$DRY_RUN" = false ]; then
+    run_cypress_tests
 fi
 
 # Drop tables if requested

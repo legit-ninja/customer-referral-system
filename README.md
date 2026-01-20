@@ -14,7 +14,7 @@ A comprehensive WordPress plugin that implements an advanced coach referral prog
 ```
 
 **Production-Ready** with 100% test coverage across all active classes!  
-📊 See: [Roadmap](TODO-REORGANIZED.md) | [Test Coverage](docs/COMPLETE-TEST-COVERAGE-REPORT.md) | [Phase 0 Complete](docs/PHASE0-100-PERCENT-COMPLETE.md)
+📊 See: [Testing Guide](docs/guides/TESTING.md) | [Financial Model](docs/technical/FINANCIAL-MODEL-ANALYSIS.md) | [Documentation Index](docs/INDEX.md)
 
 ---
 
@@ -135,7 +135,7 @@ All customer-facing features are fully translated:
 3. Translations automatically load based on customer's language
 4. Test in each language via WPML language switcher
 
-See `docs/WPML-SETUP.md` for detailed configuration guide (repository only).
+See [docs/guides/WPML-SETUP.md](docs/guides/WPML-SETUP.md) for detailed configuration guide (repository only).
 
 ## Configuration
 
@@ -225,11 +225,11 @@ customer-referral-system/
 ├── customer-referral-system.php     # Main plugin file
 ├── includes/                        # Core classes
 │   ├── class-referral-handler.php   # Referral logic
-│   ├── class-commission-calculator.php # Commission calculations
+│   ├── class-commission-manager.php # Commission calculations
+│   ├── class-points-manager.php     # Points system
+│   ├── class-admin-settings.php     # Admin interface & simulator
+│   ├── class-simulator.php          # Referral simulator
 │   ├── class-dashboard.php          # Dashboard rendering
-│   ├── class-admin-dashboard.php    # Admin interface
-│   ├── class-coach-admin-dashboard.php # Coach admin features
-│   ├── class-elementor-widgets.php  # Elementor integration
 │   └── class-utils.php              # Utility functions
 ├── assets/                          # Frontend assets
 │   ├── css/                         # Stylesheets
@@ -238,7 +238,15 @@ customer-referral-system/
 │   └── dashboard-template.php       # Dashboard template
 ├── elementor/                       # Elementor integration
 │   └── widgets/                     # Elementor widgets
-└── languages/                       # Translation files
+├── languages/                       # Translation files
+├── tests/                           # PHPUnit test suite
+├── scripts/                         # Development scripts
+│   ├── run-phase0-tests.sh          # Test runner
+│   └── test-verification.php        # Test verification
+└── docs/                            # Documentation
+    ├── guides/                      # User guides
+    ├── technical/                   # Technical docs
+    └── planning/                    # Planning documents
 ```
 
 ## Development
@@ -273,13 +281,16 @@ COVERAGE:                              100% (ALL 21 active classes)
 **Running Tests:**
 ```bash
 # Run Phase 0 critical tests
-./run-phase0-tests.sh
+./scripts/run-phase0-tests.sh
 
 # Run all tests
 php vendor/bin/phpunit --testdox
 
 # Run specific test suite
 php vendor/bin/phpunit tests/PointsManagerTest.php --testdox
+
+# Simple test verification
+php scripts/test-verification.php
 ```
 
 **Deployment Protection:**
@@ -300,30 +311,27 @@ php vendor/bin/phpunit tests/PointsManagerTest.php --testdox
 
 ## Documentation
 
-### 📚 Complete documentation available in `/docs/` folder:
+### 📚 Complete documentation available in `/docs/` folder
 
-**Quick Start:**
-- [docs/TEST-QUICK-REFERENCE.md](docs/TEST-QUICK-REFERENCE.md) - Quick test commands
-- [docs/TESTING.md](docs/TESTING.md) - Comprehensive testing guide
-- [docs/DEV-TESTING-GUIDE.md](docs/DEV-TESTING-GUIDE.md) - Dev server testing guide
+Documentation is organized by type for easy navigation:
 
-**Phase 0 (Current):**
-- [docs/PHASE0-PROGRESS.md](docs/PHASE0-PROGRESS.md) - Current implementation progress
-- [docs/SESSION-SUMMARY.md](docs/SESSION-SUMMARY.md) - Latest session summary
-- [docs/DEPLOYMENT-READY-CHECKLIST.md](docs/DEPLOYMENT-READY-CHECKLIST.md) - Pre-deployment checklist
+**📖 User Guides** (`/docs/guides/`)
+- [TESTING.md](docs/guides/TESTING.md) - Comprehensive testing guide
+- [TESTS-QUICK-START.md](docs/guides/TESTS-QUICK-START.md) - Quick start for running tests
+- [TEST-QUICK-REFERENCE.md](docs/guides/TEST-QUICK-REFERENCE.md) - Quick test command reference
+- [WPML-SETUP.md](docs/guides/WPML-SETUP.md) - Multilingual setup guide
+- [CSV-IMPORT-FORMATS.md](docs/guides/CSV-IMPORT-FORMATS.md) - CSV import formats
 
-**Deployment:**
-- [docs/DEPLOYMENT-TEST-FLOW.md](docs/DEPLOYMENT-TEST-FLOW.md) - Visual deployment flow
-- [docs/VERIFICATION-TESTS-RUN-FIRST.md](docs/VERIFICATION-TESTS-RUN-FIRST.md) - Test execution proof
+**🔧 Technical Documentation** (`/docs/technical/`)
+- [FINANCIAL-MODEL-ANALYSIS.md](docs/technical/FINANCIAL-MODEL-ANALYSIS.md) - Financial model & calculations
+- [PERFORMANCE-OPTIMIZATIONS.md](docs/technical/PERFORMANCE-OPTIMIZATIONS.md) - Performance strategies
+- [CHECKOUT-PERFORMANCE-ANALYSIS.md](docs/technical/CHECKOUT-PERFORMANCE-ANALYSIS.md) - Checkout performance
 
-**Testing & Coverage:**
-- [docs/TEST-COVERAGE-REPORT.md](docs/TEST-COVERAGE-REPORT.md) - Detailed coverage analysis
-- [docs/ANSWER-TEST-COVERAGE.md](docs/ANSWER-TEST-COVERAGE.md) - Coverage Q&A
-
-**System Documentation:**
-- [docs/Customer-referral-plan.md](docs/Customer-referral-plan.md) - Original proposal
-- [docs/FINANCIAL-MODEL-ANALYSIS.md](docs/FINANCIAL-MODEL-ANALYSIS.md) - Financial model
-- [docs/PERFORMANCE-OPTIMIZATIONS.md](docs/PERFORMANCE-OPTIMIZATIONS.md) - Performance guide
+**📋 Planning & Specifications** (`/docs/planning/`)
+- [ROADMAP.md](docs/planning/ROADMAP.md) - Complete implementation roadmap
+- [Customer-referral-plan.md](docs/planning/Customer-referral-plan.md) - Original project plan
+- [Customer-Referral-System-Test-Plan-.md](docs/planning/Customer-Referral-System-Test-Plan-.md) - Test plan
+- [Referral System - 2025.md](docs/planning/Referral System - 2025.md) - 2025 roadmap
 
 **📖 Full Index:** [docs/INDEX.md](docs/INDEX.md) - Complete documentation catalog
 
