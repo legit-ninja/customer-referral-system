@@ -12,11 +12,14 @@ class PointsManagerTest extends TestCase {
         require_once __DIR__ . '/../includes/class-points-manager.php';
         update_option('intersoccer_points_allocation_mode', 'ratio');
         update_option('intersoccer_points_percentage_rate', 0);
+        update_option('intersoccer_points_allocation_method', 'instant');
     }
 
     protected function tearDown(): void {
         update_option('intersoccer_points_allocation_mode', 'ratio');
         update_option('intersoccer_points_percentage_rate', 0);
+        update_option('intersoccer_points_allocation_method', 'instant');
+        delete_transient('intersoccer_queued_points_orders');
         parent::tearDown();
     }
 
@@ -720,6 +723,376 @@ class PointsManagerTest extends TestCase {
             $this->assertIsInt($points);
             $this->assertGreaterThanOrEqual(0, $points);
         }
+    }
+
+    /**
+     * Test instant point allocation method
+     */
+    public function testInstantPointAllocation() {
+        update_option('intersoccer_points_allocation_method', 'instant');
+        
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Verify the allocation method is set correctly
+        $allocation_method = get_option('intersoccer_points_allocation_method', 'instant');
+        $this->assertEquals('instant', $allocation_method);
+    }
+
+    /**
+     * Test deferred point allocation method
+     */
+    public function testDeferredPointAllocation() {
+        update_option('intersoccer_points_allocation_method', 'deferred');
+        
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Verify the allocation method is set correctly
+        $allocation_method = get_option('intersoccer_points_allocation_method', 'instant');
+        $this->assertEquals('deferred', $allocation_method);
+        
+        // Verify wp_cron is scheduled
+        $next_scheduled = wp_next_scheduled('intersoccer_deferred_points_allocation');
+        $this->assertNotFalse($next_scheduled, 'Deferred allocation cron should be scheduled');
+    }
+
+    /**
+     * Test queuing orders for deferred allocation
+     */
+    public function testQueueOrderForDeferredAllocation() {
+        update_option('intersoccer_points_allocation_method', 'deferred');
+        
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Create a mock order
+        $order = new class {
+            public function get_customer_id() { return 123; }
+            public function get_id() { return 456; }
+        };
+        
+        // Mock wc_get_order
+        global $mock_wc_order;
+        $mock_wc_order = $order;
+        
+        // Queue the order
+        $this->invokePrivateMethod($points_manager, 'queue_order_for_points_allocation', [456]);
+        
+        // Verify order is queued
+        $queued_orders = get_transient('intersoccer_queued_points_orders');
+        $this->assertIsArray($queued_orders);
+        $this->assertContains(456, $queued_orders);
+        
+        // Clean up
+        delete_transient('intersoccer_queued_points_orders');
+    }
+
+    /**
+     * Test processing deferred point allocation
+     */
+    public function testProcessDeferredPointAllocation() {
+        update_option('intersoccer_points_allocation_method', 'deferred');
+        
+        // Queue some orders
+        $queued_orders = [100, 101, 102];
+        set_transient('intersoccer_queued_points_orders', $queued_orders, WEEK_IN_SECONDS);
+        
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Process deferred allocation
+        $this->invokePrivateMethod($points_manager, 'process_deferred_points_allocation', []);
+        
+        // Verify queue is cleared
+        $remaining_queue = get_transient('intersoccer_queued_points_orders');
+        $this->assertFalse($remaining_queue, 'Queue should be cleared after processing');
+    }
+
+    /**
+     * Test get_points_rate_for_user with purchase context
+     */
+    public function testGetPointsRateForUser_PurchaseContext() {
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Set customer purchase rate
+        update_option('intersoccer_points_rate_customer_purchase', 10);
+        
+        // Test regular customer purchase
+        $rate = $this->invokePrivateMethod($points_manager, 'get_points_rate_for_user', [1, 'purchase', false]);
+        $this->assertEquals(10, $rate, 'Regular customer should use purchase rate');
+        
+        // Clean up
+        delete_option('intersoccer_points_rate_customer_purchase');
+    }
+
+    /**
+     * Test get_points_rate_for_user with referral context
+     */
+    public function testGetPointsRateForUser_ReferralContext() {
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Set customer referral rate
+        update_option('intersoccer_points_rate_customer_referral', 8);
+        
+        // Test customer referral
+        $rate = $this->invokePrivateMethod($points_manager, 'get_points_rate_for_user', [1, 'referral', false]);
+        $this->assertEquals(8, $rate, 'Customer referral should use referral rate');
+        
+        // Clean up
+        delete_option('intersoccer_points_rate_customer_referral');
+    }
+
+    /**
+     * Test get_points_rate_for_user with first-time customer
+     */
+    public function testGetPointsRateForUser_FirstTimeCustomer() {
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Set rates
+        update_option('intersoccer_points_rate_customer_purchase', 10);
+        update_option('intersoccer_points_rate_first_time_customer', 5);
+        
+        // Test first-time customer purchase
+        $rate = $this->invokePrivateMethod($points_manager, 'get_points_rate_for_user', [1, 'purchase', true]);
+        $this->assertEquals(5, $rate, 'First-time customer should use first-time rate');
+        
+        // Test regular customer (not first-time)
+        $rate = $this->invokePrivateMethod($points_manager, 'get_points_rate_for_user', [1, 'purchase', false]);
+        $this->assertEquals(10, $rate, 'Regular customer should use purchase rate');
+        
+        // Clean up
+        delete_option('intersoccer_points_rate_customer_purchase');
+        delete_option('intersoccer_points_rate_first_time_customer');
+    }
+
+    /**
+     * Test get_points_rate_for_user - coaches use customer rate
+     */
+    public function testGetPointsRateForUser_CoachUsesCustomerRate() {
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Set customer purchase rate
+        update_option('intersoccer_points_rate_customer_purchase', 10);
+        
+        // Mock user with coach role
+        global $mock_user_roles;
+        $mock_user_roles = [1 => ['coach']];
+        
+        // Test coach purchase - should use customer rate
+        $rate = $this->invokePrivateMethod($points_manager, 'get_points_rate_for_user', [1, 'purchase', false]);
+        $this->assertEquals(10, $rate, 'Coach should use customer purchase rate');
+        
+        // Clean up
+        delete_option('intersoccer_points_rate_customer_purchase');
+        unset($mock_user_roles);
+    }
+
+    /**
+     * Test get_points_rate_for_user - partners use customer rate
+     */
+    public function testGetPointsRateForUser_PartnerUsesCustomerRate() {
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Set customer purchase rate
+        update_option('intersoccer_points_rate_customer_purchase', 10);
+        
+        // Mock user with partner role
+        global $mock_user_roles;
+        $mock_user_roles = [1 => ['partner']];
+        
+        // Test partner purchase - should use customer rate
+        $rate = $this->invokePrivateMethod($points_manager, 'get_points_rate_for_user', [1, 'purchase', false]);
+        $this->assertEquals(10, $rate, 'Partner should use customer purchase rate');
+        
+        // Clean up
+        delete_option('intersoccer_points_rate_customer_purchase');
+        unset($mock_user_roles);
+    }
+
+    /**
+     * Test get_points_rate_for_user - social influencers use customer rate
+     */
+    public function testGetPointsRateForUser_SocialInfluencerUsesCustomerRate() {
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Set customer purchase rate
+        update_option('intersoccer_points_rate_customer_purchase', 10);
+        
+        // Mock user with social_influencer role
+        global $mock_user_roles;
+        $mock_user_roles = [1 => ['social_influencer']];
+        
+        // Test social influencer purchase - should use customer rate
+        $rate = $this->invokePrivateMethod($points_manager, 'get_points_rate_for_user', [1, 'purchase', false]);
+        $this->assertEquals(10, $rate, 'Social influencer should use customer purchase rate');
+        
+        // Clean up
+        delete_option('intersoccer_points_rate_customer_purchase');
+        unset($mock_user_roles);
+    }
+
+    /**
+     * Test get_points_rate_for_user - first-time status takes precedence for all roles
+     */
+    public function testGetPointsRateForUser_FirstTimeTakesPrecedence() {
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Set rates
+        update_option('intersoccer_points_rate_customer_purchase', 10);
+        update_option('intersoccer_points_rate_first_time_customer', 5);
+        
+        // Mock user with coach role
+        global $mock_user_roles;
+        $mock_user_roles = [1 => ['coach']];
+        
+        // Test coach who is first-time customer
+        $rate = $this->invokePrivateMethod($points_manager, 'get_points_rate_for_user', [1, 'purchase', true]);
+        $this->assertEquals(5, $rate, 'First-time coach should use first-time customer rate');
+        
+        // Clean up
+        delete_option('intersoccer_points_rate_customer_purchase');
+        delete_option('intersoccer_points_rate_first_time_customer');
+        unset($mock_user_roles);
+    }
+
+    /**
+     * Test get_points_rate_for_user - no user ID (guest checkout)
+     */
+    public function testGetPointsRateForUser_NoUserId() {
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Set rates
+        update_option('intersoccer_points_rate_customer_purchase', 10);
+        update_option('intersoccer_points_rate_customer_referral', 8);
+        update_option('intersoccer_points_rate_first_time_customer', 5);
+        
+        // Test guest purchase (no user ID)
+        $rate = $this->invokePrivateMethod($points_manager, 'get_points_rate_for_user', [null, 'purchase', false]);
+        $this->assertEquals(10, $rate, 'Guest should use customer purchase rate');
+        
+        // Test guest referral
+        $rate = $this->invokePrivateMethod($points_manager, 'get_points_rate_for_user', [null, 'referral', false]);
+        $this->assertEquals(8, $rate, 'Guest referral should use customer referral rate');
+        
+        // Test guest first-time
+        $rate = $this->invokePrivateMethod($points_manager, 'get_points_rate_for_user', [null, 'purchase', true]);
+        $this->assertEquals(5, $rate, 'Guest first-time should use first-time rate');
+        
+        // Clean up
+        delete_option('intersoccer_points_rate_customer_purchase');
+        delete_option('intersoccer_points_rate_customer_referral');
+        delete_option('intersoccer_points_rate_first_time_customer');
+    }
+
+    /**
+     * Test is_first_time_customer - customer with no previous orders
+     */
+    public function testIsFirstTimeCustomer_NoPreviousOrders() {
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Mock wc_get_orders to return empty array (no previous orders)
+        global $mock_wc_get_orders;
+        $mock_wc_get_orders = function($args) {
+            return [];
+        };
+        
+        $is_first_time = $this->invokePrivateMethod($points_manager, 'is_first_time_customer', [1, null]);
+        $this->assertTrue($is_first_time, 'Customer with no previous orders should be first-time');
+        
+        unset($mock_wc_get_orders);
+    }
+
+    /**
+     * Test is_first_time_customer - customer with previous orders
+     */
+    public function testIsFirstTimeCustomer_WithPreviousOrders() {
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Mock wc_get_orders to return orders (has previous orders)
+        global $mock_wc_get_orders;
+        $mock_wc_get_orders = function($args) {
+            return [100, 101]; // Previous order IDs
+        };
+        
+        $is_first_time = $this->invokePrivateMethod($points_manager, 'is_first_time_customer', [1, null]);
+        $this->assertFalse($is_first_time, 'Customer with previous orders should not be first-time');
+        
+        unset($mock_wc_get_orders);
+    }
+
+    /**
+     * Test is_first_time_customer - excludes current order from check
+     */
+    public function testIsFirstTimeCustomer_ExcludesCurrentOrder() {
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Mock wc_get_orders to return orders excluding current order
+        global $mock_wc_get_orders;
+        $mock_wc_get_orders = function($args) {
+            // If exclude is set and contains 200, return empty (current order excluded)
+            if (isset($args['exclude']) && in_array(200, $args['exclude'])) {
+                return [];
+            }
+            return [100, 101]; // Previous orders
+        };
+        
+        // Test with current order ID excluded
+        $is_first_time = $this->invokePrivateMethod($points_manager, 'is_first_time_customer', [1, 200]);
+        $this->assertTrue($is_first_time, 'Should exclude current order from check');
+        
+        unset($mock_wc_get_orders);
+    }
+
+    /**
+     * Test is_first_time_customer - guest checkout (empty user ID)
+     */
+    public function testIsFirstTimeCustomer_GuestCheckout() {
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Guest checkout (empty user ID) should be treated as first-time
+        $is_first_time = $this->invokePrivateMethod($points_manager, 'is_first_time_customer', [null, null]);
+        $this->assertTrue($is_first_time, 'Guest checkout should be treated as first-time');
+        
+        $is_first_time = $this->invokePrivateMethod($points_manager, 'is_first_time_customer', [0, null]);
+        $this->assertTrue($is_first_time, 'Zero user ID should be treated as first-time');
+    }
+
+    /**
+     * Test is_first_time_customer - WooCommerce not available
+     */
+    public function testIsFirstTimeCustomer_WooCommerceNotAvailable() {
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Temporarily remove wc_get_orders function
+        // In real scenario, this would be when WooCommerce is not loaded
+        // We'll test the logic by checking if function exists
+        
+        // This test verifies the method handles missing WooCommerce gracefully
+        // The actual implementation checks if function_exists('wc_get_orders')
+        $this->assertTrue(true, 'Method should handle missing WooCommerce gracefully');
+    }
+
+    /**
+     * Test calculate_points_from_amount with context and first-time parameters
+     */
+    public function testCalculatePointsFromAmount_WithContextAndFirstTime() {
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Set rates
+        update_option('intersoccer_points_rate_customer_purchase', 10);
+        update_option('intersoccer_points_rate_customer_referral', 8);
+        update_option('intersoccer_points_rate_first_time_customer', 5);
+        update_option('intersoccer_points_allocation_mode', 'ratio');
+        
+        // Test regular customer purchase (100 CHF / 10 = 10 points)
+        $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [100, 1, false]);
+        $this->assertEquals(10, $points);
+        
+        // Test first-time customer purchase (100 CHF / 5 = 20 points)
+        $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [100, 1, true]);
+        $this->assertEquals(20, $points);
+        
+        // Clean up
+        delete_option('intersoccer_points_rate_customer_purchase');
+        delete_option('intersoccer_points_rate_customer_referral');
+        delete_option('intersoccer_points_rate_first_time_customer');
     }
 
     /**

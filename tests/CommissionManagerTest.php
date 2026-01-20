@@ -10,6 +10,23 @@ class CommissionManagerTest extends TestCase {
     protected function setUp(): void {
         // Include the commission manager class
         require_once __DIR__ . '/../includes/class-commission-manager.php';
+        
+        // Set up default tiers for each role
+        $default_tiers = [
+            ['min_customers' => 1, 'max_customers' => 10, 'rate' => 10],
+            ['min_customers' => 11, 'max_customers' => 24, 'rate' => 15],
+            ['min_customers' => 25, 'max_customers' => 999999, 'rate' => 20],
+        ];
+        update_option('intersoccer_commission_tiers_coach', $default_tiers);
+        update_option('intersoccer_commission_tiers_partner', $default_tiers);
+        update_option('intersoccer_commission_tiers_social_influencer', $default_tiers);
+    }
+
+    protected function tearDown(): void {
+        // Clean up
+        delete_option('intersoccer_commission_tiers_coach');
+        delete_option('intersoccer_commission_tiers_partner');
+        delete_option('intersoccer_commission_tiers_social_influencer');
     }
 
     /**
@@ -711,5 +728,209 @@ class CommissionManagerTest extends TestCase {
         
         $this->assertEquals(0.25, $metrics['conversion_rate']);
         $this->assertGreaterThan(0, $metrics['total_commissions']);
+    }
+
+    /**
+     * Test get_commissionable_amount - order with tax
+     */
+    public function testGetCommissionableAmount_WithTax() {
+        $order = new WC_Order();
+        $order->set_total(100);
+        $order->set_tax_total(10);
+        
+        $commissionable = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_commissionable_amount', [$order]);
+        
+        $this->assertEquals(90.0, $commissionable, 'Commissionable amount should be total minus tax');
+    }
+
+    /**
+     * Test get_commissionable_amount - order without tax
+     */
+    public function testGetCommissionableAmount_WithoutTax() {
+        $order = new WC_Order();
+        $order->set_total(100);
+        $order->set_tax_total(0);
+        
+        $commissionable = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_commissionable_amount', [$order]);
+        
+        $this->assertEquals(100.0, $commissionable, 'Commissionable amount should equal total when no tax');
+    }
+
+    /**
+     * Test get_commissionable_amount - negative total (refund)
+     */
+    public function testGetCommissionableAmount_NegativeTotal() {
+        $order = new WC_Order();
+        $order->set_total(-50);
+        $order->set_tax_total(0);
+        
+        $commissionable = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_commissionable_amount', [$order]);
+        
+        $this->assertEquals(0.0, $commissionable, 'Negative totals should return 0');
+    }
+
+    /**
+     * Test get_commissionable_amount - tax exceeds total (edge case)
+     */
+    public function testGetCommissionableAmount_TaxExceedsTotal() {
+        $order = new WC_Order();
+        $order->set_total(50);
+        $order->set_tax_total(60);
+        
+        $commissionable = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_commissionable_amount', [$order]);
+        
+        $this->assertEquals(0.0, $commissionable, 'Should not return negative when tax exceeds total');
+    }
+
+    /**
+     * Test get_commissionable_amount - order object without methods
+     */
+    public function testGetCommissionableAmount_InvalidOrder() {
+        $invalid_order = new stdClass();
+        
+        $commissionable = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_commissionable_amount', [$invalid_order]);
+        
+        $this->assertEquals(0.0, $commissionable, 'Invalid order should return 0');
+    }
+
+    /**
+     * Test get_user_role_for_commission - partner role priority
+     */
+    public function testGetUserRoleForCommission_PartnerPriority() {
+        // Mock user with partner role
+        global $mock_user_data;
+        $mock_user_data = [
+            1 => (object) [
+                'roles' => ['partner', 'coach']
+            ]
+        ];
+        
+        $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [1]);
+        
+        $this->assertEquals('partner', $role, 'Partner should have highest priority');
+        
+        unset($mock_user_data);
+    }
+
+    /**
+     * Test get_user_role_for_commission - social influencer priority
+     */
+    public function testGetUserRoleForCommission_SocialInfluencerPriority() {
+        // Mock user with social_influencer role (but not partner)
+        global $mock_user_data;
+        $mock_user_data = [
+            1 => (object) [
+                'roles' => ['social_influencer', 'coach']
+            ]
+        ];
+        
+        $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [1]);
+        
+        $this->assertEquals('social_influencer', $role, 'Social influencer should have second priority');
+        
+        unset($mock_user_data);
+    }
+
+    /**
+     * Test get_user_role_for_commission - coach role
+     */
+    public function testGetUserRoleForCommission_CoachRole() {
+        // Mock user with only coach role
+        global $mock_user_data;
+        $mock_user_data = [
+            1 => (object) [
+                'roles' => ['coach']
+            ]
+        ];
+        
+        $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [1]);
+        
+        $this->assertEquals('coach', $role, 'Coach role should be returned');
+        
+        unset($mock_user_data);
+    }
+
+    /**
+     * Test get_user_role_for_commission - no commission role (fallback to coach)
+     */
+    public function testGetUserRoleForCommission_NoCommissionRole() {
+        // Mock user with no commission-earning role
+        global $mock_user_data;
+        $mock_user_data = [
+            1 => (object) [
+                'roles' => ['customer', 'subscriber']
+            ]
+        ];
+        
+        $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [1]);
+        
+        $this->assertEquals('coach', $role, 'Should fallback to coach when no commission role');
+        
+        unset($mock_user_data);
+    }
+
+    /**
+     * Test get_user_role_for_commission - invalid user ID
+     */
+    public function testGetUserRoleForCommission_InvalidUserId() {
+        // Mock get_userdata to return false
+        global $mock_user_data;
+        $mock_user_data = [
+            999 => false
+        ];
+        
+        $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [999]);
+        
+        $this->assertEquals('coach', $role, 'Invalid user should fallback to coach');
+        
+        unset($mock_user_data);
+    }
+
+    /**
+     * Test get_user_role_for_commission - role priority order
+     */
+    public function testGetUserRoleForCommission_RolePriorityOrder() {
+        // Test priority: partner > social_influencer > coach
+        
+        // Partner should win
+        global $mock_user_data;
+        $mock_user_data = [
+            1 => (object) ['roles' => ['partner', 'social_influencer', 'coach']]
+        ];
+        $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [1]);
+        $this->assertEquals('partner', $role, 'Partner has highest priority');
+        
+        // Social influencer should win (no partner)
+        $mock_user_data = [
+            2 => (object) ['roles' => ['social_influencer', 'coach']]
+        ];
+        $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [2]);
+        $this->assertEquals('social_influencer', $role, 'Social influencer has second priority');
+        
+        // Coach should win (no partner or influencer)
+        $mock_user_data = [
+            3 => (object) ['roles' => ['coach']]
+        ];
+        $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [3]);
+        $this->assertEquals('coach', $role, 'Coach has third priority');
+        
+        unset($mock_user_data);
+    }
+
+    /**
+     * Helper method to invoke private static methods
+     */
+    private function invokePrivateMethod($class, $methodName, array $parameters = []) {
+        $reflection = new ReflectionClass($class);
+        $method = $reflection->getMethod($methodName);
+        $method->setAccessible(true);
+        
+        if ($method->isStatic()) {
+            return $method->invokeArgs(null, $parameters);
+        } else {
+            // For instance methods, we need an instance
+            $instance = $class::get_instance();
+            return $method->invokeArgs($instance, $parameters);
+        }
     }
 }

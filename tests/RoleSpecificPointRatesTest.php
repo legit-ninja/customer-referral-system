@@ -3,13 +3,15 @@
 use PHPUnit\Framework\TestCase;
 
 /**
- * Test suite for Role-Specific Point Acquisition Rates (Phase 0)
+ * Test suite for Point Acquisition Rates (Phase 0)
  * 
- * Tests different point earning rates for different user roles:
- * - Customers
- * - Coaches
- * - Partners
- * - Social Influencers
+ * Tests different point earning rates for customers:
+ * - Customer Purchase Rate
+ * - Customer Referral Rate
+ * - First Time Customer Rate
+ * 
+ * Note: Coaches, Partners, and Social Influencers use customer rates when making purchases.
+ * They are rewarded through commission tiers rather than special point rates.
  */
 class RoleSpecificPointRatesTest extends TestCase {
 
@@ -18,86 +20,120 @@ class RoleSpecificPointRatesTest extends TestCase {
     }
 
     /**
-     * Test default rates are set correctly
+     * Test default rates are set correctly for all rate types
      */
     public function testDefaultRatesAreSetCorrectly() {
         $default_rates = [
-            'customer' => 10,           // CHF 10 = 1 point
-            'coach' => 10,              // CHF 10 = 1 point
-            'partner' => 10,            // CHF 10 = 1 point
-            'social_influencer' => 10,  // CHF 10 = 1 point
+            'customer_purchase' => 10,        // CHF 10 = 1 point
+            'customer_referral' => 10,        // CHF 10 = 1 point
+            'first_time_customer' => 10,      // CHF 10 = 1 point
         ];
 
-        foreach ($default_rates as $role => $rate) {
-            $this->assertEquals(10, $rate, "Default rate for {$role} should be 10");
+        foreach ($default_rates as $rate_type => $rate) {
+            $this->assertEquals(10, $rate, "Default rate for {$rate_type} should be 10");
             $this->assertIsInt($rate, "Rate should be integer");
         }
     }
 
     /**
-     * Test customer earns points at standard rate
+     * Test first-time customer earns points at first-time customer rate
      */
-    public function testCustomerEarnsPointsAtStandardRate() {
+    public function testFirstTimeCustomerEarnsPointsAtFirstTimeCustomerRate() {
+        $rate = 5; // CHF 5 = 1 point (better rate for first-time customers)
+        $spent = 100; // CHF
+        $expected_points = (int) floor($spent / $rate);
+        
+        $this->assertEquals(20, $expected_points, 'First-time customer with better rate earns more points');
+    }
+
+    /**
+     * Test first-time customer rate is better than regular customer purchase rate
+     */
+    public function testFirstTimeCustomerRateIsBetterThanRegularCustomerRate() {
+        $first_time_rate = 5;  // Better rate for first-time
+        $regular_rate = 10;    // Standard rate
+        $spent = 100;
+        
+        $first_time_points = (int) floor($spent / $first_time_rate);  // 20 points
+        $regular_points = (int) floor($spent / $regular_rate);        // 10 points
+        
+        $this->assertGreaterThan($regular_points, $first_time_points, 
+            'First-time customers should earn more points than regular customers');
+    }
+
+    /**
+     * Test customer purchase rate (regular customers, not first-time)
+     */
+    public function testCustomerPurchaseRate() {
         $rate = 10; // CHF 10 = 1 point
         $spent = 100; // CHF
         $expected_points = (int) floor($spent / $rate);
         
-        $this->assertEquals(10, $expected_points);
+        $this->assertEquals(10, $expected_points, 'Regular customer purchase rate');
     }
 
     /**
-     * Test coach earns points at configured rate
+     * Test customer referral rate
      */
-    public function testCoachEarnsPointsAtConfiguredRate() {
-        $rate = 8; // CHF 8 = 1 point (better rate)
+    public function testCustomerReferralRate() {
+        $rate = 8; // CHF 8 = 1 point (better rate for referrals)
         $spent = 100; // CHF
         $expected_points = (int) floor($spent / $rate);
         
-        $this->assertEquals(12, $expected_points, 'Coach with better rate earns more points');
+        $this->assertEquals(12, $expected_points, 'Customer referral rate');
     }
 
+
     /**
-     * Test partner earns points at configured rate
+     * Test coaches use customer purchase rate (no special rate)
      */
-    public function testPartnerEarnsPointsAtConfiguredRate() {
-        $rate = 5; // CHF 5 = 1 point (best rate)
+    public function testCoachUsesCustomerPurchaseRate() {
+        $customer_rate = 10; // CHF 10 = 1 point
         $spent = 100; // CHF
-        $expected_points = (int) floor($spent / $rate);
+        $expected_points = (int) floor($spent / $customer_rate);
         
-        $this->assertEquals(20, $expected_points, 'Partner with best rate earns most points');
+        $this->assertEquals(10, $expected_points, 'Coach uses customer purchase rate');
     }
 
     /**
-     * Test social influencer earns points at configured rate
+     * Test partners use customer purchase rate (no special rate)
      */
-    public function testSocialInfluencerEarnsPointsAtConfiguredRate() {
-        $rate = 7; // CHF 7 = 1 point
+    public function testPartnerUsesCustomerPurchaseRate() {
+        $customer_rate = 10; // CHF 10 = 1 point
         $spent = 100; // CHF
-        $expected_points = (int) floor($spent / $rate);
+        $expected_points = (int) floor($spent / $customer_rate);
         
-        $this->assertEquals(14, $expected_points, 'Social influencer earns at configured rate');
+        $this->assertEquals(10, $expected_points, 'Partner uses customer purchase rate');
     }
 
     /**
-     * Test different roles earn different points for same amount
+     * Test social influencers use customer purchase rate (no special rate)
      */
-    public function testDifferentRolesEarnDifferentPoints() {
+    public function testSocialInfluencerUsesCustomerPurchaseRate() {
+        $customer_rate = 10; // CHF 10 = 1 point
+        $spent = 100; // CHF
+        $expected_points = (int) floor($spent / $customer_rate);
+        
+        $this->assertEquals(10, $expected_points, 'Social influencer uses customer purchase rate');
+    }
+
+    /**
+     * Test all roles (coaches, partners, influencers) use customer rate
+     */
+    public function testAllRolesUseCustomerRate() {
         $spent = 100; // Same amount for all
-        
-        $customer_rate = 10;    // Standard
-        $coach_rate = 8;        // Better
-        $partner_rate = 5;      // Best
+        $customer_rate = 10; // All roles use this rate
         
         $customer_points = (int) floor($spent / $customer_rate);   // 10 points
-        $coach_points = (int) floor($spent / $coach_rate);         // 12 points
-        $partner_points = (int) floor($spent / $partner_rate);     // 20 points
+        $coach_points = (int) floor($spent / $customer_rate);      // 10 points (same as customer)
+        $partner_points = (int) floor($spent / $customer_rate);    // 10 points (same as customer)
         
         $this->assertEquals(10, $customer_points);
-        $this->assertEquals(12, $coach_points);
-        $this->assertEquals(20, $partner_points);
+        $this->assertEquals(10, $coach_points, 'Coach should use customer rate');
+        $this->assertEquals(10, $partner_points, 'Partner should use customer rate');
         
-        $this->assertGreaterThan($customer_points, $coach_points, 'Coach earns more than customer');
-        $this->assertGreaterThan($coach_points, $partner_points, 'Partner earns more than coach');
+        $this->assertEquals($customer_points, $coach_points, 'Coach should earn same as customer');
+        $this->assertEquals($customer_points, $partner_points, 'Partner should earn same as customer');
     }
 
     /**
@@ -231,41 +267,35 @@ class RoleSpecificPointRatesTest extends TestCase {
     }
 
     /**
-     * Test users with multiple roles use first matching rate
+     * Test users with multiple roles use customer rate (no role-specific rates)
      */
-    public function testMultipleRolesUseFirstMatch() {
-        // User is both customer and coach
+    public function testMultipleRolesUseCustomerRate() {
+        // User is both customer and coach - should use customer rate
         $user_roles = ['customer', 'coach'];
+        $customer_rate = 10; // All roles use this rate
         
-        // Priority: partner > social_influencer > coach > customer
-        $role_priority = ['partner', 'social_influencer', 'coach', 'customer'];
+        // Regardless of roles, use customer purchase rate
+        $rate_to_use = $customer_rate;
         
-        $matched_role = null;
-        foreach ($role_priority as $priority_role) {
-            if (in_array($priority_role, $user_roles)) {
-                $matched_role = $priority_role;
-                break;
-            }
-        }
-        
-        $this->assertEquals('coach', $matched_role, 'Should match highest priority role');
+        $this->assertEquals(10, $rate_to_use, 'All roles should use customer purchase rate');
     }
 
     /**
-     * Test rate options are stored correctly
+     * Test rate options are stored correctly for all rate types
      */
     public function testRateOptionsAreStoredCorrectly() {
         $option_names = [
-            'intersoccer_points_rate_customer',
-            'intersoccer_points_rate_coach',
-            'intersoccer_points_rate_partner',
-            'intersoccer_points_rate_social_influencer',
+            'intersoccer_points_rate_customer_purchase',
+            'intersoccer_points_rate_customer_referral',
+            'intersoccer_points_rate_first_time_customer',
         ];
 
         foreach ($option_names as $option_name) {
             $this->assertIsString($option_name);
             $this->assertStringStartsWith('intersoccer_points_rate_', $option_name);
         }
+        
+        $this->assertCount(3, $option_names, 'Should have 3 rate option types');
     }
 
     /**
@@ -283,42 +313,37 @@ class RoleSpecificPointRatesTest extends TestCase {
     }
 
     /**
-     * Test calculating points with coach rate (better than customer)
+     * Test calculating points for coaches (uses customer rate)
      */
-    public function testCalculatingPointsWithCoachRate() {
-        $customer_rate = 10;
-        $coach_rate = 8; // Better rate
+    public function testCalculatingPointsForCoach() {
+        $customer_rate = 10; // Coach uses customer rate
         $amount = 100;
         
-        $customer_points = (int) floor($amount / $customer_rate);
-        $coach_points = (int) floor($amount / $coach_rate);
+        $coach_points = (int) floor($amount / $customer_rate);
         
-        $this->assertGreaterThan($customer_points, $coach_points, 
-            'Coach should earn more points than customer for same amount');
+        $this->assertEquals(10, $coach_points, 
+            'Coach should earn same points as customer for same amount');
     }
 
     /**
-     * Test rate comparison scenarios
+     * Test rate comparison scenarios - all roles use customer rate
      */
     public function testRateComparisonScenarios() {
         $amount = 1000; // CHF
+        $customer_rate = 10; // All roles use this rate
         
-        $rates = [
-            'customer' => 10,
-            'coach' => 8,
-            'partner' => 5,
-            'social_influencer' => 7,
+        $points_earned = [
+            'customer' => (int) floor($amount / $customer_rate),
+            'coach' => (int) floor($amount / $customer_rate),
+            'partner' => (int) floor($amount / $customer_rate),
+            'social_influencer' => (int) floor($amount / $customer_rate),
         ];
         
-        $points_earned = [];
-        foreach ($rates as $role => $rate) {
-            $points_earned[$role] = (int) floor($amount / $rate);
-        }
-        
-        // Partner should earn most (lowest rate number = best earning)
-        $this->assertEquals(200, $points_earned['partner']);
-        $this->assertGreaterThan($points_earned['coach'], $points_earned['partner']);
-        $this->assertGreaterThan($points_earned['customer'], $points_earned['partner']);
+        // All should earn the same (100 points)
+        $this->assertEquals(100, $points_earned['customer']);
+        $this->assertEquals(100, $points_earned['coach'], 'Coach should earn same as customer');
+        $this->assertEquals(100, $points_earned['partner'], 'Partner should earn same as customer');
+        $this->assertEquals(100, $points_earned['social_influencer'], 'Social influencer should earn same as customer');
     }
 
     /**
@@ -408,17 +433,16 @@ class RoleSpecificPointRatesTest extends TestCase {
     }
 
     /**
-     * Test admin can set custom rates
+     * Test admin can set custom rates for customers
      */
     public function testAdminCanSetCustomRates() {
         $custom_rates = [
-            'customer' => 12,
-            'coach' => 7,
-            'partner' => 4,
-            'social_influencer' => 6,
+            'customer_purchase' => 12,
+            'customer_referral' => 8,
+            'first_time_customer' => 5,
         ];
 
-        foreach ($custom_rates as $role => $rate) {
+        foreach ($custom_rates as $rate_type => $rate) {
             $this->assertIsInt($rate);
             $this->assertGreaterThan(0, $rate);
         }
@@ -439,16 +463,102 @@ class RoleSpecificPointRatesTest extends TestCase {
     }
 
     /**
-     * Test all roles can be configured
+     * Test all rate types can be configured
      */
-    public function testAllRolesCanBeConfigured() {
-        $roles = ['customer', 'coach', 'partner', 'social_influencer'];
+    public function testAllRateTypesCanBeConfigured() {
+        $rate_types = [
+            'customer_purchase',
+            'customer_referral',
+            'first_time_customer',
+        ];
         
-        $this->assertCount(4, $roles, 'Should have 4 configurable roles');
-        $this->assertContains('customer', $roles);
-        $this->assertContains('coach', $roles);
-        $this->assertContains('partner', $roles);
-        $this->assertContains('social_influencer', $roles);
+        $this->assertCount(3, $rate_types, 'Should have 3 configurable rate types');
+        $this->assertContains('customer_purchase', $rate_types);
+        $this->assertContains('customer_referral', $rate_types);
+        $this->assertContains('first_time_customer', $rate_types);
+    }
+
+    /**
+     * Test first-time customer detection logic
+     */
+    public function testFirstTimeCustomerDetection() {
+        // First-time customer has no previous orders
+        $has_previous_orders = false;
+        $is_first_time = !$has_previous_orders;
+        
+        $this->assertTrue($is_first_time, 'Customer with no previous orders is first-time');
+        
+        // Returning customer has previous orders
+        $has_previous_orders = true;
+        $is_first_time = !$has_previous_orders;
+        
+        $this->assertFalse($is_first_time, 'Customer with previous orders is not first-time');
+    }
+
+    /**
+     * Test first-time customer rate takes precedence over regular customer rate
+     */
+    public function testFirstTimeCustomerRateTakesPrecedence() {
+        $first_time_rate = 5;   // Better rate
+        $regular_rate = 10;     // Standard rate
+        $spent = 100;
+        $is_first_time = true;
+        
+        $rate_to_use = $is_first_time ? $first_time_rate : $regular_rate;
+        $points = (int) floor($spent / $rate_to_use);
+        
+        $this->assertEquals(20, $points, 'First-time customer should use first-time rate');
+        $this->assertEquals($first_time_rate, $rate_to_use, 'Should use first-time rate');
+    }
+
+    /**
+     * Test regular customer uses purchase rate when not first-time
+     */
+    public function testRegularCustomerUsesPurchaseRate() {
+        $first_time_rate = 5;
+        $regular_rate = 10;
+        $spent = 100;
+        $is_first_time = false;
+        
+        $rate_to_use = $is_first_time ? $first_time_rate : $regular_rate;
+        $points = (int) floor($spent / $rate_to_use);
+        
+        $this->assertEquals(10, $points, 'Regular customer should use purchase rate');
+        $this->assertEquals($regular_rate, $rate_to_use, 'Should use purchase rate');
+    }
+
+    /**
+     * Test all rate settings validation
+     */
+    public function testAllRateSettingsValidation() {
+        $rates = [
+            'customer_purchase' => 10,
+            'customer_referral' => 8,
+            'first_time_customer' => 5,
+        ];
+        
+        foreach ($rates as $rate_type => $rate) {
+            // Validate: must be positive integer
+            $this->assertGreaterThan(0, $rate, "Rate {$rate_type} must be positive");
+            $this->assertIsInt($rate, "Rate {$rate_type} must be integer");
+            $this->assertLessThanOrEqual(100, $rate, "Rate {$rate_type} should not exceed 100");
+        }
+    }
+
+    /**
+     * Test first-time customer status takes precedence for all users (including coaches/partners)
+     */
+    public function testFirstTimeCustomerStatusTakesPrecedence() {
+        // A coach who is also a first-time customer should use first-time rate
+        $is_first_time = true;
+        $first_time_rate = 5;
+        $customer_rate = 10;
+        
+        // First-time status takes precedence (coaches/partners use customer rates)
+        $rate_to_use = $is_first_time ? $first_time_rate : $customer_rate;
+        
+        $this->assertEquals($first_time_rate, $rate_to_use, 
+            'First-time customer status should take precedence for all users');
     }
 
     /**
@@ -456,14 +566,14 @@ class RoleSpecificPointRatesTest extends TestCase {
      */
     public function testRateChangesAreAuditable() {
         $change_log = [
-            'role' => 'coach',
+            'rate_type' => 'customer_purchase',
             'old_rate' => 10,
             'new_rate' => 8,
             'changed_by' => 'admin',
             'timestamp' => time(),
         ];
 
-        $this->assertEquals('coach', $change_log['role']);
+        $this->assertEquals('customer_purchase', $change_log['rate_type']);
         $this->assertEquals(10, $change_log['old_rate']);
         $this->assertEquals(8, $change_log['new_rate']);
         $this->assertIsInt($change_log['timestamp']);
@@ -502,6 +612,185 @@ class RoleSpecificPointRatesTest extends TestCase {
             $this->assertGreaterThanOrEqual($min_reasonable, $rate);
             $this->assertLessThanOrEqual($max_reasonable, $rate);
         }
+    }
+
+    /**
+     * Integration test: Coach making purchase uses customer purchase rate
+     */
+    public function testIntegration_CoachPurchaseUsesCustomerRate() {
+        require_once __DIR__ . '/../includes/class-points-manager.php';
+        
+        // Set customer purchase rate
+        update_option('intersoccer_points_rate_customer_purchase', 10);
+        update_option('intersoccer_points_allocation_mode', 'ratio');
+        
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Mock coach user
+        global $mock_user_data;
+        $mock_user_data = [
+            1 => (object) [
+                'ID' => 1,
+                'roles' => ['coach']
+            ]
+        ];
+        
+        // Calculate points for coach purchase (100 CHF)
+        $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [100, 1, false]);
+        
+        // Coach should earn same points as customer (100 / 10 = 10 points)
+        $this->assertEquals(10, $points, 'Coach should earn points at customer purchase rate');
+        
+        // Clean up
+        delete_option('intersoccer_points_rate_customer_purchase');
+        unset($mock_user_data);
+    }
+
+    /**
+     * Integration test: Partner making purchase uses customer purchase rate
+     */
+    public function testIntegration_PartnerPurchaseUsesCustomerRate() {
+        require_once __DIR__ . '/../includes/class-points-manager.php';
+        
+        // Set customer purchase rate
+        update_option('intersoccer_points_rate_customer_purchase', 10);
+        update_option('intersoccer_points_allocation_mode', 'ratio');
+        
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Mock partner user
+        global $mock_user_data;
+        $mock_user_data = [
+            1 => (object) [
+                'ID' => 1,
+                'roles' => ['partner']
+            ]
+        ];
+        
+        // Calculate points for partner purchase (100 CHF)
+        $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [100, 1, false]);
+        
+        // Partner should earn same points as customer (100 / 10 = 10 points)
+        $this->assertEquals(10, $points, 'Partner should earn points at customer purchase rate');
+        
+        // Clean up
+        delete_option('intersoccer_points_rate_customer_purchase');
+        unset($mock_user_data);
+    }
+
+    /**
+     * Integration test: Social influencer making purchase uses customer purchase rate
+     */
+    public function testIntegration_SocialInfluencerPurchaseUsesCustomerRate() {
+        require_once __DIR__ . '/../includes/class-points-manager.php';
+        
+        // Set customer purchase rate
+        update_option('intersoccer_points_rate_customer_purchase', 10);
+        update_option('intersoccer_points_allocation_mode', 'ratio');
+        
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Mock social influencer user
+        global $mock_user_data;
+        $mock_user_data = [
+            1 => (object) [
+                'ID' => 1,
+                'roles' => ['social_influencer']
+            ]
+        ];
+        
+        // Calculate points for social influencer purchase (100 CHF)
+        $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [100, 1, false]);
+        
+        // Social influencer should earn same points as customer (100 / 10 = 10 points)
+        $this->assertEquals(10, $points, 'Social influencer should earn points at customer purchase rate');
+        
+        // Clean up
+        delete_option('intersoccer_points_rate_customer_purchase');
+        unset($mock_user_data);
+    }
+
+    /**
+     * Integration test: First-time coach uses first-time customer rate
+     */
+    public function testIntegration_FirstTimeCoachUsesFirstTimeRate() {
+        require_once __DIR__ . '/../includes/class-points-manager.php';
+        
+        // Set rates
+        update_option('intersoccer_points_rate_customer_purchase', 10);
+        update_option('intersoccer_points_rate_first_time_customer', 5);
+        update_option('intersoccer_points_allocation_mode', 'ratio');
+        
+        $points_manager = new InterSoccer_Points_Manager();
+        
+        // Mock coach user
+        global $mock_user_data;
+        $mock_user_data = [
+            1 => (object) [
+                'ID' => 1,
+                'roles' => ['coach']
+            ]
+        ];
+        
+        // Calculate points for first-time coach purchase (100 CHF)
+        $points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [100, 1, true]);
+        
+        // First-time coach should earn points at first-time customer rate (100 / 5 = 20 points)
+        $this->assertEquals(20, $points, 'First-time coach should earn points at first-time customer rate');
+        
+        // Clean up
+        delete_option('intersoccer_points_rate_customer_purchase');
+        delete_option('intersoccer_points_rate_first_time_customer');
+        unset($mock_user_data);
+    }
+
+    /**
+     * Integration test: All roles earn same points for same purchase amount
+     */
+    public function testIntegration_AllRolesEarnSamePoints() {
+        require_once __DIR__ . '/../includes/class-points-manager.php';
+        
+        // Set customer purchase rate
+        update_option('intersoccer_points_rate_customer_purchase', 10);
+        update_option('intersoccer_points_allocation_mode', 'ratio');
+        
+        $points_manager = new InterSoccer_Points_Manager();
+        $purchase_amount = 100;
+        
+        // Mock different users
+        global $mock_user_data;
+        $mock_user_data = [
+            1 => (object) ['ID' => 1, 'roles' => ['customer']],
+            2 => (object) ['ID' => 2, 'roles' => ['coach']],
+            3 => (object) ['ID' => 3, 'roles' => ['partner']],
+            4 => (object) ['ID' => 4, 'roles' => ['social_influencer']],
+        ];
+        
+        // Calculate points for each role
+        $customer_points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [$purchase_amount, 1, false]);
+        $coach_points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [$purchase_amount, 2, false]);
+        $partner_points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [$purchase_amount, 3, false]);
+        $influencer_points = $this->invokePrivateMethod($points_manager, 'calculate_points_from_amount', [$purchase_amount, 4, false]);
+        
+        // All should earn the same (10 points)
+        $this->assertEquals(10, $customer_points);
+        $this->assertEquals(10, $coach_points, 'Coach should earn same as customer');
+        $this->assertEquals(10, $partner_points, 'Partner should earn same as customer');
+        $this->assertEquals(10, $influencer_points, 'Social influencer should earn same as customer');
+        
+        // Clean up
+        delete_option('intersoccer_points_rate_customer_purchase');
+        unset($mock_user_data);
+    }
+
+    /**
+     * Helper method to invoke private methods
+     */
+    private function invokePrivateMethod($object, $methodName, array $parameters = []) {
+        $reflection = new ReflectionClass(get_class($object));
+        $method = $reflection->getMethod($methodName);
+        $method->setAccessible(true);
+        return $method->invokeArgs($object, $parameters);
     }
 }
 
