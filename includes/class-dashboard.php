@@ -3,9 +3,58 @@
 
 class InterSoccer_Referral_Dashboard {
 
+    /**
+     * Guard to prevent rendering the customer dashboard multiple times per request.
+     * This can happen if the dashboard is embedded via shortcode/widget AND also rendered via a WooCommerce endpoint.
+     *
+     * @var bool
+     */
+    private static $customer_dashboard_rendered = false;
+
     public function __construct() {
         add_shortcode('intersoccer_coach_dashboard', [$this, 'render_dashboard']);
         add_shortcode('intersoccer_customer_dashboard', [$this, 'render_customer_dashboard']);
+        
+        // Register WPML strings early on init hook
+        add_action('init', [$this, 'register_wpml_strings'], 20);
+    }
+    
+    /**
+     * Register all dashboard strings with WPML for translation
+     */
+    public function register_wpml_strings() {
+        if (!defined('ICL_SITEPRESS_VERSION')) {
+            return;
+        }
+        
+        // Register all customer dashboard strings
+        $strings = [
+            'customer_dashboard_share_earn' => 'Share & Earn',
+            'customer_dashboard_earn_10_percent' => 'Earn 10% of their purchase value',
+            'customer_dashboard_for_every_friend' => 'for every friend who makes a purchase!',
+            'customer_dashboard_share_description' => 'Share your personalized referral code or link:',
+            'customer_dashboard_your_referral_code' => 'Your Referral Code',
+            'customer_dashboard_your_referral_link' => 'Your Referral Link',
+            'customer_dashboard_copy_code' => 'Copy Code',
+            'customer_dashboard_copy_link' => 'Copy Link',
+            'customer_dashboard_copied' => 'Copied!',
+            'customer_dashboard_whatsapp' => 'WhatsApp',
+            'customer_dashboard_facebook' => 'Facebook',
+            'customer_dashboard_email' => 'Email',
+            'customer_dashboard_whatsapp_message' => 'Join me at InterSoccer for amazing soccer training! Use my referral code: %s or visit: %s',
+            'customer_dashboard_facebook_message' => 'Join InterSoccer! Use my referral code: %s',
+            'customer_dashboard_email_subject' => 'Join InterSoccer!',
+            'customer_dashboard_email_body' => 'I thought you\'d love InterSoccer\'s soccer training programs! Use my referral code: %s or visit: %s',
+        ];
+        
+        foreach ($strings as $name => $string) {
+            // Try both methods for WPML registration
+            if (function_exists('icl_register_string')) {
+                icl_register_string('Intersoccer Referral System', $name, $string);
+            } else {
+                do_action('wpml_register_single_string', 'Intersoccer Referral System', $name, $string);
+            }
+        }
     }
 
     public function render_dashboard() {
@@ -38,12 +87,45 @@ class InterSoccer_Referral_Dashboard {
     }
 
     public function render_customer_dashboard() {
+        global $wp_query;
+        
+        // Check if we're on a WooCommerce account endpoint - if so, only render via endpoint, not widget/shortcode
+        $endpoint_slugs = ['referrals', 'parrainages', 'empfehlungen'];
+        $is_endpoint = false;
+        $detected_slug = null;
+        foreach ($endpoint_slugs as $slug) {
+            $query_var_value = get_query_var($slug, false);
+            $wp_query_var = isset($wp_query->query_vars[$slug]) ? $wp_query->query_vars[$slug] : false;
+            if ($query_var_value !== false || ($wp_query_var !== false && $wp_query_var)) {
+                $is_endpoint = true;
+                $detected_slug = $slug;
+                break;
+            }
+        }
+        
+        // If we're on an endpoint, check if we're being called from the endpoint renderer
+        // If not, return empty to prevent widget/shortcode from rendering on endpoint pages
+        if ($is_endpoint) {
+            $backtrace = wp_debug_backtrace_summary();
+            $is_from_endpoint = (strpos($backtrace, 'render_customer_account_endpoint') !== false || 
+                                 strpos($backtrace, 'woocommerce_account') !== false ||
+                                 strpos($backtrace, 'maybe_render_endpoint') !== false);
+            
+            if (!$is_from_endpoint) {
+                return '';
+            }
+        }
+        
+        // Guard against duplicate renders (endpoint + shortcode/widget, etc.)
+        if (self::$customer_dashboard_rendered) {
+            return '';
+        }
+        self::$customer_dashboard_rendered = true;
+
         if (!is_user_logged_in()) {
             return '<p>' . __('Please log in to view your referral dashboard.', 'intersoccer-referral') . '</p>';
         }
         $user_id = get_current_user_id();
-        $credits = intersoccer_get_customer_credits($user_id);
-        $referrals = get_user_meta($user_id, 'intersoccer_referrals_made', true) ?: [];
         $referral_link = InterSoccer_Referral_Handler::generate_customer_referral_link($user_id);
         $referral_code = get_user_meta($user_id, 'intersoccer_customer_referral_code', true);
         if (!$referral_code) {
@@ -51,71 +133,158 @@ class InterSoccer_Referral_Dashboard {
             $referral_code = 'CUST' . $user_id . strtoupper(str_replace('_', '', wp_generate_password(6, false)));
             update_user_meta($user_id, 'intersoccer_customer_referral_code', $referral_code);
         }
-        // Get customer badges and stats
-        $total_referrals = count($referrals);
-        $badges = $this->get_customer_badges($user_id, $total_referrals, $credits);
-        $recent_activity = $this->get_recent_customer_activity($user_id);
-        $leaderboard_position = $this->get_customer_leaderboard_position($user_id);
+        
+        // Define all strings with readable names (for WPML)
+        $string_name_share_earn = 'customer_dashboard_share_earn';
+        $string_name_earn_text = 'customer_dashboard_earn_10_percent';
+        $string_name_for_every_friend = 'customer_dashboard_for_every_friend';
+        $string_name_share_description = 'customer_dashboard_share_description';
+        $string_name_your_referral_code = 'customer_dashboard_your_referral_code';
+        $string_name_your_referral_link = 'customer_dashboard_your_referral_link';
+        $string_name_copy_code = 'customer_dashboard_copy_code';
+        $string_name_copy_link = 'customer_dashboard_copy_link';
+        $string_name_copied = 'customer_dashboard_copied';
+        $string_name_whatsapp = 'customer_dashboard_whatsapp';
+        $string_name_facebook = 'customer_dashboard_facebook';
+        $string_name_email = 'customer_dashboard_email';
+        $string_name_whatsapp_message = 'customer_dashboard_whatsapp_message';
+        $string_name_facebook_message = 'customer_dashboard_facebook_message';
+        $string_name_email_subject = 'customer_dashboard_email_subject';
+        $string_name_email_body = 'customer_dashboard_email_body';
+        
+        // Define original English strings
+        $original_share_earn = 'Share & Earn';
+        $original_earn_text = 'Earn 10% of their purchase value';
+        $original_for_every_friend = 'for every friend who makes a purchase!';
+        $original_share_description = 'Share your personalized referral code or link:';
+        $original_your_referral_code = 'Your Referral Code';
+        $original_your_referral_link = 'Your Referral Link';
+        $original_copy_code = 'Copy Code';
+        $original_copy_link = 'Copy Link';
+        $original_copied = 'Copied!';
+        $original_whatsapp = 'WhatsApp';
+        $original_facebook = 'Facebook';
+        $original_email = 'Email';
+        $original_whatsapp_message = 'Join me at InterSoccer for amazing soccer training! Use my referral code: %s or visit: %s';
+        $original_facebook_message = 'Join InterSoccer! Use my referral code: %s';
+        $original_email_subject = 'Join InterSoccer!';
+        $original_email_body = 'I thought you\'d love InterSoccer\'s soccer training programs! Use my referral code: %s or visit: %s';
+        
+        // Get translated strings - use WordPress translation as fallback
+        $share_earn_title = __('Share & Earn', 'intersoccer-referral');
+        $earn_text = __('Earn 10% of their purchase value', 'intersoccer-referral');
+        $for_every_friend = __('for every friend who makes a purchase!', 'intersoccer-referral');
+        $share_description = __('Share your personalized referral code or link:', 'intersoccer-referral');
+        $your_referral_code_label = __('Your Referral Code', 'intersoccer-referral');
+        $your_referral_link_label = __('Your Referral Link', 'intersoccer-referral');
+        $copy_code_text = __('Copy Code', 'intersoccer-referral');
+        $copy_link_text = __('Copy Link', 'intersoccer-referral');
+        $copied_text = __('Copied!', 'intersoccer-referral');
+        $whatsapp_label = __('WhatsApp', 'intersoccer-referral');
+        $facebook_label = __('Facebook', 'intersoccer-referral');
+        $email_label = __('Email', 'intersoccer-referral');
+        $whatsapp_message_template = __('Join me at InterSoccer for amazing soccer training! Use my referral code: %s or visit: %s', 'intersoccer-referral');
+        $facebook_message_template = __('Join InterSoccer! Use my referral code: %s', 'intersoccer-referral');
+        $email_subject = __('Join InterSoccer!', 'intersoccer-referral');
+        $email_body_template = __('I thought you\'d love InterSoccer\'s soccer training programs! Use my referral code: %s or visit: %s', 'intersoccer-referral');
+        
+        // Apply WPML translations if available (strings are registered on init hook)
+        if (defined('ICL_SITEPRESS_VERSION')) {
+            $current_lang = function_exists('icl_get_current_language') ? icl_get_current_language() : 'en';
+            // Try multiple methods to retrieve translations
+            // Method 1: apply_filters('wpml_translate_single_string', ...) - recommended for newer WPML versions
+            // Method 2: icl_t() - older method but still supported
+            
+            // Helper function to get translation with fallback
+            $get_translation = function($original, $name) use ($current_lang) {
+                global $wpdb;
+                
+                // First, check if translation exists in WPML database directly
+                // This is more reliable than the filter when translations exist but filter doesn't work
+                $string_id = $wpdb->get_var($wpdb->prepare(
+                    "SELECT id FROM {$wpdb->prefix}icl_strings WHERE context = %s AND name = %s",
+                    'Intersoccer Referral System',
+                    $name
+                ));
+                
+                if ($string_id) {
+                    // Check if translation exists for current language
+                    // Try both 'fr' and 'fr_FR' format (WPML might use either)
+                    $translation = $wpdb->get_row($wpdb->prepare(
+                        "SELECT value, status FROM {$wpdb->prefix}icl_string_translations WHERE string_id = %d AND language = %s",
+                        $string_id,
+                        $current_lang
+                    ));
+                    
+                    // If not found, try with underscore format (e.g., fr_FR instead of fr)
+                    if (!$translation && strlen($current_lang) == 2) {
+                        $lang_with_locale = $current_lang . '_' . strtoupper($current_lang);
+                        $translation = $wpdb->get_row($wpdb->prepare(
+                            "SELECT value, status FROM {$wpdb->prefix}icl_string_translations WHERE string_id = %d AND language = %s",
+                            $string_id,
+                            $lang_with_locale
+                        ));
+                    }
+                    
+                    // If translation found and status is 10 (complete), use it
+                    if ($translation && $translation->status == 10 && !empty($translation->value)) {
+                        return $translation->value;
+                    }
+                }
+                
+                // Fallback: Try apply_filters (newer WPML method)
+                if (has_filter('wpml_translate_single_string')) {
+                    return apply_filters('wpml_translate_single_string', $original, 'Intersoccer Referral System', $name, $current_lang);
+                }
+                
+                // Fallback: Try icl_t()
+                if (function_exists('icl_t')) {
+                    return icl_t('Intersoccer Referral System', $name, $original);
+                }
+                
+                return $original;
+            };
+            
+            $share_earn_title = $get_translation($original_share_earn, $string_name_share_earn);
+            $earn_text = $get_translation($original_earn_text, $string_name_earn_text);
+            $for_every_friend = $get_translation($original_for_every_friend, $string_name_for_every_friend);
+            $share_description = $get_translation($original_share_description, $string_name_share_description);
+            $your_referral_code_label = $get_translation($original_your_referral_code, $string_name_your_referral_code);
+            $your_referral_link_label = $get_translation($original_your_referral_link, $string_name_your_referral_link);
+            $copy_code_text = $get_translation($original_copy_code, $string_name_copy_code);
+            $copy_link_text = $get_translation($original_copy_link, $string_name_copy_link);
+            $copied_text = $get_translation($original_copied, $string_name_copied);
+            $whatsapp_label = $get_translation($original_whatsapp, $string_name_whatsapp);
+            $facebook_label = $get_translation($original_facebook, $string_name_facebook);
+            $email_label = $get_translation($original_email, $string_name_email);
+            $whatsapp_message_template = $get_translation($original_whatsapp_message, $string_name_whatsapp_message);
+            $facebook_message_template = $get_translation($original_facebook_message, $string_name_facebook_message);
+            $email_subject = $get_translation($original_email_subject, $string_name_email_subject);
+            $email_body_template = $get_translation($original_email_body, $string_name_email_body);
+        }
+        
+        // Build messages with referral code and link
+        $whatsapp_message = sprintf($whatsapp_message_template, $referral_code, $referral_link);
+        $facebook_message = sprintf($facebook_message_template, $referral_code);
+        $email_body = sprintf($email_body_template, $referral_code, $referral_link);
         
         ob_start();
         ?>
         <div class="intersoccer-customer-dashboard">
-            <div class="dashboard-header">
-                <h2>Your Referral Dashboard</h2>
-                <div class="dashboard-stats">
-                    <div class="stat-card credits-card" data-credits="<?php echo $credits; ?>">
-                        <div class="stat-icon">💰</div>
-                        <div class="stat-content">
-                            <span class="stat-number" id="credits-display"><?php echo number_format($credits, 0); ?></span>
-                            <span class="stat-label">CHF Credits</span>
-                            <?php if ($credits > 0): ?>
-                                <div class="credit-pulse"></div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                    
-                    <div class="stat-card referrals-card">
-                        <div class="stat-icon">👥</div>
-                        <div class="stat-content">
-                            <span class="stat-number"><?php echo $total_referrals; ?></span>
-                            <span class="stat-label">Friends Referred</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Customer Badges Section -->
-            <?php if (!empty($badges)): ?>
-            <div class="badges-section">
-                <h3>🏅 Your Achievements</h3>
-                <div class="badges-container">
-                    <?php foreach ($badges as $badge): ?>
-                    <div class="badge-item <?php echo $badge['class']; ?>" title="<?php echo esc_attr($badge['description']); ?>">
-                        <span class="badge-icon"><?php echo $badge['icon']; ?></span>
-                        <span class="badge-name"><?php echo $badge['name']; ?></span>
-                        <?php if ($badge['is_new']): ?>
-                            <div class="badge-new-indicator">NEW!</div>
-                        <?php endif; ?>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-            <?php endif; ?>
-
             <!-- Referral Code & Link Section -->
             <div class="referral-section">
-                <h3>📤 Share & Earn</h3>
+                <h3><?php echo esc_html($share_earn_title); ?></h3>
                 <div class="referral-info">
                     <p class="referral-description">
-                        <span class="highlight"><?php esc_html_e('Earn 10% of their purchase value', 'intersoccer-referral'); ?></span> <?php esc_html_e('for every friend who makes a purchase!', 'intersoccer-referral'); ?> 
-                        <?php esc_html_e('Share your personalized referral code or link:', 'intersoccer-referral'); ?>
+                        <span class="highlight"><?php echo esc_html($earn_text); ?></span> <?php echo esc_html($for_every_friend); ?> 
+                        <?php echo esc_html($share_description); ?>
                     </p>
                 </div>
                 
                 <!-- Referral Code Display -->
                 <div class="referral-code-container" style="margin-bottom: 20px;">
                     <label for="referral-code" style="display: block; margin-bottom: 8px; font-weight: 600; color: #2c3e50;">
-                        <?php esc_html_e('Your Referral Code', 'intersoccer-referral'); ?>
+                        <?php echo esc_html($your_referral_code_label); ?>
                     </label>
                     <div style="display: flex; gap: 10px; align-items: center;">
                         <input type="text" 
@@ -124,8 +293,8 @@ class InterSoccer_Referral_Dashboard {
                                readonly 
                                style="flex: 1; padding: 14px; border: 2px solid #667eea; border-radius: 8px; font-size: 18px; font-weight: bold; text-align: center; letter-spacing: 2px; font-family: monospace; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
                         <button id="copy-code-btn" class="copy-button" onclick="copyReferralCode()" style="padding: 14px 24px; font-size: 16px;">
-                            <span class="button-text">📋 Copy Code</span>
-                            <span class="button-success">✅ Copied!</span>
+                            <span class="button-text">📋 <?php echo esc_html($copy_code_text); ?></span>
+                            <span class="button-success">✅ <?php echo esc_html($copied_text); ?></span>
                         </button>
                     </div>
                 </div>
@@ -133,7 +302,7 @@ class InterSoccer_Referral_Dashboard {
                 <!-- Referral Link Display -->
                 <div class="referral-link-container">
                     <label for="referral-link" style="display: block; margin-bottom: 8px; font-weight: 600; color: #2c3e50;">
-                        <?php esc_html_e('Your Referral Link', 'intersoccer-referral'); ?>
+                        <?php echo esc_html($your_referral_link_label); ?>
                     </label>
                     <div style="display: flex; gap: 10px;">
                         <input type="text" 
@@ -142,82 +311,30 @@ class InterSoccer_Referral_Dashboard {
                                readonly
                                style="flex: 1; padding: 12px; border: 2px solid #e1e5e9; border-radius: 6px; font-family: monospace; background: #f8f9fa; font-size: 14px;">
                         <button id="copy-link-btn" class="copy-button" onclick="copyReferralLink()" style="padding: 12px 20px;">
-                            <span class="button-text">📋 Copy Link</span>
-                            <span class="button-success">✅ Copied!</span>
+                            <span class="button-text">📋 <?php echo esc_html($copy_link_text); ?></span>
+                            <span class="button-success">✅ <?php echo esc_html($copied_text); ?></span>
                         </button>
                     </div>
                 </div>
                 
                 <div class="social-share-buttons" style="margin-top: 20px;">
-                    <a href="https://wa.me/?text=<?php echo urlencode("Join me at InterSoccer for amazing soccer training! Use my referral code: " . $referral_code . " or visit: " . $referral_link); ?>" 
+                    <a href="https://wa.me/?text=<?php echo urlencode($whatsapp_message); ?>" 
                        target="_blank" class="social-btn whatsapp-btn">
-                        📱 WhatsApp
+                        📱 <?php echo esc_html($whatsapp_label); ?>
                     </a>
-                    <a href="https://www.facebook.com/sharer/sharer.php?u=<?php echo urlencode($referral_link); ?>&quote=<?php echo urlencode('Join InterSoccer! Use my referral code: ' . $referral_code); ?>" 
+                    <a href="https://www.facebook.com/sharer/sharer.php?u=<?php echo urlencode($referral_link); ?>&quote=<?php echo urlencode($facebook_message); ?>" 
                        target="_blank" class="social-btn facebook-btn">
-                        📘 Facebook
+                        📘 <?php echo esc_html($facebook_label); ?>
                     </a>
-                    <a href="mailto:?subject=<?php echo urlencode('Join InterSoccer!'); ?>&body=<?php echo urlencode("I thought you'd love InterSoccer's soccer training programs! Use my referral code: " . $referral_code . " or visit: " . $referral_link); ?>" 
+                    <a href="mailto:?subject=<?php echo urlencode($email_subject); ?>&body=<?php echo urlencode($email_body); ?>" 
                        class="social-btn email-btn">
-                        📧 Email
+                        📧 <?php echo esc_html($email_label); ?>
                     </a>
                 </div>
             </div>
-
-            <!-- Progress Section -->
-            <div class="progress-section">
-                <h3>📈 Your Progress</h3>
-                <div class="progress-container">
-                    <div class="progress-bar-wrapper">
-                        <div class="progress-info">
-                            <span><?php esc_html_e('Next milestone: 100 points for 100 CHF bonus!', 'intersoccer-referral'); ?></span>
-                            <span class="progress-percentage"><?php echo min(100, ($credits / 100) * 100); ?>%</span>
-                        </div>
-                        <div class="progress-bar">
-                            <div class="progress-fill" style="width: <?php echo min(100, ($credits / 100) * 100); ?>%"></div>
-                        </div>
-                    </div>
-                    
-                    <div class="milestones">
-                        <div class="milestone <?php echo $credits >= 100 ? 'achieved' : ''; ?>">
-                            <span class="milestone-icon">🥉</span>
-                            <span class="milestone-text">100 CHF</span>
-                        </div>
-                        <div class="milestone <?php echo $credits >= 500 ? 'achieved' : ''; ?>">
-                            <span class="milestone-icon">🥈</span>
-                            <span class="milestone-text">500 CHF</span>
-                        </div>
-                        <div class="milestone <?php echo $credits >= 1000 ? 'achieved' : ''; ?>">
-                            <span class="milestone-icon">🥇</span>
-                            <span class="milestone-text">1000 CHF</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Recent Activity -->
-            <?php if (!empty($recent_activity)): ?>
-            <div class="activity-section">
-                <h3>📋 Recent Activity</h3>
-                <div class="activity-feed">
-                    <?php foreach ($recent_activity as $activity): ?>
-                    <div class="activity-item">
-                        <span class="activity-icon"><?php echo $activity['icon']; ?></span>
-                        <div class="activity-content">
-                            <p><?php echo $activity['message']; ?></p>
-                            <span class="activity-time"><?php echo $activity['time']; ?></span>
-                        </div>
-                        <?php if (isset($activity['points'])): ?>
-                        <span class="activity-points">+<?php echo $activity['points']; ?> CHF</span>
-                        <?php endif; ?>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-            <?php endif; ?>
         </div>
 
-        <!-- Enhanced CSS with Animations -->
+        <!-- Enhanced CSS -->
         <style>
         .intersoccer-customer-dashboard {
             max-width: 1200px;
@@ -226,147 +343,8 @@ class InterSoccer_Referral_Dashboard {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
         
-        .dashboard-header h2 {
-            margin-bottom: 30px;
-            color: #2c3e50;
-            font-size: 28px;
-        }
-        
-        .dashboard-stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .stat-card {
-            background: white;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .stat-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
-        }
-        
-        .credits-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-        }
-        
-        .stat-icon {
-            font-size: 24px;
-            width: 50px;
-            height: 50px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-        }
-        
-        .stat-number {
-            font-size: 24px;
-            font-weight: bold;
-            display: block;
-        }
-        
-        .stat-label {
-            font-size: 12px;
-            opacity: 0.8;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        /* Credit Pulse Animation */
-        .credit-pulse {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            width: 10px;
-            height: 10px;
-            background: #00ff88;
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-        
-        @keyframes pulse {
-            0% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(1.5); }
-            100% { opacity: 1; transform: scale(1); }
-        }
-        
-        /* Badges Section */
-        .badges-section {
-            background: white;
-            padding: 25px;
-            border-radius: 12px;
-            margin-bottom: 30px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-        
-        .badges-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-            gap: 15px;
-        }
-        
-        .badge-item {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            color: white;
-            padding: 15px;
-            border-radius: 8px;
-            text-align: center;
-            position: relative;
-            transition: transform 0.2s ease;
-        }
-        
-        .badge-item:hover {
-            transform: scale(1.05);
-        }
-        
-        .badge-item.top-referrer {
-            background: linear-gradient(135deg, #ffd89b 0%, #19547b 100%);
-        }
-        
-        .badge-item.milestone-500 {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        
-        .badge-icon {
-            font-size: 24px;
-            display: block;
-            margin-bottom: 5px;
-        }
-        
-        .badge-new-indicator {
-            position: absolute;
-            top: -5px;
-            right: -5px;
-            background: #ff4757;
-            color: white;
-            font-size: 10px;
-            padding: 2px 6px;
-            border-radius: 10px;
-            animation: bounce 1s infinite;
-        }
-        
-        @keyframes bounce {
-            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
-            40% { transform: translateY(-10px); }
-            60% { transform: translateY(-5px); }
-        }
-        
         /* Referral Section */
-        .referral-section, .progress-section, .activity-section {
+        .referral-section {
             background: white;
             padding: 25px;
             border-radius: 12px;
@@ -447,87 +425,8 @@ class InterSoccer_Referral_Dashboard {
         .facebook-btn { background: #4267b2; color: white; }
         .email-btn { background: #6c757d; color: white; }
         
-        /* Progress Bar */
-        .progress-bar {
-            width: 100%;
-            height: 12px;
-            background: #e9ecef;
-            border-radius: 6px;
-            overflow: hidden;
-        }
-        
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            transition: width 1s ease-out;
-            animation: fillProgress 2s ease-out;
-        }
-        
-        @keyframes fillProgress {
-            from { width: 0; }
-        }
-        
-        .milestones {
-            display: flex;
-            justify-content: space-around;
-            margin-top: 20px;
-        }
-        
-        .milestone {
-            text-align: center;
-            opacity: 0.5;
-            transition: all 0.3s ease;
-        }
-        
-        .milestone.achieved {
-            opacity: 1;
-            transform: scale(1.1);
-        }
-        
-        /* Activity Feed */
-        .activity-feed {
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        
-        .activity-item {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            padding: 12px 0;
-            border-bottom: 1px solid #f1f3f4;
-        }
-        
-        .activity-item:last-child {
-            border-bottom: none;
-        }
-        
-        .activity-icon {
-            font-size: 20px;
-            width: 40px;
-            text-align: center;
-        }
-        
-        .activity-content {
-            flex: 1;
-        }
-        
-        .activity-time {
-            font-size: 12px;
-            color: #666;
-        }
-        
-        .activity-points {
-            font-weight: bold;
-            color: #28a745;
-        }
-        
         /* Responsive */
         @media (max-width: 768px) {
-            .dashboard-stats {
-                grid-template-columns: 1fr;
-            }
-            
             .social-share-buttons {
                 justify-content: center;
             }
@@ -564,14 +463,6 @@ class InterSoccer_Referral_Dashboard {
                 copyBtn.classList.add('copied');
                 setTimeout(() => copyBtn.classList.remove('copied'), 2000);
             }
-            
-            // Trigger credit pulse animation
-            const creditCard = document.querySelector('.credits-card');
-            if (creditCard) {
-                creditCard.style.animation = 'none';
-                creditCard.offsetHeight; // Trigger reflow
-                creditCard.style.animation = 'pulse 0.6s ease-out';
-            }
         }
 
         // Copy referral link function
@@ -598,33 +489,7 @@ class InterSoccer_Referral_Dashboard {
                 copyBtn.classList.add('copied');
                 setTimeout(() => copyBtn.classList.remove('copied'), 2000);
             }
-            
-            // Trigger credit pulse animation
-            const creditCard = document.querySelector('.credits-card');
-            if (creditCard) {
-                creditCard.style.animation = 'none';
-                creditCard.offsetHeight; // Trigger reflow
-                creditCard.style.animation = 'pulse 0.6s ease-out';
-            }
         }
-
-
-        // Animate numbers on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            const creditNumber = document.getElementById('credits-display');
-            const targetValue = parseFloat(creditNumber.textContent.replace(',', ''));
-            
-            let currentValue = 0;
-            const increment = targetValue / 50;
-            const timer = setInterval(() => {
-                currentValue += increment;
-                if (currentValue >= targetValue) {
-                    currentValue = targetValue;
-                    clearInterval(timer);
-                }
-                creditNumber.textContent = currentValue.toFixed(2);
-            }, 30);
-        });
         </script>
         <?php
         return ob_get_clean();
