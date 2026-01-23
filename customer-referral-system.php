@@ -73,6 +73,7 @@ class InterSoccer_Referral_System {
     }
     
     public function init() {
+        
         // Load text domain with explicit path priority
         // Try plugin's languages/ directory first, then wp-content/languages/plugins/
         $plugin_rel_path = dirname(INTERSOCCER_REFERRAL_BASENAME);
@@ -132,7 +133,11 @@ class InterSoccer_Referral_System {
         // Initialize core classes
         new InterSoccer_Referral_Handler();
         new InterSoccer_Commission_Calculator();
+        
+        
         new InterSoccer_Referral_Dashboard();
+        
+        
         new InterSoccer_Referral_Admin_Dashboard();
         new InterSoccer_Coach_Admin_Dashboard();
         new InterSoccer_Points_Manager();
@@ -159,8 +164,150 @@ class InterSoccer_Referral_System {
         // Customer-facing referral tools (WooCommerce My Account)
         add_action('init', [$this, 'register_customer_account_endpoint']);
         add_filter('query_vars', [$this, 'add_customer_account_query_var']);
+        add_filter('woocommerce_get_query_vars', [$this, 'add_woocommerce_query_vars'], 10, 1);
         add_filter('woocommerce_account_menu_items', [$this, 'add_customer_dashboard_menu_item'], 10);
+        add_filter('woocommerce_get_endpoint_url', [$this, 'filter_endpoint_url'], 10, 4);
+        
+        // Intercept request parsing to manually set endpoint query vars when WPML language prefix interferes
+        add_action('parse_request', [$this, 'fix_endpoint_query_vars'], 1);
+        add_filter('request', [$this, 'ensure_endpoint_query_var'], 10, 1);
+        
+        // Register endpoint actions for all language variants
         add_action('woocommerce_account_referrals_endpoint', [$this, 'render_customer_account_endpoint']);
+        add_action('woocommerce_account_parrainages_endpoint', [$this, 'render_customer_account_endpoint']);
+        add_action('woocommerce_account_empfehlungen_endpoint', [$this, 'render_customer_account_endpoint']);
+        
+        // Also hook into the main account content area to manually trigger our endpoint if needed
+        // Use priority 5 to run before default content (which is usually priority 10)
+        add_action('woocommerce_account_content', [$this, 'maybe_render_endpoint'], 5);
+        
+        // Prevent redirects when endpoint is detected
+        add_action('template_redirect', [$this, 'prevent_endpoint_redirect'], 5);
+        
+        // Prevent WordPress redirects when endpoint is detected
+        add_filter('redirect_canonical', [$this, 'prevent_canonical_redirect'], 10, 2);
+        
+    }
+    
+    
+    /**
+     * Store detected endpoint for later use
+     * @var string|null
+     */
+    private static $detected_endpoint_slug = null;
+
+    /**
+     * Guard to prevent rendering the referral endpoint more than once per request.
+     * Rendering during early hooks (wp/template_redirect) causes output before the theme header.
+     *
+     * @var bool
+     */
+    private static $referral_endpoint_rendered = false;
+    
+    /**
+     * Fix endpoint query vars when WPML language prefix interferes with rewrite matching
+     * This manually detects our endpoints in the URL and sets the query vars correctly
+     *
+     * @param WP $wp
+     * @return void
+     */
+    public function fix_endpoint_query_vars($wp) {
+        if (!isset($_SERVER['REQUEST_URI'])) {
+            return;
+        }
+        
+        // Try multiple sources for the URL
+        $request_uri = $_SERVER['REQUEST_URI'];
+        $redirect_url = isset($_SERVER['REDIRECT_URL']) ? $_SERVER['REDIRECT_URL'] : '';
+        
+        // Use REDIRECT_URL if it contains the endpoint (sometimes WordPress rewrites use this)
+        if ($redirect_url && (strpos($redirect_url, 'parrainages') !== false || 
+            strpos($redirect_url, 'referrals') !== false || 
+            strpos($redirect_url, 'empfehlungen') !== false)) {
+            $request_uri = $redirect_url;
+        }
+        
+        // Check if the request URI contains one of our endpoint slugs
+        $endpoint_slugs = [
+            'en' => 'referrals',
+            'fr' => 'parrainages',
+            'de' => 'empfehlungen',
+        ];
+        
+        $detected_endpoint = null;
+        $detected_slug = null;
+        
+        // Also check $_GET and query string parameters as WordPress may have parsed the URL already
+        $query_string = isset($_SERVER['QUERY_STRING']) ? $_SERVER['QUERY_STRING'] : '';
+        
+        foreach ($endpoint_slugs as $lang => $slug) {
+            // Check if the URL contains the endpoint slug after "mon-compte" or "my-account" or "mein-konto"
+            // Also check for language prefixes like /fr/, /de/, /en/
+            $pattern1_match = preg_match('#/(?:fr|de|en)?/?(?:mon-compte|my-account|mein-konto)/' . preg_quote($slug, '#') . '/?#', $request_uri);
+            $pattern2_match = preg_match('#/' . preg_quote($slug, '#') . '/?#', $request_uri);
+            $query_string_match = strpos($query_string, $slug) !== false;
+            
+            if ($pattern1_match || $pattern2_match || $query_string_match) {
+                $detected_endpoint = $slug;
+                $detected_slug = $slug;
+                break;
+            }
+        }
+        
+        // Also check for default "referrals" endpoint
+        if (!$detected_endpoint && (preg_match('#/(?:fr|de|en)?/?(?:mon-compte|my-account|mein-konto)/referrals/?#', $request_uri) ||
+            preg_match('#/referrals/?#', $request_uri) ||
+            strpos($query_string, 'referrals') !== false)) {
+            $detected_endpoint = 'referrals';
+            $detected_slug = 'referrals';
+        }
+        
+        if ($detected_endpoint) {
+            // Store the detected endpoint for later use
+            self::$detected_endpoint_slug = $detected_slug;
+            
+            // Set the endpoint query var
+            $wp->query_vars[$detected_slug] = true;
+            
+            // Also set it in $_GET to ensure it's available everywhere
+            $_GET[$detected_slug] = true;
+            
+            // Also ensure we're on the account page by checking if the base URL matches
+            // Get the My Account page ID
+            $account_page_id = wc_get_page_id('myaccount');
+            if ($account_page_id) {
+                // Check if the current request matches the account page
+                $account_page = get_post($account_page_id);
+                if ($account_page) {
+                    // Set the page query var to ensure is_account_page() works
+                    // This must be done early so WooCommerce recognizes it as an account page
+                    $wp->query_vars['pagename'] = $account_page->post_name;
+                    $wp->query_vars['page_id'] = $account_page_id;
+                    $wp->query_vars['post_type'] = 'page';
+                    $wp->query_vars['name'] = $account_page->post_name;
+                }
+            }
+            
+            // Prevent 404 status by clearing error query var
+            unset($wp->query_vars['error']);
+            $wp->query_vars['error'] = '';
+        }
+    }
+    
+    /**
+     * Ensure the endpoint query var is available in the request
+     * This filter runs after parse_request and ensures our query vars persist
+     *
+     * @param array $query_vars
+     * @return array
+     */
+    public function ensure_endpoint_query_var($query_vars) {
+        // If we detected an endpoint earlier, ensure it's in the query vars
+        if (self::$detected_endpoint_slug) {
+            $query_vars[self::$detected_endpoint_slug] = true;
+        }
+        
+        return $query_vars;
     }
 
     public function initiate_elementor_integration() {
@@ -621,6 +768,7 @@ class InterSoccer_Referral_System {
 
     /**
      * Register WooCommerce My Account endpoint for the customer referral dashboard
+     * Supports multiple language-specific slugs for WPML
      *
      * @return void
      */
@@ -640,20 +788,96 @@ class InterSoccer_Referral_System {
             $mask = 1;
         }
 
+        // Define language-specific endpoint slugs
+        $endpoint_slugs = [
+            'en' => 'referrals',
+            'fr' => 'parrainages',
+            'de' => 'empfehlungen',
+        ];
+
+        // Register all language variants
+        foreach ($endpoint_slugs as $lang => $slug) {
+            add_rewrite_endpoint($slug, $mask);
+        }
+        
+        // Also register the default English slug for backward compatibility
         add_rewrite_endpoint('referrals', $mask);
+    }
+    
+    /**
+     * Ensure WooCommerce recognizes all language variants of the endpoint
+     * This is critical for WooCommerce to fire the endpoint action hooks
+     * 
+     * @param array $query_vars
+     * @return array
+     */
+    public function add_woocommerce_query_vars($query_vars) {
+        // Register ALL language versions so WooCommerce recognizes them all
+        $endpoint_slugs = [
+            'referrals',
+            'parrainages',
+            'empfehlungen',
+        ];
+        
+        foreach ($endpoint_slugs as $slug) {
+            $query_vars[$slug] = $slug;
+        }
+        
+        return $query_vars;
     }
 
     /**
      * Ensure WooCommerce query vars include the referrals endpoint
+     * Includes all language-specific variants
      *
      * @param array $vars
      * @return array
      */
     public function add_customer_account_query_var($vars) {
+        
+        // Define language-specific endpoint slugs
+        $endpoint_slugs = [
+            'en' => 'referrals',
+            'fr' => 'parrainages',
+            'de' => 'empfehlungen',
+        ];
+
+        // Add all language variants to query vars
+        foreach ($endpoint_slugs as $lang => $slug) {
+            if (!in_array($slug, $vars, true)) {
+                $vars[] = $slug;
+            }
+        }
+        
+        // Also ensure default 'referrals' is included
         if (!in_array('referrals', $vars, true)) {
             $vars[] = 'referrals';
         }
+        
         return $vars;
+    }
+    
+    /**
+     * Get the endpoint slug for the current language
+     *
+     * @return string
+     */
+    private function get_referrals_endpoint_slug() {
+        // Define language-specific endpoint slugs
+        $endpoint_slugs = [
+            'en' => 'referrals',
+            'fr' => 'parrainages',
+            'de' => 'empfehlungen',
+        ];
+
+        // Get current language
+        $current_lang = 'en'; // Default
+        if (defined('ICL_SITEPRESS_VERSION') && function_exists('icl_get_current_language')) {
+            $current_lang = icl_get_current_language();
+        }
+
+        // Return the slug for current language, or default to 'referrals'
+        return isset($endpoint_slugs[$current_lang]) ? $endpoint_slugs[$current_lang] : 'referrals';
     }
 
     /**
@@ -689,30 +913,347 @@ class InterSoccer_Referral_System {
             );
         }
 
+        // Get the endpoint slug for current language
+        $endpoint_slug = $this->get_referrals_endpoint_slug();
+
         $new_items = [];
         $inserted = false;
 
         foreach ($items as $key => $item_label) {
             $new_items[$key] = $item_label;
             if (!$inserted && $key === 'dashboard') {
-                $new_items['referrals'] = $label;
+                $new_items[$endpoint_slug] = $label;
                 $inserted = true;
             }
         }
 
         if (!$inserted) {
-            $new_items['referrals'] = $label;
+            $new_items[$endpoint_slug] = $label;
         }
 
         return $new_items;
     }
 
     /**
+     * Filter WooCommerce endpoint URL to use language-specific slugs
+     *
+     * @param string $url
+     * @param string $endpoint
+     * @param string $value
+     * @param string $permalink
+     * @return string
+     */
+    public function filter_endpoint_url($url, $endpoint, $value, $permalink) {
+        // Define language-specific endpoint slugs
+        $endpoint_slugs = [
+            'en' => 'referrals',
+            'fr' => 'parrainages',
+            'de' => 'empfehlungen',
+        ];
+
+        // Get current language
+        $current_lang = 'en'; // Default
+        if (defined('ICL_SITEPRESS_VERSION') && function_exists('icl_get_current_language')) {
+            $current_lang = icl_get_current_language();
+        }
+
+        // If this is one of our referral endpoints, replace with language-specific slug
+        if (in_array($endpoint, $endpoint_slugs, true) || $endpoint === 'referrals') {
+            $correct_slug = isset($endpoint_slugs[$current_lang]) ? $endpoint_slugs[$current_lang] : 'referrals';
+            
+            // Only replace if the endpoint doesn't match the current language slug
+            if ($endpoint !== $correct_slug) {
+                // Replace the endpoint in the URL - handle both with and without trailing slash
+                $url = str_replace('/' . $endpoint . '/', '/' . $correct_slug . '/', $url);
+                $url = str_replace('/' . $endpoint . '?', '/' . $correct_slug . '?', $url);
+                $url = preg_replace('#/' . preg_quote($endpoint, '#') . '$#', '/' . $correct_slug, $url);
+            }
+        }
+
+        return $url;
+    }
+
+    /**
+     * Prevent redirects when endpoint is detected
+     *
+     * @return void
+     */
+    public function prevent_endpoint_redirect() {
+        global $wp_query, $wp;
+        
+        // Check if we detected an endpoint
+        if (self::$detected_endpoint_slug) {
+            // Prevent 404 status
+            $wp_query->is_404 = false;
+            unset($wp_query->query_vars['error']);
+            $wp_query->query_vars['error'] = '';
+            
+            // Ensure WooCommerce recognizes this as an account page
+            $account_page_id = wc_get_page_id('myaccount');
+            if ($account_page_id) {
+                $account_page = get_post($account_page_id);
+                if ($account_page) {
+                    // Set query vars to ensure is_account_page() works
+                    $wp_query->query_vars['pagename'] = $account_page->post_name;
+                    $wp_query->query_vars['page_id'] = $account_page_id;
+                    $wp_query->query_vars['post_type'] = 'page';
+                    $wp_query->query_vars['name'] = $account_page->post_name;
+                    
+                    // Also set in $wp for consistency
+                    $wp->query_vars['pagename'] = $account_page->post_name;
+                    $wp->query_vars['page_id'] = $account_page_id;
+                    
+                    // Set the main query object
+                    $wp_query->is_page = true;
+                    $wp_query->is_singular = true;
+                    $wp_query->queried_object = $account_page;
+                    $wp_query->queried_object_id = $account_page_id;
+                    
+                    
+                    // Ensure the endpoint query var is set in $wp_query for WooCommerce to recognize it
+                    // Don't render here - let WooCommerce's normal flow handle it via woocommerce_account_content
+                    // or our maybe_render_endpoint fallback
+                    $wp_query->query_vars[self::$detected_endpoint_slug] = true;
+                    $wp->query_vars[self::$detected_endpoint_slug] = true;
+                }
+            }
+        }
+    }
+    
+    /**
+     * Prevent canonical redirects when endpoint is detected
+     *
+     * @param string $redirect_url
+     * @param string $requested_url
+     * @return string|false
+     */
+    public function prevent_canonical_redirect($redirect_url, $requested_url) {
+        // Check if we detected an endpoint
+        if (self::$detected_endpoint_slug) {
+            return false; // Prevent the redirect
+        }
+        
+        return $redirect_url;
+    }
+    
+    /**
+     * Manually trigger the endpoint rendering on template_redirect if detected
+     * This runs after parse_request, so the endpoint should be detected by then
+     *
+     * @return void
+     */
+    public function maybe_trigger_endpoint() {
+        global $wp, $wp_query;
+        
+        $endpoint_slugs = ['referrals', 'parrainages', 'empfehlungen'];
+        $detected_endpoint = null;
+        
+        // Check static variable first
+        if (self::$detected_endpoint_slug) {
+            $detected_endpoint = self::$detected_endpoint_slug;
+        } else {
+            // Check $_GET
+            foreach ($endpoint_slugs as $slug) {
+                if (isset($_GET[$slug]) && $_GET[$slug]) {
+                    $detected_endpoint = $slug;
+                    break;
+                }
+            }
+            
+            // Check $wp->query_vars
+            if (!$detected_endpoint) {
+                foreach ($endpoint_slugs as $slug) {
+                    if (isset($wp->query_vars[$slug]) && $wp->query_vars[$slug]) {
+                        $detected_endpoint = $slug;
+                        break;
+                    }
+                }
+            }
+            
+            // Check $wp_query->query_vars
+            if (!$detected_endpoint) {
+                foreach ($endpoint_slugs as $slug) {
+                    if (isset($wp_query->query_vars[$slug]) && $wp_query->query_vars[$slug]) {
+                        $detected_endpoint = $slug;
+                        break;
+                    }
+                }
+            }
+            
+            // Last resort: Check the URL directly
+            if (!$detected_endpoint) {
+                $request_uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
+                $redirect_url = isset($_SERVER['REDIRECT_URL']) ? $_SERVER['REDIRECT_URL'] : '';
+                
+                // Use REDIRECT_URL if it contains the endpoint
+                $url_to_check = $request_uri;
+                if (!empty($redirect_url) && (strpos($redirect_url, 'parrainages') !== false || strpos($redirect_url, 'referrals') !== false || strpos($redirect_url, 'empfehlungen') !== false)) {
+                    $url_to_check = $redirect_url;
+                }
+                
+                foreach ($endpoint_slugs as $slug) {
+                    // Check if URL contains the endpoint slug and account page slug
+                    if ((strpos($url_to_check, $slug) !== false) &&
+                        (strpos($url_to_check, 'mon-compte') !== false ||
+                         strpos($url_to_check, 'my-account') !== false ||
+                         strpos($url_to_check, 'mein-konto') !== false)) {
+                        $detected_endpoint = $slug;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // If we found an endpoint, trigger it
+        if ($detected_endpoint) {
+            global $wp_query;
+            
+            // Prevent 404 status
+            $wp_query->is_404 = false;
+            unset($wp_query->query_vars['error']);
+            $wp_query->query_vars['error'] = '';
+            
+            // Manually trigger WooCommerce's endpoint action
+            do_action('woocommerce_account_' . $detected_endpoint . '_endpoint');
+            return;
+        }
+    }
+    
+    /**
+     * Check if we need to manually render the endpoint when WooCommerce doesn't detect it
+     * This is a fallback for when WPML interferes with endpoint detection
+     *
+     * @return void
+     */
+    public function maybe_render_endpoint() {
+        global $wp_query;
+
+        // If we've already rendered the endpoint (e.g., via WooCommerce endpoint action), bail.
+        if (self::$referral_endpoint_rendered) {
+            return;
+        }
+        
+        // Initialize detected_endpoint
+        $detected_endpoint = null;
+        
+        // Define endpoint slugs first
+        $endpoint_slugs = ['referrals', 'parrainages', 'empfehlungen'];
+        
+        // First, check if we stored the endpoint earlier in fix_endpoint_query_vars
+        if (self::$detected_endpoint_slug) {
+            $detected_endpoint = self::$detected_endpoint_slug;
+        } else {
+            // Also check query vars directly - they might be set even if static variable is null
+            foreach ($endpoint_slugs as $slug) {
+                if (isset($wp_query->query_vars[$slug]) && $wp_query->query_vars[$slug]) {
+                    $detected_endpoint = $slug;
+                    break;
+                }
+            }
+        }
+        
+        if (!$detected_endpoint) {
+            // First, check query vars
+            foreach ($endpoint_slugs as $slug) {
+                // Check both $wp_query->query_vars and get_query_var() as they might differ
+                $query_var_value = get_query_var($slug, false);
+                if (isset($wp_query->query_vars[$slug]) && $wp_query->query_vars[$slug]) {
+                    $detected_endpoint = $slug;
+                    break;
+                } elseif ($query_var_value !== false && $query_var_value) {
+                    $detected_endpoint = $slug;
+                    break;
+                }
+            }
+        }
+        
+        // Also check the actual URL path that was requested (before WordPress rewrites it)
+        // Use the same detection logic as fix_endpoint_query_vars
+        // NOTE: We only check REQUEST_URI and REDIRECT_URL - NOT HTTP_REFERER, as that represents
+        // the previous page, not the current one, and would cause false positives
+        if (!$detected_endpoint) {
+            // Try multiple sources for the URL - check $_SERVER variables
+            $request_uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
+            $redirect_url = isset($_SERVER['REDIRECT_URL']) ? $_SERVER['REDIRECT_URL'] : '';
+            $query_string = isset($_SERVER['QUERY_STRING']) ? $_SERVER['QUERY_STRING'] : '';
+            
+            // Build a list of URLs to check, prioritizing those that might contain the endpoint
+            $urls_to_check = [];
+            
+            // First, check REDIRECT_URL as it often contains the original URL before rewrites
+            if (!empty($redirect_url)) {
+                $urls_to_check[] = $redirect_url;
+            }
+            
+            // Then check REQUEST_URI
+            if (!empty($request_uri)) {
+                $urls_to_check[] = $request_uri;
+            }
+            
+            // Find the first URL that contains an endpoint
+            $url_to_check = '';
+            foreach ($urls_to_check as $url) {
+                if (strpos($url, 'parrainages') !== false || strpos($url, 'referrals') !== false || strpos($url, 'empfehlungen') !== false) {
+                    $url_to_check = $url;
+                    break;
+                }
+            }
+            
+            // If no URL with endpoint found, use the first available
+            if (empty($url_to_check) && !empty($urls_to_check)) {
+                $url_to_check = $urls_to_check[0];
+            }
+            
+            // Check for endpoint patterns in the URL - must match the account page pattern
+            foreach ($endpoint_slugs as $slug) {
+                // Pattern 1: /mon-compte/parrainages/ or /my-account/referrals/ or /mein-konto/empfehlungen/
+                $pattern1 = '/(?:mon-compte|my-account|mein-konto)\/' . preg_quote($slug, '/') . '(?:\/|$|\?)/';
+                // Pattern 2: /fr/mon-compte/parrainages/ or /en/my-account/referrals/ or /de/mein-konto/empfehlungen/
+                $pattern2 = '/\/(?:fr|en|de)\/(?:mon-compte|my-account|mein-konto)\/' . preg_quote($slug, '/') . '(?:\/|$|\?)/';
+                
+                // Only match if the pattern matches - don't use simple string match as it's too broad
+                if (preg_match($pattern1, $url_to_check) || preg_match($pattern2, $url_to_check)) {
+                    $detected_endpoint = $slug;
+                    break;
+                }
+            }
+            
+            // Also check query string
+            if (!$detected_endpoint && !empty($query_string)) {
+                foreach ($endpoint_slugs as $slug) {
+                    if (strpos($query_string, $slug) !== false) {
+                        $detected_endpoint = $slug;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        if ($detected_endpoint) {
+            // Prevent default account content from showing
+            remove_action('woocommerce_account_content', 'woocommerce_account_content', 10);
+            
+            // Render our endpoint
+            $this->render_customer_account_endpoint();
+            
+            // Exit to prevent other content from rendering
+            return;
+        }
+    }
+    
+    
+    /**
      * Render the customer referral dashboard within the WooCommerce account area
      *
      * @return void
      */
     public function render_customer_account_endpoint() {
+        // Prevent duplicate renders in the same request.
+        if (self::$referral_endpoint_rendered) {
+            return;
+        }
+        self::$referral_endpoint_rendered = true;
+        
         // Enqueue dashboard assets for My Account page
         wp_enqueue_style('intersoccer-dashboard-css', INTERSOCCER_REFERRAL_URL . 'assets/css/dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
         wp_enqueue_script('intersoccer-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/dashboard.js', ['jquery'], INTERSOCCER_REFERRAL_VERSION, true);
