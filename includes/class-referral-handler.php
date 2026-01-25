@@ -137,6 +137,39 @@ class InterSoccer_Referral_Handler {
             return '<p>Please log in to select a coach partner.</p>';
         }
         
+        // Assets for coach selection interface (replaces inline <script>/<style> in the template)
+        wp_enqueue_style(
+            'intersoccer-coach-selection-css',
+            INTERSOCCER_REFERRAL_URL . 'assets/css/coach-selection.css',
+            [],
+            INTERSOCCER_REFERRAL_VERSION
+        );
+        wp_enqueue_script(
+            'intersoccer-coach-selection-js',
+            INTERSOCCER_REFERRAL_URL . 'assets/js/coach-selection.js',
+            ['jquery'],
+            INTERSOCCER_REFERRAL_VERSION,
+            true
+        );
+        wp_localize_script('intersoccer-coach-selection-js', 'intersoccer_coach_selection', [
+            'ajax_url' => admin_url('admin-ajax.php'),
+            // This matches check_ajax_referer('intersoccer_dashboard_nonce', 'nonce') in get_available_coaches_ajax()
+            'nonce' => wp_create_nonce('intersoccer_dashboard_nonce'),
+            'i18n' => [
+                'loading_coaches' => __('Loading coaches...', 'intersoccer-referral'),
+                'no_coaches_found' => __('No coaches found.', 'intersoccer-referral'),
+                'error_loading_coaches' => __('Error loading coaches. Please try again.', 'intersoccer-referral'),
+                'no_matching_coaches' => __('No coaches found matching your criteria.', 'intersoccer-referral'),
+                'confirm_select_coach' => __('Are you sure you want to select %s as your coach partner?', 'intersoccer-referral'),
+                'confirm_switch' => __('Are you sure you want to switch coaches? You won\'t be able to change again for 7 days.', 'intersoccer-referral'),
+                'select_new_notice' => __('Select a new coach from the list below.', 'intersoccer-referral'),
+                'error_select_coach' => __('Error selecting coach. Please try again.', 'intersoccer-referral'),
+                'athletes_label' => __('Athletes', 'intersoccer-referral'),
+                'benefits_label' => __('Benefits', 'intersoccer-referral'),
+                'select_this_coach' => __('Select This Coach', 'intersoccer-referral'),
+            ],
+        ]);
+
         $customer_id = get_current_user_id();
         $current_coach_id = get_user_meta($customer_id, 'intersoccer_partnership_coach_id', true);
         $cooldown_end = get_user_meta($customer_id, 'intersoccer_partnership_switch_cooldown', true);
