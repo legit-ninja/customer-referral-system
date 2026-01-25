@@ -74,175 +74,6 @@ class InterSoccer_Admin_Referrals {
 
         </div>
 
-        <style>
-        .intersoccer-filters {
-            background: white;
-            padding: 20px;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            margin: 20px 0;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .intersoccer-filters .filters-group {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            align-items: center;
-        }
-
-        .coach-referrals-export {
-            margin-left: auto;
-        }
-
-        .coach-referrals-export .dashicons {
-            margin-right: 4px;
-        }
-
-        .intersoccer-referrals-table {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }
-
-        .intersoccer-referrals-table table th,
-        .intersoccer-referrals-table table td {
-            vertical-align: top;
-        }
-
-        .intersoccer-referrals-table table td {
-            line-height: 1.4;
-        }
-
-        .intersoccer-referrals-table .muted {
-            color: #6b7280;
-        }
-
-        .intersoccer-referrals-table .status-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .intersoccer-referrals-table .status-badge.completed {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .intersoccer-referrals-table .status-badge.pending {
-            background: #fef3c7;
-            color: #92400e;
-        }
-
-        .intersoccer-referrals-table .status-badge.failed,
-        .intersoccer-referrals-table .status-badge.ineligible {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .duplicate-flag {
-            display: inline-block;
-            margin-top: 4px;
-            padding: 2px 6px;
-            border-radius: 4px;
-            background: #fef3c7;
-            color: #92400e;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .actions-column form {
-            display: inline;
-        }
-
-        .actions-column .muted {
-            color: #999;
-        }
-
-        .payout-controls {
-            margin-bottom: 8px;
-        }
-
-        .payout-status {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 6px;
-            font-size: 12px;
-        }
-
-        .payout-status .amount {
-            font-weight: 600;
-        }
-
-        .payout-status small {
-            color: #6b7280;
-        }
-
-        .payout-badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 2px 8px;
-            border-radius: 999px;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.4px;
-            font-weight: 600;
-        }
-
-        .payout-badge.paid {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .payout-badge.pending {
-            background: #fef3c7;
-            color: #92400e;
-        }
-
-        .payout-form {
-            margin-top: 4px;
-        }
-
-        .payout-form .button-small {
-            line-height: 1.8;
-        }
-
-        .returning-column .badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-            padding: 4px 8px;
-            border-radius: 999px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-        }
-        .returning-column .badge.new {
-            background: #ecfdf5;
-            color: #047857;
-        }
-        .returning-column .badge.returning {
-            background: #eef2ff;
-            color: #4338ca;
-        }
-        .eligibility-column small.meta {
-            display: block;
-            margin-top: 4px;
-            color: #6b7280;
-            font-size: 11px;
-        }
-        </style>
         <?php
     }
 
@@ -461,14 +292,6 @@ class InterSoccer_Admin_Referrals {
             </div>
         </div>
 
-        <style>
-        .intersoccer-customer-credits {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }
-        </style>
         <?php
     }
 
@@ -520,18 +343,6 @@ class InterSoccer_Admin_Referrals {
                 <?php endforeach; ?>
             </tbody>
         </table>
-
-        <style>
-        .customer-info {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .customer-info img {
-            border-radius: 50%;
-        }
-        </style>
         <?php
     }
 

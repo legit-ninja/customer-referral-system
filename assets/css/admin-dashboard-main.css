@@ -1,0 +1,359 @@
+.intersoccer-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.stat-card {
+    background: white;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border-left: 4px solid #e1e5e9;
+}
+
+.stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+.referrals-card { border-left-color: #3498db; }
+.commissions-card { border-left-color: #27ae60; }
+.credits-earned-card { border-left-color: #f39c12; }
+.credits-used-card { border-left-color: #9b59b6; }
+.active-credits-card { border-left-color: #e74c3c; }
+.conversion-card { border-left-color: #1abc9c; }
+
+.stat-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: white;
+}
+
+.referrals-card .stat-icon { background: #3498db; }
+.commissions-card .stat-icon { background: #27ae60; }
+.credits-earned-card .stat-icon { background: #f39c12; }
+.credits-used-card .stat-icon { background: #9b59b6; }
+.active-credits-card .stat-icon { background: #e74c3c; }
+.conversion-card .stat-icon { background: #1abc9c; }
+
+.stat-content h3 {
+    font-size: 28px;
+    margin: 0 0 5px 0;
+    font-weight: 700;
+    color: #2c3e50;
+}
+
+.stat-content p {
+    margin: 0 0 8px 0;
+    color: #7f8c8d;
+    font-weight: 500;
+}
+
+.stat-change {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.stat-change.positive { background: #d5f4e6; color: #27ae60; }
+.stat-change.negative { background: #fadbd8; color: #e74c3c; }
+.stat-change.neutral { background: #fef9e7; color: #f39c12; }
+
+.financial-health-section {
+    background: white;
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    margin-bottom: 30px;
+}
+
+.financial-health-section h2 {
+    margin: 0 0 20px 0;
+    color: #2c3e50;
+}
+
+.financial-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+}
+
+.financial-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 15px;
+    border: 2px solid #ecf0f1;
+    border-radius: 8px;
+}
+
+.metric-label {
+    font-size: 12px;
+    color: #7f8c8d;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+}
+
+.metric-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: #2c3e50;
+}
+
+.metric-value.positive { color: #27ae60; }
+.metric-value.negative { color: #e74c3c; }
+
+.intersoccer-dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+
+.dashboard-widget {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.dashboard-widget h2 {
+    margin: 0 0 15px 0;
+    color: #2c3e50;
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.chart-widget canvas {
+    max-width: 100%;
+    height: auto !important;
+}
+
+.chart-legend {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 15px;
+    flex-wrap: wrap;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.color-box {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+}
+
+.color-box.referrals { background: #3498db; }
+.color-box.completed { background: #27ae60; }
+.color-box.conversion { background: #e74c3c; }
+.color-box.revenue { background: #f39c12; }
+.color-box.costs { background: #9b59b6; }
+.color-box.profit { background: #1abc9c; }
+
+.coach-leaderboard {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.coach-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.coach-rank {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #007cba;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.coach-avatar img {
+    border-radius: 50%;
+}
+
+.coach-info strong {
+    display: block;
+    color: #2c3e50;
+    margin-bottom: 2px;
+}
+
+.coach-stats {
+    font-size: 12px;
+    color: #7f8c8d;
+}
+
+.recent-activity {
+    max-height: 350px;
+    overflow-y: auto;
+}
+
+.activity-item {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding: 12px 0;
+    border-bottom: 1px solid #f1f3f4;
+}
+
+.activity-item:last-child { border-bottom: none; }
+
+.activity-icon {
+    width: 35px;
+    height: 35px;
+    border-radius: 50%;
+    background: #f8f9fa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #007cba;
+}
+
+.activity-content p {
+    margin: 0;
+    font-size: 14px;
+    color: #2c3e50;
+}
+
+.activity-time {
+    font-size: 12px;
+    color: #7f8c8d;
+}
+
+.activity-amount {
+    margin-left: auto;
+    font-weight: 600;
+    color: #27ae60;
+}
+
+.quick-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.quick-action-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    text-decoration: none;
+    color: #495057;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.quick-action-btn:hover {
+    background: #007cba;
+    color: white;
+    border-color: #007cba;
+    transform: translateY(-1px);
+}
+
+.roi-summary {
+    text-align: center;
+}
+
+.roi-metric.main-roi {
+    margin-bottom: 20px;
+}
+
+.roi-value {
+    font-size: 48px;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.roi-value.profitable { color: #27ae60; }
+.roi-value.loss { color: #e74c3c; }
+
+.roi-label {
+    font-size: 16px;
+    color: #7f8c8d;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.roi-breakdown {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+}
+
+.roi-breakdown-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #f1f3f4;
+}
+
+.roi-breakdown-item:last-child {
+    border-bottom: none;
+}
+
+.breakdown-label {
+    color: #7f8c8d;
+    font-size: 14px;
+}
+
+.breakdown-value {
+    font-weight: 600;
+    color: #2c3e50;
+    font-size: 14px;
+}
+
+@media (max-width: 768px) {
+    .intersoccer-stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .intersoccer-dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .financial-metrics {
+        grid-template-columns: 1fr;
+    }
+
+    .quick-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .chart-legend {
+        justify-content: flex-start;
+    }
+}
+

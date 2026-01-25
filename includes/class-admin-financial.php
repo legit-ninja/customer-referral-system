@@ -50,51 +50,6 @@ class InterSoccer_Admin_Financial {
                 <?php $this->display_financial_breakdown(); ?>
             </div>
         </div>
-
-        <style>
-        .intersoccer-financial-summary {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin: 20px 0;
-        }
-
-        .financial-card {
-            background: white;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            text-align: center;
-        }
-
-        .financial-card h3 {
-            margin: 0 0 15px 0;
-            color: #7f8c8d;
-            font-size: 14px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .financial-card .amount {
-            font-size: 28px;
-            font-weight: 700;
-            color: #2c3e50;
-        }
-
-        .financial-card .amount.positive { color: #27ae60; }
-        .financial-card .amount.negative { color: #e74c3c; }
-
-        .intersoccer-export-actions {
-            margin: 20px 0;
-        }
-
-        .intersoccer-financial-details {
-            background: white;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-        </style>
         <?php
     }
 
@@ -208,11 +163,6 @@ class InterSoccer_Admin_Financial {
                 <?php endforeach; ?>
             </tbody>
         </table>
-
-        <style>
-        .positive { color: #27ae60; font-weight: 600; }
-        .negative { color: #e74c3c; font-weight: 600; }
-        </style>
         <?php
     }
 }

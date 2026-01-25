@@ -287,6 +287,189 @@
     gap: 20px;
 }
 
+/* Coaches Page search + layout helpers (from legacy inline CSS) */
+.intersoccer-actions {
+    margin: 20px 0;
+    display: flex;
+    gap: 10px;
+}
+
+.intersoccer-coaches-grid {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.intersoccer-coaches-search {
+    margin: 0 0 15px 0;
+    position: relative;
+    max-width: 420px;
+}
+
+.intersoccer-coaches-search .dashicons {
+    position: absolute;
+    top: 50%;
+    left: 10px;
+    transform: translateY(-50%);
+    color: #7f8c8d;
+}
+
+#coach-search-input {
+    width: 100%;
+    padding: 10px 12px 10px 35px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+#coach-search-input:focus {
+    outline: none;
+    border-color: #3273dc;
+    box-shadow: 0 0 0 2px rgba(50,115,220,0.15);
+}
+
+.coaches-search-status {
+    margin: 0 0 10px 2px;
+    font-size: 13px;
+    color: #6b7280;
+}
+
+/* Coach Events (Admin) */
+.coach-events-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+    gap: 30px;
+    margin-top: 20px;
+}
+
+.coach-events-form,
+.coach-events-list {
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+@media (max-width: 960px) {
+    .coach-events-grid { grid-template-columns: 1fr; }
+}
+
+.coach-events-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.coach-events-table th,
+.coach-events-table td {
+    border-bottom: 1px solid #eee;
+    padding: 12px 10px;
+    vertical-align: middle;
+}
+
+.coach-event-share {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.coach-event-link {
+    flex: 1;
+    min-width: 220px;
+}
+
+.coach-events-table tbody tr:hover {
+    background: #f9f9f9;
+}
+
+.coach-events-status.pending { color: #d97706; }
+.coach-events-status.active { color: #198754; }
+.coach-events-status.inactive { color: #6c757d; }
+
+.event-search-results {
+    margin-top: 8px;
+}
+
+.event-search-result-item {
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 4px;
+    cursor: pointer;
+    background: #fafafa;
+}
+
+.event-search-result-item:hover {
+    background: #f0f6ff;
+    border-color: #2271b1;
+}
+
+.coach-events-actions {
+    display: flex;
+    gap: 6px;
+}
+
+/* Coach Assignments (Admin) */
+.coach-assignments-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    margin-top: 20px;
+}
+
+.assignments-form, .current-assignments {
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.assignment-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    background: #fafafa;
+}
+
+.assignment-info h4 {
+    margin: 0 0 5px 0;
+    color: #23282d;
+}
+
+.assignment-meta {
+    color: #666;
+    font-size: 12px;
+}
+
+.assignment-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.delete-assignment {
+    color: #dc3232;
+    text-decoration: none;
+    padding: 4px 8px;
+    border: 1px solid #dc3232;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.delete-assignment:hover {
+    background: #dc3232;
+    color: #fff;
+}
+
+@media (max-width: 768px) {
+    .coach-assignments-container {
+        grid-template-columns: 1fr;
+    }
+}
+
 .coach-card {
     background: white;
     border-radius: 12px;
@@ -542,6 +725,181 @@
         flex-direction: column;
         text-align: center;
     }
+}
+
+/* Coach Event Assignments Tabs (Admin) */
+.coach-event-assignments-page .coach-event-tabs {
+    margin-bottom: 0;
+}
+
+.coach-event-panel {
+    display: none;
+    margin-top: 0;
+}
+
+.coach-event-panel.active {
+    display: block;
+}
+
+/* Coach Referrals page */
+.intersoccer-filters {
+    background: white;
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    margin: 20px 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.intersoccer-filters .filters-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    align-items: center;
+}
+
+.coach-referrals-export {
+    margin-left: auto;
+}
+
+.coach-referrals-export .dashicons {
+    margin-right: 4px;
+}
+
+.intersoccer-referrals-table {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.intersoccer-referrals-table table th,
+.intersoccer-referrals-table table td {
+    vertical-align: top;
+}
+
+.intersoccer-referrals-table table td {
+    line-height: 1.4;
+}
+
+.intersoccer-referrals-table .muted {
+    color: #6b7280;
+}
+
+.intersoccer-referrals-table .status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.intersoccer-referrals-table .status-badge.completed {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.intersoccer-referrals-table .status-badge.pending {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.intersoccer-referrals-table .status-badge.failed,
+.intersoccer-referrals-table .status-badge.ineligible {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.duplicate-flag {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.actions-column form {
+    display: inline;
+}
+
+.actions-column .muted {
+    color: #999;
+}
+
+.payout-controls {
+    margin-bottom: 8px;
+}
+
+.payout-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+}
+
+.payout-status .amount {
+    font-weight: 600;
+}
+
+.payout-status small {
+    color: #6b7280;
+}
+
+.payout-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 600;
+}
+
+.payout-badge.paid {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.payout-badge.pending {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.payout-form {
+    margin-top: 4px;
+}
+
+.payout-form .button-small {
+    line-height: 1.8;
+}
+
+/* Customer Credits page */
+.intersoccer-customer-credits {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.customer-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.customer-info img {
+    border-radius: 50%;
 }
 
 @media (max-width: 768px) {

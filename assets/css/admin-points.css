@@ -1,0 +1,165 @@
+.intersoccer-points-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 20px 0;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.points-summary {
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.intersoccer-points-filters {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin: 20px 0;
+    padding: 15px;
+    background: white;
+    border: 1px solid #e1e5e9;
+    border-radius: 8px;
+}
+
+.intersoccer-points-table-container {
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+#points-users-table {
+    margin: 0;
+}
+
+#points-users-table th {
+    background: #f8f9fa;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.column-user { width: 200px; }
+.column-email { width: 250px; }
+.column-points { width: 120px; text-align: center; }
+.column-total-earned { width: 120px; text-align: center; }
+.column-total-spent { width: 120px; text-align: center; }
+.column-last-activity { width: 150px; }
+.column-actions { width: 150px; }
+
+.points-amount {
+    font-weight: 700;
+    font-size: 16px;
+}
+
+.points-positive { color: #27ae60; }
+.points-zero { color: #7f8c8d; }
+.points-negative { color: #e74c3c; }
+
+.points-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.points-action-btn {
+    padding: 4px 8px;
+    font-size: 12px;
+    line-height: 1;
+}
+
+/* Modal Styles */
+.intersoccer-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 12px;
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #e1e5e9;
+}
+
+.modal-header h2 {
+    margin: 0;
+    color: #2c3e50;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #7f8c8d;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.form-row {
+    margin-bottom: 15px;
+}
+
+.form-row label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+    color: #2c3e50;
+}
+
+.form-row input,
+.form-row select,
+.form-row textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.form-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+
+@media (max-width: 768px) {
+    .intersoccer-points-controls {
+        flex-direction: column;
+        gap: 15px;
+        align-items: stretch;
+    }
+
+    .intersoccer-points-filters {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .modal-content {
+        margin: 20px;
+        width: calc(100% - 40px);
+    }
+}
+
