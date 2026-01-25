@@ -34,7 +34,7 @@ define('INTERSOCCER_REFERRAL_BASENAME', plugin_basename(__FILE__));
 if (!function_exists('intersoccer_referral_log')) {
     function intersoccer_referral_log($message) {
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            intersoccer_referral_log((string) $message);
+            error_log((string) $message);
         }
     }
 }
@@ -87,7 +87,6 @@ class InterSoccer_Referral_System {
     }
     
     public function init() {
-        
         // Load text domain with explicit path priority
         // Try plugin's languages/ directory first, then wp-content/languages/plugins/
         $plugin_rel_path = dirname(INTERSOCCER_REFERRAL_BASENAME);
