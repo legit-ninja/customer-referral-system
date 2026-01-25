@@ -269,6 +269,7 @@ class InterSoccer_Referral_Admin_Dashboard {
             wp_localize_script('intersoccer-admin-js', 'intersoccer_admin', [
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('intersoccer_admin_nonce'),
+                'simulator_nonce' => wp_create_nonce('intersoccer_simulator_nonce'),
                 'i18n' => [
                     'coach_events_select_event' => __('Please select an event before saving.', 'intersoccer-referral'),
                     'coach_events_search_min_chars' => __('Enter at least two characters to search.', 'intersoccer-referral'),
@@ -291,6 +292,7 @@ class InterSoccer_Referral_Admin_Dashboard {
                 error_log('Enqueueing settings/tools page assets for hook: ' . $hook);
                 wp_enqueue_style('intersoccer-admin-settings-css', INTERSOCCER_REFERRAL_URL . 'assets/css/admin-settings.css', [], INTERSOCCER_REFERRAL_VERSION);
                 wp_enqueue_script('intersoccer-admin-settings-js', INTERSOCCER_REFERRAL_URL . 'assets/js/admin-settings.js', ['jquery'], INTERSOCCER_REFERRAL_VERSION, true);
+                wp_enqueue_script('intersoccer-admin-simulator-js', INTERSOCCER_REFERRAL_URL . 'assets/js/admin-simulator.js', ['jquery', 'chart-js'], INTERSOCCER_REFERRAL_VERSION, true);
 
                 wp_localize_script('intersoccer-admin-settings-js', 'intersoccer_admin', [
                     'ajax_url' => admin_url('admin-ajax.php'),
