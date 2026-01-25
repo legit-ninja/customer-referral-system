@@ -1,0 +1,115 @@
+.intersoccer-customer-dashboard {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Referral Section */
+.referral-section {
+    background: white;
+    padding: 25px;
+    border-radius: 12px;
+    margin-bottom: 30px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.highlight {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: bold;
+}
+
+.referral-link-container {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+#referral-link {
+    flex: 1;
+    padding: 12px;
+    border: 2px solid #e1e5e9;
+    border-radius: 6px;
+    font-family: monospace;
+    background: #f8f9fa;
+}
+
+.copy-button {
+    padding: 12px 20px;
+    background: #667eea;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.copy-button:hover {
+    background: #5a6fd8;
+    transform: translateY(-1px);
+}
+
+.copy-button.copied .button-text {
+    display: none;
+}
+
+.copy-button .button-success {
+    display: none !important;
+}
+
+.copy-button.copied .button-success {
+    display: inline !important;
+}
+
+/* Hide theme's post_meta and post_footer elements on referral pages */
+.woocommerce-account .woocommerce-MyAccount-content .post_meta,
+.woocommerce-account .woocommerce-MyAccount-content .post_meta_single,
+.woocommerce-account .woocommerce-MyAccount-content .post_footer,
+.woocommerce-account .woocommerce-MyAccount-content .post_footer_single,
+.woocommerce-account .woocommerce-MyAccount-content .post_info_vertical {
+    display: none !important;
+}
+
+/* Hide "You May Also Like" section on referral pages */
+.woocommerce-account section.related_wrap,
+.woocommerce-account section.related_wrap.related_position_below_content {
+    display: none !important;
+}
+
+.social-share-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.social-btn {
+    padding: 10px 16px;
+    text-decoration: none;
+    border-radius: 6px;
+    font-weight: 500;
+    transition: transform 0.2s ease;
+}
+
+.social-btn:hover {
+    transform: translateY(-2px);
+}
+
+.whatsapp-btn { background: #25d366; color: white; }
+.facebook-btn { background: #4267b2; color: white; }
+.email-btn { background: #6c757d; color: white; }
+
+/* Responsive */
+@media (max-width: 768px) {
+    .social-share-buttons {
+        justify-content: center;
+    }
+    
+    .referral-link-container {
+        flex-direction: column;
+    }
+}
+

@@ -888,14 +888,6 @@ class InterSoccer_Referral_Handler {
             <span id="credit-display">0 CHF</span>
             <button type="button" id="apply-max-credits">Apply Max</button>
         </div>
-        <script>
-        jQuery('#credit-slider').on('input', function() {
-            jQuery('#credit-display').text(this.value + ' CHF');
-        });
-        jQuery('#apply-max-credits').on('click', function() {
-            jQuery('#credit-slider').val(<?php echo $credits; ?>).trigger('input');
-        });
-        </script>
         <?php
     }
 

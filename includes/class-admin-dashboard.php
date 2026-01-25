@@ -219,41 +219,6 @@ class InterSoccer_Referral_Admin_Dashboard {
                 </section>
             </div>
         </div>
-
-        <style>
-            .coach-event-assignments-page .coach-event-tabs {
-                margin-bottom: 0;
-            }
-            .coach-event-panel {
-                display: none;
-                margin-top: 0;
-            }
-            .coach-event-panel.active {
-                display: block;
-            }
-        </style>
-        <script>
-            document.addEventListener('DOMContentLoaded', function() {
-                const tabs = document.querySelectorAll('.coach-event-tabs .nav-tab');
-                const panels = document.querySelectorAll('.coach-event-panel');
-
-                tabs.forEach(tab => {
-                    tab.addEventListener('click', function(e) {
-                        e.preventDefault();
-                        const targetId = tab.getAttribute('data-target');
-
-                        tabs.forEach(t => t.classList.remove('nav-tab-active'));
-                        panels.forEach(panel => panel.classList.remove('active'));
-
-                        tab.classList.add('nav-tab-active');
-                        const panel = document.getElementById(targetId);
-                        if (panel) {
-                            panel.classList.add('active');
-                        }
-                    });
-                });
-            });
-        </script>
         <?php
     }
 
@@ -267,11 +232,58 @@ class InterSoccer_Referral_Admin_Dashboard {
 
             // Enqueue our admin assets
             wp_enqueue_style('intersoccer-admin-css', INTERSOCCER_REFERRAL_URL . 'assets/css/admin-dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
+            // Dashboard main page has extra layout styles.
+            if (strpos($hook, 'intersoccer-referrals') !== false) {
+                wp_enqueue_style(
+                    'intersoccer-admin-dashboard-main-css',
+                    INTERSOCCER_REFERRAL_URL . 'assets/css/admin-dashboard-main.css',
+                    ['intersoccer-admin-css'],
+                    INTERSOCCER_REFERRAL_VERSION
+                );
+            }
+            if (strpos($hook, 'intersoccer-financial-report') !== false) {
+                wp_enqueue_style(
+                    'intersoccer-admin-financial-css',
+                    INTERSOCCER_REFERRAL_URL . 'assets/css/admin-financial.css',
+                    ['intersoccer-admin-css'],
+                    INTERSOCCER_REFERRAL_VERSION
+                );
+            }
+            if (strpos($hook, 'intersoccer-customer-points') !== false) {
+                wp_enqueue_style(
+                    'intersoccer-admin-points-css',
+                    INTERSOCCER_REFERRAL_URL . 'assets/css/admin-points.css',
+                    ['intersoccer-admin-css'],
+                    INTERSOCCER_REFERRAL_VERSION
+                );
+                wp_enqueue_script(
+                    'intersoccer-admin-points-js',
+                    INTERSOCCER_REFERRAL_URL . 'assets/js/admin-points.js',
+                    ['jquery'],
+                    INTERSOCCER_REFERRAL_VERSION,
+                    true
+                );
+            }
             wp_enqueue_script('intersoccer-admin-js', INTERSOCCER_REFERRAL_URL . 'assets/js/admin-dashboard.js', ['jquery', 'chart-js'], INTERSOCCER_REFERRAL_VERSION, true);
 
             wp_localize_script('intersoccer-admin-js', 'intersoccer_admin', [
                 'ajax_url' => admin_url('admin-ajax.php'),
-                'nonce' => wp_create_nonce('intersoccer_admin_nonce')
+                'nonce' => wp_create_nonce('intersoccer_admin_nonce'),
+                'i18n' => [
+                    'coach_events_select_event' => __('Please select an event before saving.', 'intersoccer-referral'),
+                    'coach_events_search_min_chars' => __('Enter at least two characters to search.', 'intersoccer-referral'),
+                    'coach_events_searching' => __('Searching…', 'intersoccer-referral'),
+                    'coach_events_no_events' => __('No events found.', 'intersoccer-referral'),
+                    'coach_events_search_failed' => __('Search failed. Please try again.', 'intersoccer-referral'),
+                    'coach_events_remove_confirm' => __('Remove this event assignment?', 'intersoccer-referral'),
+                    'coach_events_link_copied' => __('Link copied to clipboard.', 'intersoccer-referral'),
+                    'coach_events_press_ctrl_c' => __('Press Ctrl+C to copy the link', 'intersoccer-referral'),
+                    'coach_events_save_error' => __('Error saving event', 'intersoccer-referral'),
+                    'coach_events_save_network_error' => __('Network error while saving event', 'intersoccer-referral'),
+                    'coach_events_remove_error' => __('Error removing event', 'intersoccer-referral'),
+                    'coach_events_status_error' => __('Error updating status', 'intersoccer-referral'),
+                    'coach_events_status_network_error' => __('Network error updating status', 'intersoccer-referral'),
+                ]
             ]);
 
             // Enqueue settings page and tools page specific assets
@@ -578,199 +590,6 @@ class InterSoccer_Referral_Admin_Dashboard {
             echo '</div>';
             echo '</div>';
             echo '</div>';
-
-            // Add JavaScript for referral code and points redemption
-            ?>
-            <script>
-            jQuery(document).ready(function($) {
-                console.log('InterSoccer checkout JavaScript loaded');
-
-                // Function to initialize points redemption handlers
-                function initPointsRedemptionHandlers() {
-                    console.log('Initializing points redemption handlers');
-
-                    var $referralInput = $('#intersoccer_referral_code');
-                    var $referralButton = $('#apply_referral_code');
-                    var $referralMessage = $('#referral_code_message');
-
-                    function applyReferralCode() {
-                        var referralCode = ($referralInput.val() || '').trim();
-                        var $button = $referralButton;
-                        var $message = $referralMessage;
-
-                        if (!referralCode) {
-                            $message.removeClass('success').addClass('error').html('<?php _e('Please enter a referral code', 'intersoccer-referral'); ?>').show();
-                            return;
-                        }
-
-                        $('input#coach_referral_code').val(referralCode);
-
-                        $button.prop('disabled', true).text('<?php _e('Applying...', 'intersoccer-referral'); ?>');
-
-                        $.ajax({
-                            url: '<?php echo admin_url('admin-ajax.php'); ?>',
-                            type: 'POST',
-                            data: {
-                                action: 'apply_referral_code',
-                                referral_code: referralCode,
-                                nonce: '<?php echo wp_create_nonce('intersoccer_checkout_nonce'); ?>'
-                            },
-                            success: function(response) {
-                                if (response.success) {
-                                    var appliedMessage = response.data.message;
-                                    if (typeof response.data.discount_amount !== 'undefined') {
-                                        var discountValue = parseFloat(response.data.discount_amount);
-                                        if (!isNaN(discountValue)) {
-                                            appliedMessage += ' ' + '<?php echo esc_js(__('Discount:', 'intersoccer-referral')); ?> ' + 'CHF ' + discountValue.toFixed(2);
-                                        }
-                                    }
-
-                                    $message.removeClass('error').addClass('success').html(appliedMessage).show();
-                                     $referralInput.prop('disabled', true).data('code-applied', 'yes');
-                                     $button.prop('disabled', true).text('<?php _e('Applied', 'intersoccer-referral'); ?>').data('auto-apply', 'no');
-                                     $message.attr('data-applied', 'yes');
-                                     $('input#coach_referral_code').val(referralCode);
-                                     $(document.body).trigger('update_checkout');
-                                 } else {
-                                     $message.removeClass('success').addClass('error').html(response.data.message).show();
-                                     $button.prop('disabled', false).text('<?php _e('Apply Code', 'intersoccer-referral'); ?>');
-                                 }
-                            },
-                            error: function() {
-                                $message.removeClass('success').addClass('error').html('<?php _e('Error applying referral code', 'intersoccer-referral'); ?>').show();
-                                $button.prop('disabled', false).text('<?php _e('Apply Code', 'intersoccer-referral'); ?>');
-                            }
-                        });
-                    }
-
-                    if ($referralInput.length && $referralButton.length) {
-                        var isApplied = $referralInput.data('code-applied') === 'yes' || ($referralMessage.data('applied') === 'yes');
-
-                        if (isApplied) {
-                            $referralInput.prop('disabled', true);
-                            $referralButton.prop('disabled', true).text('<?php _e('Applied', 'intersoccer-referral'); ?>');
-                            if ($referralMessage.length) {
-                                $referralMessage.removeClass('error').addClass('success');
-                                var statusMessage = $referralMessage.data('statusMessage');
-                                if (statusMessage) {
-                                    $referralMessage.html(statusMessage).show();
-                                } else {
-                                    $referralMessage.show();
-                                }
-                            }
-                        } else {
-                            var statusMessagePrefill = $referralMessage.data('statusMessage');
-                            if (statusMessagePrefill) {
-                                $referralMessage.removeClass('error').addClass('success').html(statusMessagePrefill).show();
-                            }
-                        }
-                    }
-
-                    $(document).off('click', '#apply_referral_code').on('click', '#apply_referral_code', function(event) {
-                        event.preventDefault();
-                        applyReferralCode();
-                    });
-
-                    if ($referralInput.length && $referralButton.length) {
-                        var shouldAutoApply = $referralButton.data('auto-apply') === 'yes';
-                        var existingCode = ($referralInput.val() || '').trim();
-                        var alreadyTriggered = $referralButton.data('autoTriggered');
-                        var isAlreadyApplied = $referralInput.data('code-applied') === 'yes';
-
-                        if (!isAlreadyApplied && shouldAutoApply && existingCode && !alreadyTriggered) {
-                            console.log('Auto-applying referral code:', existingCode);
-                            $referralButton.data('autoTriggered', true);
-                            applyReferralCode();
-                        }
-                    }
-
-                    // Handle points redemption checkbox
-                    $(document).off('change', '#intersoccer_use_points').on('change', '#intersoccer_use_points', function() {
-                        console.log('Points checkbox changed:', $(this).is(':checked'));
-                        var $pointsDetails = $(this).closest('.intersoccer-points-redemption').find('.points-details');
-                        if ($(this).is(':checked')) {
-                            $pointsDetails.slideDown();
-                        } else {
-                            $pointsDetails.slideUp();
-                            // Clear any applied points
-                            applyPointsAmount(0);
-                        }
-                    });
-
-                    // Handle apply all points button
-                    $(document).off('click', '.apply-all-points').on('click', '.apply-all-points', function() {
-                        var availablePoints = <?php echo $available_credits; ?>;
-                        applyPointsAmount(availablePoints);
-                    });
-
-                    // Handle custom amount input
-                    $(document).off('input', '#intersoccer_points_to_redeem').on('input', '#intersoccer_points_to_redeem', function() {
-                        var customAmount = parseInt($(this).val()) || 0;
-                        applyPointsAmount(customAmount);
-                    });
-                }
-
-                // Initialize handlers on page load
-                initPointsRedemptionHandlers();
-
-                // Re-initialize handlers after WooCommerce AJAX updates
-                $(document.body).on('updated_checkout', function() {
-                    console.log('Checkout updated, re-initializing handlers');
-                    initPointsRedemptionHandlers();
-                });
-
-                // Function to apply points amount
-                function applyPointsAmount(pointsAmount) {
-                    console.log('Applying points amount:', pointsAmount);
-                    var availablePoints = <?php echo $available_credits; ?>;
-
-                    // Validate points amount (no 100-point limit, only available points limit)
-                    if (pointsAmount < 0) pointsAmount = 0;
-                    if (pointsAmount > availablePoints) pointsAmount = availablePoints;
-
-                    console.log('Validated points amount:', pointsAmount, 'max allowed:', availablePoints);
-
-                    // Update input field
-                    $('#intersoccer_points_to_redeem').val(pointsAmount);
-
-                    // Show applied amount
-                    var $appliedAmount = $('.applied-amount');
-                    var $appliedText = $('.applied-text');
-
-                    if (pointsAmount > 0) {
-                        $appliedText.text('<?php _e('Applied', 'intersoccer-referral'); ?> ' + pointsAmount + ' <?php _e('points discount', 'intersoccer-referral'); ?>');
-                        $appliedAmount.show();
-                    } else {
-                        $appliedAmount.hide();
-                    }
-
-                    // Update session via AJAX
-                    console.log('Making AJAX call to update points session');
-                    $.ajax({
-                        url: '<?php echo admin_url('admin-ajax.php'); ?>',
-                        type: 'POST',
-                        data: {
-                            action: 'update_points_session',
-                            points_to_redeem: pointsAmount,
-                            nonce: '<?php echo wp_create_nonce('intersoccer_checkout_nonce'); ?>'
-                        },
-                        success: function(response) {
-                            console.log('AJAX success:', response);
-                            if (response.success) {
-                                // Trigger checkout update to recalculate totals
-                                $(document.body).trigger('update_checkout');
-                            } else {
-                                console.error('Error updating points session:', response.data);
-                            }
-                        },
-                        error: function(xhr, status, error) {
-                            console.error('AJAX error updating points session:', error, xhr.responseText);
-                        }
-                    });
-                }
-            });
-            </script>
-            <?php
         }
     }
 

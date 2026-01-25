@@ -1354,6 +1354,50 @@ class InterSoccer_Referral_System {
     * enqueue frontend assets
     */
     public function enqueue_frontend_assets() {
+        if ($this->should_enqueue_customer_dashboard_assets()) {
+            wp_enqueue_style(
+                'intersoccer-customer-dashboard-css',
+                INTERSOCCER_REFERRAL_URL . 'assets/css/customer-dashboard.css',
+                [],
+                INTERSOCCER_REFERRAL_VERSION
+            );
+            wp_enqueue_script(
+                'intersoccer-customer-dashboard-js',
+                INTERSOCCER_REFERRAL_URL . 'assets/js/customer-dashboard.js',
+                [],
+                INTERSOCCER_REFERRAL_VERSION,
+                true
+            );
+        }
+
+        // Checkout assets (referral code + points redemption fields)
+        if (function_exists('is_checkout') && is_checkout() && is_user_logged_in() && !get_option('intersoccer_passive_mode', false)) {
+            $available_points = (int) get_user_meta(get_current_user_id(), 'intersoccer_points_balance', true);
+
+            wp_enqueue_script(
+                'intersoccer-checkout-js',
+                INTERSOCCER_REFERRAL_URL . 'assets/js/checkout.js',
+                ['jquery'],
+                INTERSOCCER_REFERRAL_VERSION,
+                true
+            );
+
+            wp_localize_script('intersoccer-checkout-js', 'intersoccer_checkout', [
+                'ajax_url' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('intersoccer_checkout_nonce'),
+                'available_points' => $available_points,
+                'i18n' => [
+                    'please_enter_referral_code' => __('Please enter a referral code', 'intersoccer-referral'),
+                    'applying' => __('Applying...', 'intersoccer-referral'),
+                    'applied' => __('Applied', 'intersoccer-referral'),
+                    'apply_code' => __('Apply Code', 'intersoccer-referral'),
+                    'error_applying_referral_code' => __('Error applying referral code', 'intersoccer-referral'),
+                    'discount_label' => __('Discount:', 'intersoccer-referral'),
+                    'points_discount' => __('points discount', 'intersoccer-referral'),
+                ],
+            ]);
+        }
+
         // Modern coach dashboard assets
         if (is_user_logged_in() && current_user_can('coach') && !is_account_page()) {
             wp_enqueue_style('modern-dashboard-css', INTERSOCCER_REFERRAL_URL . 'assets/css/modern-dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
@@ -1486,6 +1530,27 @@ class InterSoccer_Referral_System {
                 'error_generic' => __('An error occurred. Please try again.', 'intersoccer-referral')
             ]
         ]);
+
+        // Back-compat / shared object used by admin JS.
+        wp_localize_script('intersoccer-admin-js', 'intersoccer_admin', [
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('intersoccer_admin_nonce'),
+            'i18n' => [
+                'coach_events_select_event' => __('Please select an event before saving.', 'intersoccer-referral'),
+                'coach_events_search_min_chars' => __('Enter at least two characters to search.', 'intersoccer-referral'),
+                'coach_events_searching' => __('Searching…', 'intersoccer-referral'),
+                'coach_events_no_events' => __('No events found.', 'intersoccer-referral'),
+                'coach_events_search_failed' => __('Search failed. Please try again.', 'intersoccer-referral'),
+                'coach_events_remove_confirm' => __('Remove this event assignment?', 'intersoccer-referral'),
+                'coach_events_link_copied' => __('Link copied to clipboard.', 'intersoccer-referral'),
+                'coach_events_press_ctrl_c' => __('Press Ctrl+C to copy the link', 'intersoccer-referral'),
+                'coach_events_save_error' => __('Error saving event', 'intersoccer-referral'),
+                'coach_events_save_network_error' => __('Network error while saving event', 'intersoccer-referral'),
+                'coach_events_remove_error' => __('Error removing event', 'intersoccer-referral'),
+                'coach_events_status_error' => __('Error updating status', 'intersoccer-referral'),
+                'coach_events_status_network_error' => __('Network error updating status', 'intersoccer-referral'),
+            ],
+        ]);
     }
 
     public function debug_elementor_status() {
@@ -1526,6 +1591,52 @@ class InterSoccer_Referral_System {
             }
         }
         
+        return false;
+    }
+
+    /**
+     * Determine whether we should enqueue the customer dashboard-specific assets early (before wp_head).
+     *
+     * This covers:
+     * - WooCommerce My Account endpoint rendering (referrals/parrainages/empfehlungen)
+     * - Shortcode usage on regular pages
+     * - Elementor widget usage (detected via page_has_elementor_widgets)
+     *
+     * @return bool
+     */
+    private function should_enqueue_customer_dashboard_assets() {
+        if (!is_user_logged_in()) {
+            return false;
+        }
+
+        // Woo My Account endpoint context
+        if (function_exists('is_account_page') && is_account_page()) {
+            $endpoint_slugs = ['referrals', 'parrainages', 'empfehlungen'];
+
+            if (self::$detected_endpoint_slug && in_array(self::$detected_endpoint_slug, $endpoint_slugs, true)) {
+                return true;
+            }
+
+            foreach ($endpoint_slugs as $slug) {
+                if (get_query_var($slug, false) !== false) {
+                    return true;
+                }
+            }
+        }
+
+        // Shortcode usage on standard pages
+        global $post;
+        if ($post && isset($post->post_content) && function_exists('has_shortcode')) {
+            if (has_shortcode($post->post_content, 'intersoccer_customer_dashboard')) {
+                return true;
+            }
+        }
+
+        // Elementor widgets
+        if (class_exists('\Elementor\Plugin') && $this->page_has_elementor_widgets()) {
+            return true;
+        }
+
         return false;
     }
 
