@@ -277,7 +277,7 @@ class InterSoccer_Commission_Manager {
 
             // Log commission payment (debug mode only)
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log("InterSoccer Referral: Commission paid - Coach {$referral->coach_id} earned {$commission_data['total_amount']} CHF for order {$order_id}");
+                intersoccer_referral_log("InterSoccer Referral: Commission paid - Coach {$referral->coach_id} earned {$commission_data['total_amount']} CHF for order {$order_id}");
             }
 
             // Notify coach
@@ -362,7 +362,7 @@ class InterSoccer_Commission_Manager {
                 }
 
                 if (defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log("InterSoccer Referral: Referral reward - Coach {$referral_coach_id} earned {$points_to_award} points for referral code usage on order {$order_id}");
+                    intersoccer_referral_log("InterSoccer Referral: Referral reward - Coach {$referral_coach_id} earned {$points_to_award} points for referral code usage on order {$order_id}");
                 }
             }
         }
@@ -462,7 +462,7 @@ class InterSoccer_Commission_Manager {
 
         // Log partnership commission (debug mode only)
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log("InterSoccer Referral: Partnership commission - Customer {$customer_id}, Coach {$partnership_coach_id}, Amount {$total_commission} CHF");
+            intersoccer_referral_log("InterSoccer Referral: Partnership commission - Customer {$customer_id}, Coach {$partnership_coach_id}, Amount {$total_commission} CHF");
         }
 
         // Notify coach

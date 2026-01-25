@@ -1265,7 +1265,7 @@ class InterSoccer_Coach_Admin_Dashboard {
         $user_id = absint($_POST['user_id']);
         if (current_user_can('coach') && get_current_user_id() === $user_id) {
             update_user_meta($user_id, 'intersoccer_tour_completed', 1);
-            error_log('Coach tour completed for user: ' . $user_id);
+            intersoccer_referral_log('Coach tour completed for user: ' . $user_id);
             wp_send_json_success(['message' => 'Tour completed']);
         }
         wp_send_json_error(['message' => 'Unauthorized']);

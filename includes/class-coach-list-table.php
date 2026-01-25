@@ -127,7 +127,7 @@ class InterSoccer_Coach_List_Table extends WP_List_Table {
         $query .= " ORDER BY u.$orderby $order LIMIT " . ($current_page - 1) * $per_page . ", $per_page";
 
         $this->items = $wpdb->get_results($query);
-        error_log('Preparing coach list table, orderby: ' . $orderby . ', query: ' . $wpdb->last_query);
+        intersoccer_referral_log('Preparing coach list table, orderby: ' . $orderby . ', query: ' . $wpdb->last_query);
     }
 }
 ?>

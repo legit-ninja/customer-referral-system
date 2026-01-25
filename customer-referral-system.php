@@ -20,13 +20,27 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('INTERSOCCER_REFERRAL_VERSION', '1.0.0');
+define('INTERSOCCER_REFERRAL_VERSION', '1.11.11');
 define('INTERSOCCER_REFERRAL_PATH', plugin_dir_path(__FILE__));
 define('INTERSOCCER_REFERRAL_URL', plugin_dir_url(__FILE__));
 define('INTERSOCCER_REFERRAL_BASENAME', plugin_basename(__FILE__));
 
+/**
+ * Lightweight debug logger for this plugin.
+ *
+ * @param string $message
+ * @return void
+ */
+if (!function_exists('intersoccer_referral_log')) {
+    function intersoccer_referral_log($message) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            intersoccer_referral_log((string) $message);
+        }
+    }
+}
+
 if (!file_exists(INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.php')) {
-    error_log('Error: class-referral-handler.php not found at ' . INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.php');
+    intersoccer_referral_log('Error: class-referral-handler.php not found at ' . INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.php');
 }
 // Include necessary files
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.php';
@@ -51,7 +65,7 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-dashboard.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-admin-dashboard.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-user-roles.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-utils.php';
-error_log('All plugin files loaded, Referral Handler exists: ' . class_exists('InterSoccer_Referral_Handler'));
+intersoccer_referral_log('All plugin files loaded, Referral Handler exists: ' . class_exists('InterSoccer_Referral_Handler'));
 
 // Main plugin class
 class InterSoccer_Referral_System {
@@ -82,6 +96,7 @@ class InterSoccer_Referral_System {
         $locale = determine_locale();
         $domain = 'intersoccer-referral';
         $attempts = [];
+        $locale_parts = preg_split('/[_-]/', (string) $locale);
 
         // Exact locale first (e.g. fr_FR)
         $attempts[] = $locale;
@@ -116,7 +131,7 @@ class InterSoccer_Referral_System {
             if (@is_readable($candidate)) {
                 $loaded = load_textdomain($domain, $candidate);
                 if ($loaded && defined('WP_DEBUG') && WP_DEBUG) {
-                    error_log('InterSoccer Referral: Loaded translations from plugin directory: ' . $candidate);
+                    intersoccer_referral_log('InterSoccer Referral: Loaded translations from plugin directory: ' . $candidate);
                 }
                 break;
             }
@@ -126,7 +141,7 @@ class InterSoccer_Referral_System {
         if (!$loaded) {
             load_plugin_textdomain($domain, false, $plugin_rel_path . '/languages');
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log('InterSoccer Referral: Attempted fallback translation loading for locale: ' . $locale);
+                intersoccer_referral_log('InterSoccer Referral: Attempted fallback translation loading for locale: ' . $locale);
             }
         }
 
@@ -150,7 +165,7 @@ class InterSoccer_Referral_System {
         $this->add_custom_roles();
 
         if (class_exists('WooCommerce')) {
-            error_log('InterSoccer: WooCommerce detected, version: ' . WC()->version);
+            intersoccer_referral_log('InterSoccer: WooCommerce detected, version: ' . WC()->version);
         }
 
         // Enqueue assets
@@ -314,7 +329,7 @@ class InterSoccer_Referral_System {
         
         require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-elementor-widgets.php';
         new InterSoccer_Elementor_Integration();
-        error_log('InterSoccer: Elementor Integration Loaded: InterSoccer_Elementor_Integration');
+        intersoccer_referral_log('InterSoccer: Elementor Integration Loaded: InterSoccer_Elementor_Integration');
     }
 
     public function activate() {
@@ -337,7 +352,7 @@ class InterSoccer_Referral_System {
         flush_rewrite_rules();
 
         // Log activation
-        error_log('InterSoccer Referral System activated successfully');
+        intersoccer_referral_log('InterSoccer Referral System activated successfully');
     }
     
     public function deactivate() {
@@ -349,7 +364,7 @@ class InterSoccer_Referral_System {
         flush_rewrite_rules();
         
         // Log deactivation
-        error_log('InterSoccer Referral System deactivated');
+        intersoccer_referral_log('InterSoccer Referral System deactivated');
     }
     
     public static function uninstall() {
@@ -371,7 +386,7 @@ class InterSoccer_Referral_System {
         */
         
         // Log uninstall
-        error_log('InterSoccer Referral System uninstalled');
+        intersoccer_referral_log('InterSoccer Referral System uninstalled');
     }
     
     private function create_database_tables() {
@@ -1311,7 +1326,7 @@ class InterSoccer_Referral_System {
                 update_user_meta($user_meta->user_id, $user_meta->meta_key, $new_code);
                 $migrated_count++;
 
-                error_log("Migrated referral code for user {$user_meta->user_id}: {$old_code} -> {$new_code}");
+                intersoccer_referral_log("Migrated referral code for user {$user_meta->user_id}: {$old_code} -> {$new_code}");
             }
         }
 
@@ -1346,7 +1361,7 @@ class InterSoccer_Referral_System {
         }
 
         if ($migrated_count > 0) {
-            error_log("InterSoccer: Migrated {$migrated_count} referral codes to new format");
+            intersoccer_referral_log("InterSoccer: Migrated {$migrated_count} referral codes to new format");
         }
     }
     
@@ -1554,15 +1569,15 @@ class InterSoccer_Referral_System {
     }
 
     public function debug_elementor_status() {
-        error_log('=== InterSoccer Elementor Debug ===');
-        error_log('Elementor Plugin class exists: ' . (class_exists('\Elementor\Plugin') ? 'YES' : 'NO'));
+        intersoccer_referral_log('=== InterSoccer Elementor Debug ===');
+        intersoccer_referral_log('Elementor Plugin class exists: ' . (class_exists('\Elementor\Plugin') ? 'YES' : 'NO'));
         
         if (class_exists('\Elementor\Plugin')) {
-            error_log('Elementor Plugin instance exists: ' . (isset(\Elementor\Plugin::$instance) ? 'YES' : 'NO'));
-            error_log('Elementor version: ' . (defined('ELEMENTOR_VERSION') ? ELEMENTOR_VERSION : 'NOT_DEFINED'));
+            intersoccer_referral_log('Elementor Plugin instance exists: ' . (isset(\Elementor\Plugin::$instance) ? 'YES' : 'NO'));
+            intersoccer_referral_log('Elementor version: ' . (defined('ELEMENTOR_VERSION') ? ELEMENTOR_VERSION : 'NOT_DEFINED'));
         }
         
-        error_log('Available actions: ' . implode(', ', array_keys($GLOBALS['wp_filter'])));
+        intersoccer_referral_log('Available actions: ' . implode(', ', array_keys($GLOBALS['wp_filter'])));
     }
 
     /**
@@ -1811,7 +1826,7 @@ add_action('intersoccer_daily_cleanup', function() {
         intersoccer_update_coach_performance($coach->ID);
     }
     
-    error_log('InterSoccer daily cleanup completed');
+    intersoccer_referral_log('InterSoccer daily cleanup completed');
 });
 
 // Weekly reports
@@ -1826,7 +1841,7 @@ add_action('intersoccer_weekly_reports', function() {
         intersoccer_send_weekly_report($coach->ID);
     }
     
-    error_log('InterSoccer weekly reports sent');
+    intersoccer_referral_log('InterSoccer weekly reports sent');
 });
 
 // Helper function to update coach performance
@@ -1866,7 +1881,7 @@ function intersoccer_update_coach_performance($coach_id) {
     $result = $wpdb->replace($performance_table, $data);
     
     if ($result === false) {
-        error_log("InterSoccer: Failed to update coach performance for coach $coach_id: " . $wpdb->last_error);
+        intersoccer_referral_log("InterSoccer: Failed to update coach performance for coach $coach_id: " . $wpdb->last_error);
     }
 }
 

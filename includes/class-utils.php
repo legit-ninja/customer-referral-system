@@ -306,11 +306,11 @@ class InterSoccer_Import_Logger {
         $log_entry = "[{$timestamp}] {$level}: {$message}{$context_str}" . PHP_EOL;
         
         // Write to file
-        error_log($log_entry, 3, self::$log_file);
+        intersoccer_referral_log($log_entry, 3, self::$log_file);
         
         // Also log to WordPress error log for critical errors
         if ($level === 'ERROR') {
-            error_log("InterSoccer Import Error: {$message}");
+            intersoccer_referral_log("InterSoccer Import Error: {$message}");
         }
     }
     
@@ -431,7 +431,7 @@ class InterSoccer_Database_Optimizer {
             WHERE post_type = 'shop_order'
         ");
         
-        error_log('InterSoccer: Database indexes created for customer credit optimization');
+        intersoccer_referral_log('InterSoccer: Database indexes created for customer credit optimization');
     }
     
     /**

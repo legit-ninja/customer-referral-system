@@ -353,7 +353,7 @@ class InterSoccer_Audit_Logger {
         $result = $wpdb->insert($this->table_name, $log_entry);
 
         if ($result === false) {
-            error_log('Failed to insert audit log entry: ' . $wpdb->last_error);
+            intersoccer_referral_log('Failed to insert audit log entry: ' . $wpdb->last_error);
         }
 
         // Clean up old logs if needed

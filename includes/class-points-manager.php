@@ -61,7 +61,7 @@ class InterSoccer_Points_Manager {
         }
 
         if ($order_timestamp !== null && $this->is_order_before_go_live($order_timestamp)) {
-            error_log("InterSoccer: Skipped points allocation for order {$order_id} (before go-live date)");
+            intersoccer_referral_log("InterSoccer: Skipped points allocation for order {$order_id} (before go-live date)");
             return;
         }
 
@@ -114,7 +114,7 @@ class InterSoccer_Points_Manager {
             $this->update_user_points_balance($customer_id);
 
             // Log the allocation
-            error_log("InterSoccer: Allocated {$points_to_allocate} points to customer {$customer_id} for order {$order_id}");
+            intersoccer_referral_log("InterSoccer: Allocated {$points_to_allocate} points to customer {$customer_id} for order {$order_id}");
         }
     }
 
@@ -144,7 +144,7 @@ class InterSoccer_Points_Manager {
         if (!in_array($order_id, $queued_orders)) {
             $queued_orders[] = $order_id;
             set_transient('intersoccer_queued_points_orders', $queued_orders, WEEK_IN_SECONDS * 2);
-            error_log("InterSoccer: Queued order {$order_id} for deferred points allocation");
+            intersoccer_referral_log("InterSoccer: Queued order {$order_id} for deferred points allocation");
         }
     }
 
@@ -156,7 +156,7 @@ class InterSoccer_Points_Manager {
         $queued_orders = get_transient('intersoccer_queued_points_orders');
         
         if (!is_array($queued_orders) || empty($queued_orders)) {
-            error_log("InterSoccer: No orders queued for deferred points allocation");
+            intersoccer_referral_log("InterSoccer: No orders queued for deferred points allocation");
             return;
         }
 
@@ -171,7 +171,7 @@ class InterSoccer_Points_Manager {
                     $processed++;
                 }
             } catch (Exception $e) {
-                error_log("InterSoccer: Failed to allocate points for order {$order_id}: " . $e->getMessage());
+                intersoccer_referral_log("InterSoccer: Failed to allocate points for order {$order_id}: " . $e->getMessage());
                 $failed++;
             }
         }
@@ -179,7 +179,7 @@ class InterSoccer_Points_Manager {
         // Clear the queue after processing
         delete_transient('intersoccer_queued_points_orders');
 
-        error_log("InterSoccer: Deferred points allocation completed. Processed: {$processed}, Failed: {$failed}");
+        intersoccer_referral_log("InterSoccer: Deferred points allocation completed. Processed: {$processed}, Failed: {$failed}");
         
         // Log audit event
         do_action('intersoccer_audit_log', 'deferred_points_allocation', [
@@ -218,7 +218,7 @@ class InterSoccer_Points_Manager {
         // Update user meta
         $this->update_user_points_balance($customer_id);
 
-        error_log("InterSoccer: Deducted {$allocated_points} points from customer {$customer_id} for refunded order {$order_id}");
+        intersoccer_referral_log("InterSoccer: Deducted {$allocated_points} points from customer {$customer_id} for refunded order {$order_id}");
     }
 
     /**
@@ -415,7 +415,7 @@ class InterSoccer_Points_Manager {
         );
 
         if ($result === false) {
-            error_log("InterSoccer: Failed to insert points transaction: " . $wpdb->last_error);
+            intersoccer_referral_log("InterSoccer: Failed to insert points transaction: " . $wpdb->last_error);
             return false;
         }
 
@@ -786,7 +786,7 @@ class InterSoccer_Points_Manager {
         // Clear session
         WC()->session->set('intersoccer_points_to_redeem', 0);
 
-        error_log("InterSoccer: Redeemed {$points_to_redeem} points for order {$order->get_id()}");
+        intersoccer_referral_log("InterSoccer: Redeemed {$points_to_redeem} points for order {$order->get_id()}");
     }
 
     /**
@@ -830,7 +830,7 @@ class InterSoccer_Points_Manager {
         $order->delete_meta_data('_intersoccer_points_redeemed');
         $order->delete_meta_data('_intersoccer_discount_amount');
 
-        error_log("InterSoccer: Refunded {$points_redeemed} points for {$reason} order {$order_id}");
+        intersoccer_referral_log("InterSoccer: Refunded {$points_redeemed} points for {$reason} order {$order_id}");
     }
 
     /**

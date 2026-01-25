@@ -2238,26 +2238,26 @@ class InterSoccer_Admin_Settings {
     public function ajax_import_coaches_from_csv() {
         try {
             // Debug logging
-            error_log('AJAX import called at ' . current_time('mysql'));
-            error_log('POST data: ' . print_r($_POST, true));
-            error_log('FILES data: ' . print_r($_FILES, true));
+            intersoccer_referral_log('AJAX import called at ' . current_time('mysql'));
+            intersoccer_referral_log('POST data: ' . print_r($_POST, true));
+            intersoccer_referral_log('FILES data: ' . print_r($_FILES, true));
 
             // Verify nonce and permissions
             if (!wp_verify_nonce($_POST['_wpnonce'] ?? '', 'import_coaches_from_csv')) {
-                error_log('Nonce verification failed');
+                intersoccer_referral_log('Nonce verification failed');
                 wp_send_json_error('Invalid nonce');
                 return;
             }
 
             if (!current_user_can('manage_options')) {
-                error_log('Permission check failed');
+                intersoccer_referral_log('Permission check failed');
                 wp_send_json_error('Insufficient permissions');
                 return;
             }
 
             if (!isset($_FILES['coaches_csv']) || $_FILES['coaches_csv']['error'] !== UPLOAD_ERR_OK) {
                 $error_code = $_FILES['coaches_csv']['error'] ?? 'no file';
-                error_log('File upload error: ' . $error_code);
+                intersoccer_referral_log('File upload error: ' . $error_code);
                 wp_send_json_error('File upload error: ' . $error_code);
                 return;
             }
@@ -2265,16 +2265,16 @@ class InterSoccer_Admin_Settings {
             $file = $_FILES['coaches_csv']['tmp_name'];
             $update_existing = isset($_POST['update_existing']) && $_POST['update_existing'] == '1';
 
-            error_log('Processing file: ' . $file . ', update_existing: ' . ($update_existing ? 'yes' : 'no'));
+            intersoccer_referral_log('Processing file: ' . $file . ', update_existing: ' . ($update_existing ? 'yes' : 'no'));
 
             $results = $this->process_coach_csv_import($file, $update_existing);
 
-            error_log('Import completed successfully: ' . print_r($results, true));
+            intersoccer_referral_log('Import completed successfully: ' . print_r($results, true));
             wp_send_json_success($results);
 
         } catch (Exception $e) {
-            error_log('Exception in AJAX import: ' . $e->getMessage());
-            error_log('Stack trace: ' . $e->getTraceAsString());
+            intersoccer_referral_log('Exception in AJAX import: ' . $e->getMessage());
+            intersoccer_referral_log('Stack trace: ' . $e->getTraceAsString());
             wp_send_json_error('Import failed: ' . $e->getMessage());
         }
     }
@@ -2299,20 +2299,20 @@ class InterSoccer_Admin_Settings {
             
             // Skip completely empty rows
             if (empty(array_filter($potential_header, function($cell) { return !empty(trim($cell)); }))) {
-                error_log("Skipping empty row {$rows_checked}");
+                intersoccer_referral_log("Skipping empty row {$rows_checked}");
                 continue;
             }
             
             // Skip rows that are likely titles (have only 1-2 non-empty cells)
             $non_empty_count = count(array_filter($potential_header, function($cell) { return !empty(trim($cell)); }));
             if ($non_empty_count < 3) {
-                error_log("Skipping likely title row {$rows_checked}: " . implode(', ', $potential_header));
+                intersoccer_referral_log("Skipping likely title row {$rows_checked}: " . implode(', ', $potential_header));
                 continue;
             }
             
             // This looks like a valid header row
             $header = $potential_header;
-            error_log("Found valid header row at line {$rows_checked}: " . implode(', ', $header));
+            intersoccer_referral_log("Found valid header row at line {$rows_checked}: " . implode(', ', $header));
             break;
         }
         
@@ -2327,8 +2327,8 @@ class InterSoccer_Admin_Settings {
         }, $header);
 
         // Log the headers we found
-        error_log('CSV Headers found: ' . implode(', ', $header));
-        error_log('Normalized headers: ' . implode(', ', $normalized_header));
+        intersoccer_referral_log('CSV Headers found: ' . implode(', ', $header));
+        intersoccer_referral_log('Normalized headers: ' . implode(', ', $normalized_header));
 
         // Map common column name variations to standard names
         $column_mapping = [
@@ -2401,7 +2401,7 @@ class InterSoccer_Admin_Settings {
             throw new Exception($error_msg);
         }
 
-        error_log('Field mapping: ' . json_encode($field_map));
+        intersoccer_referral_log('Field mapping: ' . json_encode($field_map));
 
         $results = [
             'created' => [],
@@ -2530,7 +2530,7 @@ class InterSoccer_Admin_Settings {
         if (get_role('coach')) {
             $user->set_role('coach');
         } else {
-            error_log('InterSoccer: Coach role not found during import');
+            intersoccer_referral_log('InterSoccer: Coach role not found during import');
         }
 
         // Generate referral code for coach if not exists
@@ -2930,7 +2930,7 @@ class InterSoccer_Admin_Settings {
                 // Add coach role
                 $user->add_role('coach');
                 $roles_restored++;
-                error_log("InterSoccer: Restored coach role to user {$user_id} ({$user->user_email})");
+                intersoccer_referral_log("InterSoccer: Restored coach role to user {$user_id} ({$user->user_email})");
             }
         }
 

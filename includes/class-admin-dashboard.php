@@ -224,7 +224,7 @@ class InterSoccer_Referral_Admin_Dashboard {
 
     public function enqueue_admin_assets($hook) {
         // Debug: log the current hook
-        error_log('Enqueue hook: ' . $hook);
+        intersoccer_referral_log('Enqueue hook: ' . $hook);
 
         if (strpos($hook, 'intersoccer') !== false) {
             // Enqueue Chart.js first
@@ -289,7 +289,7 @@ class InterSoccer_Referral_Admin_Dashboard {
 
             // Enqueue settings page and tools page specific assets
             if (strpos($hook, 'intersoccer-settings') !== false || strpos($hook, 'intersoccer-tools') !== false) {
-                error_log('Enqueueing settings/tools page assets for hook: ' . $hook);
+                intersoccer_referral_log('Enqueueing settings/tools page assets for hook: ' . $hook);
                 wp_enqueue_style('intersoccer-admin-settings-css', INTERSOCCER_REFERRAL_URL . 'assets/css/admin-settings.css', [], INTERSOCCER_REFERRAL_VERSION);
                 wp_enqueue_script('intersoccer-admin-settings-js', INTERSOCCER_REFERRAL_URL . 'assets/js/admin-settings.js', ['jquery'], INTERSOCCER_REFERRAL_VERSION, true);
                 wp_enqueue_script('intersoccer-admin-simulator-js', INTERSOCCER_REFERRAL_URL . 'assets/js/admin-simulator.js', ['jquery', 'chart-js'], INTERSOCCER_REFERRAL_VERSION, true);
@@ -553,7 +553,7 @@ class InterSoccer_Referral_Admin_Dashboard {
 
         $user_id = get_current_user_id();
         $available_credits = get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0;
-        error_log("Checkout points field - User: $user_id, Available credits: $available_credits");
+        intersoccer_referral_log("Checkout points field - User: $user_id, Available credits: $available_credits");
 
         if ($available_credits > 0) {
             // Get cart total for context
@@ -720,7 +720,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         // Award points to coach for referral code usage (one-time bonus)
         $referral_code = WC()->session->get('intersoccer_applied_referral_code');
         $referral_coach_id = WC()->session->get('intersoccer_referral_coach_id');
-        error_log("Checking referral bonus: code=$referral_code, coach_id=$referral_coach_id");
+        intersoccer_referral_log("Checking referral bonus: code=$referral_code, coach_id=$referral_coach_id");
 
         if ($referral_code && $referral_coach_id) {
             // Check if this is the customer's first completed order
@@ -729,11 +729,11 @@ class InterSoccer_Referral_Admin_Dashboard {
                 'status' => 'completed',
                 'limit' => 1
             ]);
-            error_log("Customer completed orders count: " . count($customer_orders));
+            intersoccer_referral_log("Customer completed orders count: " . count($customer_orders));
 
             // If this is their first completed order, award bonus points to coach
             if (count($customer_orders) === 1 && $customer_orders[0]->get_id() === $order_id) {
-                error_log("Awarding referral bonus to coach $referral_coach_id");
+                intersoccer_referral_log("Awarding referral bonus to coach $referral_coach_id");
                 $points_to_award = 50; // Award 50 bonus points to coach for successful referral
 
                 // Get current coach points balance
@@ -772,24 +772,24 @@ class InterSoccer_Referral_Admin_Dashboard {
      */
     private function award_purchase_points_to_coach($order) {
         $customer_id = $order->get_customer_id();
-        error_log("Awarding purchase points: customer_id=$customer_id, order_id=" . $order->get_id());
+        intersoccer_referral_log("Awarding purchase points: customer_id=$customer_id, order_id=" . $order->get_id());
 
         // Get the customer's preferred coach
         $coach_id = get_user_meta($customer_id, 'intersoccer_preferred_coach', true);
-        error_log("Coach ID for customer $customer_id: $coach_id");
+        intersoccer_referral_log("Coach ID for customer $customer_id: $coach_id");
 
         if (!$coach_id) {
-            error_log("No coach linked to customer $customer_id");
+            intersoccer_referral_log("No coach linked to customer $customer_id");
             return; // No linked coach
         }
 
         // Calculate points to award: CHF 10 spent = 1 point
         $order_total = $order->get_total();
         $points_to_award = floor($order_total / 10); // 1 point per CHF 10 spent
-        error_log("Order total: $order_total, points to award: $points_to_award");
+        intersoccer_referral_log("Order total: $order_total, points to award: $points_to_award");
 
         if ($points_to_award <= 0) {
-            error_log("No points to award for order total $order_total");
+            intersoccer_referral_log("No points to award for order total $order_total");
             return; // No points to award
         }
 
@@ -797,7 +797,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         $current_coach_points = get_user_meta($coach_id, 'intersoccer_points_balance', true) ?: 0;
         $new_coach_points = $current_coach_points + $points_to_award;
         update_user_meta($coach_id, 'intersoccer_points_balance', $new_coach_points);
-        error_log("Updated coach $coach_id points: $current_coach_points -> $new_coach_points");
+        intersoccer_referral_log("Updated coach $coach_id points: $current_coach_points -> $new_coach_points");
 
         // Record the purchase reward
         global $wpdb;
@@ -814,9 +814,9 @@ class InterSoccer_Referral_Admin_Dashboard {
         );
 
         if ($result === false) {
-            error_log("Failed to insert purchase reward: " . $wpdb->last_error);
+            intersoccer_referral_log("Failed to insert purchase reward: " . $wpdb->last_error);
         } else {
-            error_log("Successfully recorded purchase reward for coach $coach_id");
+            intersoccer_referral_log("Successfully recorded purchase reward for coach $coach_id");
         }
 
         // Add order note
@@ -824,7 +824,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         $order->add_order_note(sprintf(__('Awarded %d points to coach %s for customer purchase (CHF %.2f). New balance: %d', 'intersoccer-referral'),
             $points_to_award, $coach_info->display_name, $order_total, $new_coach_points));
 
-        error_log("Awarded $points_to_award points to coach $coach_id for customer $customer_id purchase of CHF $order_total");
+        intersoccer_referral_log("Awarded $points_to_award points to coach $coach_id for customer $customer_id purchase of CHF $order_total");
     }
 
     /**
@@ -846,7 +846,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         // Get cart total to limit redemption
         $cart_total = WC()->cart ? WC()->cart->get_total('edit') : 0;
 
-        error_log("Points session update - User: $user_id, Requested: $points_to_redeem, Available: $available_points, Cart Total: $cart_total");
+        intersoccer_referral_log("Points session update - User: $user_id, Requested: $points_to_redeem, Available: $available_points, Cart Total: $cart_total");
 
         // Limit to available points AND cart total (no 100-point limit)
         $points_to_redeem = min($points_to_redeem, $available_points, $cart_total);
@@ -908,10 +908,10 @@ class InterSoccer_Referral_Admin_Dashboard {
             $cart->add_fee(__('Coach Referral Discount', 'intersoccer-referral'), $discount_amount, true, '');
 
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log("InterSoccer Referral: Applying first-order referral discount - user=$current_user_id, code=$referral_code, discount=$discount_amount");
+                intersoccer_referral_log("InterSoccer Referral: Applying first-order referral discount - user=$current_user_id, code=$referral_code, discount=$discount_amount");
             }
         } elseif ($referral_code && defined('WP_DEBUG') && WP_DEBUG) {
-            error_log("InterSoccer Referral: Skipping referral discount - user=$current_user_id, code=$referral_code, eligible=" . ($eligible_for_discount ? 'yes' : 'no'));
+            intersoccer_referral_log("InterSoccer Referral: Skipping referral discount - user=$current_user_id, code=$referral_code, eligible=" . ($eligible_for_discount ? 'yes' : 'no'));
         }
 
         // Apply points discount
@@ -931,7 +931,7 @@ class InterSoccer_Referral_Admin_Dashboard {
             
             // Debug logging (only in debug mode to prevent excessive disk I/O)
             if (defined('WP_DEBUG') && WP_DEBUG) {
-                error_log("InterSoccer Referral: Applying points discount as fee - points=$points_to_redeem, discount=$discount_amount");
+                intersoccer_referral_log("InterSoccer Referral: Applying points discount as fee - points=$points_to_redeem, discount=$discount_amount");
             }
         }
     }

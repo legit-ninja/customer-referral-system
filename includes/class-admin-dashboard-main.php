@@ -977,16 +977,16 @@ class InterSoccer_Admin_Dashboard_Main {
      * Clear demo data for testing
      */
     public function clear_demo_data() {
-        error_log('Clear demo data function called');
+        intersoccer_referral_log('Clear demo data function called');
 
         // Security checks
         if (!wp_verify_nonce($_POST['nonce'] ?? '', 'intersoccer_admin_nonce')) {
-            error_log('Invalid nonce in clear demo data');
+            intersoccer_referral_log('Invalid nonce in clear demo data');
             wp_send_json_error('Invalid nonce');
         }
 
         if (!current_user_can('manage_options')) {
-            error_log('Insufficient permissions in clear demo data');
+            intersoccer_referral_log('Insufficient permissions in clear demo data');
             wp_send_json_error('Insufficient permissions');
         }
 
@@ -1018,15 +1018,15 @@ class InterSoccer_Admin_Dashboard_Main {
                 $table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $full_table_name));
                 if ($table_exists) {
                     $result = $wpdb->query("DELETE FROM $full_table_name");
-                    error_log("Cleared $table_name: $result rows deleted");
+                    intersoccer_referral_log("Cleared $table_name: $result rows deleted");
                 } else {
-                    error_log("Table $table_name does not exist, skipping");
+                    intersoccer_referral_log("Table $table_name does not exist, skipping");
                 }
             }
 
             // Clear user meta data
             $meta_result = $wpdb->query("DELETE FROM {$wpdb->usermeta} WHERE meta_key LIKE 'intersoccer%'");
-            error_log("Cleared user meta data: $meta_result rows deleted");
+            intersoccer_referral_log("Cleared user meta data: $meta_result rows deleted");
 
             // Clear options (be selective to avoid breaking core functionality)
             $options_to_clear = [
@@ -1037,7 +1037,7 @@ class InterSoccer_Admin_Dashboard_Main {
 
             foreach ($options_to_clear as $option_pattern) {
                 $option_result = $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", $option_pattern));
-                error_log("Cleared options matching '$option_pattern': $option_result rows deleted");
+                intersoccer_referral_log("Cleared options matching '$option_pattern': $option_result rows deleted");
             }
 
             wp_send_json_success('Demo data cleared successfully.');

@@ -17,7 +17,7 @@ class InterSoccer_Commission_Calculator {
             $this->commission_manager = InterSoccer_Commission_Manager::get_instance();
         } else {
             // Fallback: log error but don't break the site
-            error_log('InterSoccer: Commission Manager class not found - using fallback mode');
+            intersoccer_referral_log('InterSoccer: Commission Manager class not found - using fallback mode');
             $this->commission_manager = null;
         }
 

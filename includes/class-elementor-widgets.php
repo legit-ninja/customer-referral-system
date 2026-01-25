@@ -22,22 +22,22 @@ class InterSoccer_Elementor_Integration {
     
     public function __construct() {
         // Log constructor call
-        error_log('InterSoccer: Elementor Integration class instantiated');
+        intersoccer_referral_log('InterSoccer: Elementor Integration class instantiated');
         // Register hooks only if Elementor is available
         if (class_exists('Elementor\Widget_Base')) {
             add_action('elementor/widgets/register', [$this, 'register_widgets'], 10);
             add_action('elementor/elements/categories_registered', [$this, 'add_widget_categories'], 10);
             add_action('wp_ajax_intersoccer_elementor_preview', [$this, 'handle_elementor_preview']);
             add_action('wp_ajax_nopriv_intersoccer_elementor_preview', [$this, 'handle_elementor_preview']);
-            error_log('InterSoccer: Elementor Widgets have been successfully loaded');
+            intersoccer_referral_log('InterSoccer: Elementor Widgets have been successfully loaded');
         } else {
-            error_log('InterSoccer: Elementor\Widget_Base not found, skipping widget hooks');
+            intersoccer_referral_log('InterSoccer: Elementor\Widget_Base not found, skipping widget hooks');
         }
     }
 
     
     public function add_widget_categories($elements_manager) {
-        error_log('InterSoccer: Adding widget category');
+        intersoccer_referral_log('InterSoccer: Adding widget category');
         
         $elements_manager->add_category(
             'intersoccer-widgets',
@@ -47,43 +47,43 @@ class InterSoccer_Elementor_Integration {
             ]
         );
         
-        error_log('InterSoccer: Widget category added');
+        intersoccer_referral_log('InterSoccer: Widget category added');
     }
     
     public function register_widgets($widgets_manager) {
-        error_log('InterSoccer: Widget registration hook fired');
+        intersoccer_referral_log('InterSoccer: Widget registration hook fired');
 
         // Ensure widgets manager is valid
         if (!$widgets_manager || !method_exists($widgets_manager, 'register')) {
-            error_log('InterSoccer: Invalid widgets manager');
+            intersoccer_referral_log('InterSoccer: Invalid widgets manager');
             return;
         }
 
         // Register widgets
         try {
             $widgets_manager->register(new InterSoccer_Customer_Dashboard_Widget());
-            error_log('InterSoccer: Registered widget: intersoccer_customer_dashboard');
+            intersoccer_referral_log('InterSoccer: Registered widget: intersoccer_customer_dashboard');
 
             $widgets_manager->register(new InterSoccer_Customer_Header_Badge_Widget());
-            error_log('InterSoccer: Registered widget: intersoccer_customer_header_badge');
+            intersoccer_referral_log('InterSoccer: Registered widget: intersoccer_customer_header_badge');
 
             $widgets_manager->register(new InterSoccer_Coach_Dashboard_Widget());
-            error_log('InterSoccer: Registered widget: intersoccer_coach_dashboard');
+            intersoccer_referral_log('InterSoccer: Registered widget: intersoccer_coach_dashboard');
 
             $widgets_manager->register(new InterSoccer_Referral_Stats_Widget());
-            error_log('InterSoccer: Registered widget: intersoccer_referral_stats');
+            intersoccer_referral_log('InterSoccer: Registered widget: intersoccer_referral_stats');
 
             $widgets_manager->register(new InterSoccer_Coach_Leaderboard_Widget());
-            error_log('InterSoccer: Registered widget: intersoccer_coach_leaderboard');
+            intersoccer_referral_log('InterSoccer: Registered widget: intersoccer_coach_leaderboard');
 
             $widgets_manager->register(new InterSoccer_Customer_Progress_Widget());
-            error_log('InterSoccer: Registered widget: intersoccer_customer_progress');
+            intersoccer_referral_log('InterSoccer: Registered widget: intersoccer_customer_progress');
             
         } catch (Exception $e) {
-            error_log('InterSoccer: Widget registration failed: ' . $e->getMessage());
+            intersoccer_referral_log('InterSoccer: Widget registration failed: ' . $e->getMessage());
         }
 
-        error_log('InterSoccer: Widget registration completed');
+        intersoccer_referral_log('InterSoccer: Widget registration completed');
     }
     
     public function handle_elementor_preview() {
