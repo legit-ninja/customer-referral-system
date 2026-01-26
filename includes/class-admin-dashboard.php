@@ -518,7 +518,7 @@ class InterSoccer_Referral_Admin_Dashboard {
 
         if ($is_code_applied) {
             $message_text = sprintf(
-                __('Coach referral code %s is applied. Your discount appears in the order summary.', 'intersoccer-referral'),
+                __('Referral code %s is applied. Your discount appears in the order summary.', 'intersoccer-referral'),
                 esc_html($prefill_code)
             );
             $message_classes .= ' success';
@@ -532,7 +532,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         echo '<div class="intersoccer-referral-code-wrapper" style="width: 100%; clear: both; margin-bottom: 20px;">';
         echo '<div class="intersoccer-referral-code" style="border: 1px solid #e1e5e9; border-radius: 8px; padding: 16px; margin: 0; background: #f0f9ff; width: 100%; box-sizing: border-box;">';
         echo '<div style="margin-bottom: 12px;">';
-        echo '<label for="intersoccer_referral_code" style="font-weight: 600; color: #111827; margin: 0; display: block; margin-bottom: 8px;">' . __('Coach Referral Code (Optional)', 'intersoccer-referral') . '</label>';
+        echo '<label for="intersoccer_referral_code" style="font-weight: 600; color: #111827; margin: 0; display: block; margin-bottom: 8px;">' . __('Referral Code (Optional)', 'intersoccer-referral') . '</label>';
         echo '<p style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px;">' . __('Support your favorite coach! Enter their referral code to give them credit for this purchase.', 'intersoccer-referral') . '</p>';
         echo '<input type="text" name="intersoccer_referral_code" id="intersoccer_referral_code" placeholder="Enter referral code" style="width: 100%; max-width: 300px; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px;"' . $input_attributes . $input_disabled . ' />';
         echo '<button type="button" id="apply_referral_code" class="button button-secondary" data-auto-apply="' . esc_attr($auto_apply) . '" style="margin-left: 8px; padding: 8px 16px;"' . $button_disabled . '>' . esc_html($button_label) . '</button>';

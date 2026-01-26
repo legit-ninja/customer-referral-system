@@ -71,8 +71,8 @@ msgid "Partnership Update"
 msgstr "Partnerschafts-Update"
 
 # Checkout - Referral Code
-msgid "Coach Referral Code (Optional)"
-msgstr "Trainer-Empfehlungscode (Optional)"
+msgid "Referral Code (Optional)"
+msgstr "Empfehlungscode (Optional)"
 
 msgid "Support your favorite coach! Enter their referral code to give them credit for this purchase."
 msgstr "Unterstützen Sie Ihren Lieblingstrainer! Geben Sie seinen Empfehlungscode ein, um ihm für diesen Kauf Anerkennung zu geben."

@@ -71,8 +71,8 @@ msgid "Partnership Update"
 msgstr "Mise à jour du partenariat"
 
 # Checkout - Referral Code
-msgid "Coach Referral Code (Optional)"
-msgstr "Code de parrainage de l'entraîneur (Facultatif)"
+msgid "Referral Code (Optional)"
+msgstr "Code de parrainage (Facultatif)"
 
 msgid "Support your favorite coach! Enter their referral code to give them credit for this purchase."
 msgstr "Soutenez votre entraîneur préféré ! Entrez son code de parrainage pour lui accorder un crédit pour cet achat."
