@@ -154,4 +154,71 @@ class CheckoutReferralDiscountTest extends TestCase {
 
         $this->assertEmpty($coachFee, 'Coach referral fee should not be added for returning customers');
     }
+
+    public function testDiscountIsMarkedOnOrderAndConsumedOnSuccessfulStatus() {
+        global $mock_session, $mock_user_meta, $mock_orders;
+        $mock_orders = []; // no successful orders yet
+
+        // Apply referral code and calculate fees (should apply discount + set pending flag)
+        $result = $this->invokeApplyInternal('COACHSWIFT', [
+            'recalculate' => true,
+            'context' => 'test'
+        ]);
+        $this->assertTrue($result['success']);
+        $this->dashboard->apply_points_discount_as_fee(WC()->cart);
+
+        $this->assertSame('yes', $mock_session['intersoccer_first_order_discount_pending']);
+
+        // Simulate order creation: discount marker should be written onto the order meta
+        $order = new WC_Order(2001);
+        $order->set_id(2001);
+        $order->set_customer_id(501);
+
+        $this->dashboard->maybe_mark_first_order_discount_on_order($order, []);
+        $this->assertSame(1, $order->get_meta('_intersoccer_first_order_discount_applied', true));
+
+        // Now simulate order reaching a successful status; should consume the discount for the customer
+        $this->dashboard->maybe_consume_first_order_discount(2001, 'pending', 'processing', $order);
+        $this->assertSame(1, (int) get_user_meta(501, 'intersoccer_first_order_discount_consumed', true));
+
+        // After consumption, applying a coach code should not provide the first-time discount again
+        $result2 = $this->invokeApplyInternal('COACHSWIFT', [
+            'recalculate' => false,
+            'context' => 'test'
+        ]);
+        $this->assertTrue($result2['success']);
+        $this->assertSame(0, $result2['discount_amount']);
+        $this->assertStringContainsString('First-time discount already used', $result2['message']);
+    }
+
+    public function testDiscountCanRetryIfPriorDiscountedOrderNeverBecomesSuccessful() {
+        global $mock_orders;
+        $mock_orders = []; // still no successful orders in our eligibility check
+
+        // Apply and calculate fees once
+        $result = $this->invokeApplyInternal('COACHSWIFT', [
+            'recalculate' => true,
+            'context' => 'test'
+        ]);
+        $this->assertTrue($result['success']);
+        WC()->cart->fees = [];
+        $this->dashboard->apply_points_discount_as_fee(WC()->cart);
+
+        // Mark the discount on an order, but do NOT consume (status not successful)
+        $order = new WC_Order(2002);
+        $order->set_id(2002);
+        $order->set_customer_id(501);
+        $this->dashboard->maybe_mark_first_order_discount_on_order($order, []);
+        $this->dashboard->maybe_consume_first_order_discount(2002, 'pending', 'failed', $order);
+
+        // Second attempt should still apply the discount because it was never consumed on success
+        WC()->cart->fees = [];
+        $this->dashboard->apply_points_discount_as_fee(WC()->cart);
+
+        $coachFee = array_filter(WC()->cart->fees, function($fee) {
+            return $fee['name'] === 'Coach Referral Discount';
+        });
+
+        $this->assertNotEmpty($coachFee, 'Coach referral fee should be added again when prior order never became successful');
+    }
 }
