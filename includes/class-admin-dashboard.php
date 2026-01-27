@@ -74,8 +74,12 @@ class InterSoccer_Referral_Admin_Dashboard {
             add_action('woocommerce_review_order_before_payment', [$this, 'add_referral_code_field']);
             add_action('woocommerce_review_order_before_payment', [$this, 'add_points_redemption_field']);
             add_action('woocommerce_checkout_process', [$this, 'validate_points_redemption']);
+            // Mark discount usage on the order (so we can consume it only once the order becomes successful).
+            add_action('woocommerce_checkout_create_order', [$this, 'maybe_mark_first_order_discount_on_order'], 10, 2);
             // add_action('woocommerce_checkout_create_order', [$this, 'apply_points_discount_to_order'], 10, 2); // Disabled - cart fees are automatically converted to order items
             add_action('woocommerce_order_status_changed', [$this, 'deduct_points_on_order_completion'], 10, 4);
+            // Consume the first-order discount only when the order reaches a successful state.
+            add_action('woocommerce_order_status_changed', [$this, 'maybe_consume_first_order_discount'], 20, 4);
             add_action('woocommerce_my_account_my_orders_column_order-total', [$this, 'display_points_used_in_orders']);
             add_action('woocommerce_cart_calculate_fees', [$this, 'apply_points_discount_as_fee'], 10, 1);
             add_action('wp_ajax_update_points_session', [$this, 'update_points_session']);
@@ -907,6 +911,12 @@ class InterSoccer_Referral_Admin_Dashboard {
             $discount_amount = -10; // 10 CHF discount for referral codes
             $cart->add_fee(__('Coach Referral Discount', 'intersoccer-referral'), $discount_amount, true, '');
 
+            // Mark that we applied the first-order discount during this checkout attempt.
+            // This is later copied to the order meta in maybe_mark_first_order_discount_on_order().
+            $session->set('intersoccer_first_order_discount_pending', 'yes');
+            $session->set('intersoccer_first_order_discount_code', strtoupper((string) $referral_code));
+            $session->set('intersoccer_first_order_discount_amount', 10);
+
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 intersoccer_referral_log("InterSoccer Referral: Applying first-order referral discount - user=$current_user_id, code=$referral_code, discount=$discount_amount");
             }
@@ -965,6 +975,83 @@ class InterSoccer_Referral_Admin_Dashboard {
         ]);
 
         return empty($orders);
+    }
+
+    /**
+     * If the first-order discount was applied in cart fees, copy a marker to the order.
+     * This lets us \"consume\" the one-time benefit only when the order reaches a successful status.
+     *
+     * @param WC_Order $order
+     * @param array    $data
+     * @return void
+     */
+    public function maybe_mark_first_order_discount_on_order($order, $data) {
+        if (!function_exists('WC') || !WC()->session) {
+            return;
+        }
+
+        $session = WC()->session;
+        $pending = $session->get('intersoccer_first_order_discount_pending');
+        if ($pending !== 'yes') {
+            return;
+        }
+
+        if (!is_object($order) || !method_exists($order, 'update_meta_data')) {
+            return;
+        }
+
+        $code = strtoupper((string) $session->get('intersoccer_first_order_discount_code'));
+        $amount = (int) $session->get('intersoccer_first_order_discount_amount', 10);
+
+        $order->update_meta_data('_intersoccer_first_order_discount_applied', 1);
+        $order->update_meta_data('_intersoccer_first_order_discount_code', $code);
+        $order->update_meta_data('_intersoccer_first_order_discount_amount', $amount);
+        $order->update_meta_data('_intersoccer_first_order_discount_applied_at', current_time('mysql'));
+
+        // Clear pending markers; if payment fails/cancels, a later attempt can still apply again
+        // because we only \"consume\" on a successful order status.
+        $session->set('intersoccer_first_order_discount_pending', 'no');
+    }
+
+    /**
+     * Consume the first-order discount only once the order becomes successful.
+     *
+     * Policy: first successful order is when status reaches processing, on-hold, or completed.
+     * If an order fails/cancels before success, the customer can receive the discount again later.
+     *
+     * @param int         $order_id
+     * @param string      $old_status
+     * @param string      $new_status
+     * @param WC_Order|null $order
+     * @return void
+     */
+    public function maybe_consume_first_order_discount($order_id, $old_status, $new_status, $order = null) {
+        $normalized = ltrim((string) $new_status, 'wc-');
+        if (!in_array($normalized, ['processing', 'on-hold', 'completed'], true)) {
+            return;
+        }
+
+        if (!$order || !is_object($order)) {
+            $order = function_exists('wc_get_order') ? wc_get_order($order_id) : null;
+        }
+
+        if (!$order || !method_exists($order, 'get_customer_id') || !method_exists($order, 'get_meta')) {
+            return;
+        }
+
+        $applied = $order->get_meta('_intersoccer_first_order_discount_applied', true);
+        if (empty($applied)) {
+            return;
+        }
+
+        $customer_id = (int) $order->get_customer_id();
+        if ($customer_id <= 0) {
+            return;
+        }
+
+        update_user_meta($customer_id, 'intersoccer_first_order_discount_consumed', 1);
+        update_user_meta($customer_id, 'intersoccer_first_order_discount_consumed_order_id', (int) $order_id);
+        update_user_meta($customer_id, 'intersoccer_first_order_discount_consumed_at', current_time('mysql'));
     }
 
     /**

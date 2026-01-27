@@ -329,10 +329,6 @@ class InterSoccer_Referral_Handler {
 
         // Auto-assign partnership if referred by coach and customer doesn't have one
         if ($referrer['type'] === 'coach' && $is_first_purchase) {
-            if ($customer_id) {
-                update_user_meta($customer_id, 'intersoccer_first_order_discount_consumed', 1);
-            }
-
             $existing_partnership = get_user_meta($customer_id, 'intersoccer_partnership_coach_id', true);
             if (!$existing_partnership) {
                 update_user_meta($customer_id, 'intersoccer_partnership_coach_id', $referrer['id']);
