@@ -309,10 +309,12 @@ class InterSoccer_Points_Manager {
     }
 
     /**
-     * Check if a customer is a first-time customer (no previous completed orders)
-     * 
+     * Check if a customer is a first-time customer (no previous completed orders).
+     * Only the first completed purchase should be tagged as first-time. We exclude
+     * the current order and check for prior completed orders only.
+     *
      * @param int $customer_id Customer user ID
-     * @param int|null $current_order_id Current order ID to exclude from check
+     * @param int|null $current_order_id Current order ID to exclude from check (critical: ensures we don't count the order being processed)
      * @return bool True if first-time customer, false otherwise
      */
     private function is_first_time_customer($customer_id, $current_order_id = null) {
@@ -326,7 +328,7 @@ class InterSoccer_Points_Manager {
 
         $query_args = [
             'customer' => $customer_id,
-            'status' => ['wc-completed', 'completed', 'wc-processing', 'processing', 'wc-on-hold', 'on-hold'],
+            'status' => ['wc-completed', 'completed'],
             'limit' => 1,
             'return' => 'ids',
         ];
