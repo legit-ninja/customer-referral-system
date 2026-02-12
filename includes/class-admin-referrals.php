@@ -192,6 +192,7 @@ class InterSoccer_Admin_Referrals {
                     <th>Status</th>
                     <th>Eligibility</th>
                     <th>Return Status</th>
+                    <th><?php esc_html_e('First-time', 'intersoccer-referral'); ?></th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -246,6 +247,9 @@ class InterSoccer_Admin_Referrals {
                     </td>
                     <td class="returning-column">
                         <?php echo $this->build_returning_customer_markup($eligibility_data); ?>
+                    </td>
+                    <td class="first-time-column">
+                        <?php echo $this->build_first_time_indicator($eligibility_data); ?>
                     </td>
                     <td class="actions-column">
                         <?php echo $this->build_payout_controls($referral); ?>
@@ -664,6 +668,40 @@ class InterSoccer_Admin_Referrals {
     }
 
     /**
+     * Build First-time indicator markup. Only the first purchase should show "Yes".
+     *
+     * @param array<string,mixed> $eligibility
+     * @return string
+     */
+    private function build_first_time_indicator(array $eligibility) {
+        $has_prior_order = !empty($eligibility['last_order_id']);
+        $is_first_time = !$has_prior_order;
+
+        if (($eligibility['reason'] ?? '') === 'guest_checkout') {
+            return '<span class="badge first-time-na">' . esc_html__('N/A', 'intersoccer-referral') . '</span>';
+        }
+
+        if ($is_first_time) {
+            return '<span class="badge first-time-yes">' . esc_html__('Yes', 'intersoccer-referral') . '</span>';
+        }
+
+        return '<span class="badge first-time-no">' . esc_html__('No', 'intersoccer-referral') . '</span>';
+    }
+
+    /**
+     * Get First-time value for CSV export.
+     *
+     * @param array<string,mixed> $eligibility
+     * @return string
+     */
+    private function get_first_time_export_value(array $eligibility) {
+        if (($eligibility['reason'] ?? '') === 'guest_checkout') {
+            return __('N/A', 'intersoccer-referral');
+        }
+        return empty($eligibility['last_order_id']) ? __('Yes', 'intersoccer-referral') : __('No', 'intersoccer-referral');
+    }
+
+    /**
      * Get structured return status data for reuse.
      *
      * @param array<string,mixed> $eligibility
@@ -1009,6 +1047,7 @@ class InterSoccer_Admin_Referrals {
             'Referral Status',
             'Eligibility',
             'Returning',
+            'First-time',
             'Payout Status',
         ]);
 
@@ -1024,6 +1063,7 @@ class InterSoccer_Admin_Referrals {
             }
 
             $return_text = $this->describe_returning_customer_status($eligibility_data);
+            $first_time_text = $this->get_first_time_export_value($eligibility_data);
             $commission_amount = $this->resolve_commission_amount($referral);
             $payout_status = $this->format_commission_status_label($this->get_commission_payout_status($referral));
 
@@ -1040,6 +1080,7 @@ class InterSoccer_Admin_Referrals {
                 ucfirst($referral->status),
                 $eligibility_text,
                 $return_text,
+                $first_time_text,
                 $payout_status,
             ]);
         }
