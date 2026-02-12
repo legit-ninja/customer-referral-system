@@ -24,6 +24,7 @@
 .header-content {
     max-width: 1200px;
     margin: 0 auto;
+    padding: 0 1.5rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -229,6 +230,31 @@
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
     overflow: hidden;
     transition: all 0.3s ease;
+    padding: 0;
+}
+
+/* Ensure all card body sections have consistent padding so content isn't scrunched */
+.dashboard-card .referral-code-container,
+.dashboard-card .coach-events-body,
+.dashboard-card .coach-events-form,
+.dashboard-card .activity-feed,
+.dashboard-card .chart-container,
+.dashboard-card .leaderboard-list {
+    padding: 1.5rem;
+}
+
+.dashboard-card .empty-state {
+    padding: 2rem 1.5rem;
+    text-align: center;
+}
+
+.dashboard-card .empty-state h4 {
+    margin: 0 0 0.5rem 0;
+}
+
+.dashboard-card .empty-state p {
+    margin: 0;
+    color: #64748b;
 }
 
 .dashboard-card:hover {
@@ -621,12 +647,43 @@
     color: #f1f5f9;
 }
 
+/* Overflow and long text handling */
+.referral-link-container input,
+.referral-code-value,
+.coach-event-share-input {
+    min-width: 0;
+    word-break: break-all;
+    overflow-wrap: break-word;
+}
+
+.activity-title,
+.performer-name,
+.event-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    word-break: break-word;
+}
+
+.code-value,
+.referral-link-container input {
+    max-width: 100%;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
+    .dashboard-header {
+        padding: 1.5rem 1rem;
+    }
+
     .header-content {
         flex-direction: column;
         gap: 1.5rem;
         text-align: center;
+    }
+
+    .header-actions {
+        flex-wrap: wrap;
+        justify-content: center;
     }
 
     .stats-grid {
@@ -637,7 +694,19 @@
 
     .dashboard-grid {
         grid-template-columns: 1fr;
+        grid-template-rows: auto;
+        min-width: 0;
         padding: 0 1rem;
+    }
+
+    .dashboard-card {
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    .card-header {
+        flex-wrap: wrap;
+        gap: 0.5rem;
     }
 
     .quick-actions-grid {
@@ -648,16 +717,72 @@
         grid-template-columns: 1fr;
     }
 
+    .achievements-section {
+        padding: 0 1rem 2rem;
+    }
+
     .welcome-text h1 {
         font-size: 1.5rem;
     }
 
+    .welcome-subtitle {
+        font-size: 0.95rem;
+    }
+
     .stat-card {
         padding: 1rem;
+        min-width: 0;
     }
 
     .stat-value {
         font-size: 1.5rem;
+    }
+
+    .link-actions {
+        flex-direction: column;
+    }
+
+    .link-actions button {
+        width: 100%;
+    }
+
+    .qr-actions {
+        flex-direction: column;
+    }
+}
+
+@media (max-width: 480px) {
+    .dashboard-header {
+        padding: 1rem 0.75rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .stats-grid {
+        margin-top: -1.5rem;
+        padding: 0 0.75rem;
+        gap: 1rem;
+    }
+
+    .dashboard-grid {
+        padding: 0 0.75rem 1.5rem;
+        gap: 1rem;
+    }
+
+    .referral-link-container {
+        padding: 1rem;
+    }
+
+    .stat-card {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .leaderboard-item {
+        flex-wrap: wrap;
+    }
+
+    .performer-info {
+        min-width: 0;
     }
 }
 
@@ -680,6 +805,17 @@
 .modern-coach-dashboard.admin-context .dashboard-content {
     margin: 0 -20px;
     padding: 0 20px 20px 20px;
+}
+
+/* Ensure admin wp-body has breathing room when dashboard is shown in admin */
+.wrap .modern-coach-dashboard.admin-context {
+    padding: 0 1rem 2rem;
+}
+
+@media (min-width: 783px) {
+    .wrap .modern-coach-dashboard.admin-context {
+        padding: 0 1.5rem 2rem;
+    }
 }
 
 /* Icon Definitions (using CSS content for icons) */

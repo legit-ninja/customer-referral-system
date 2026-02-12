@@ -27,10 +27,14 @@ if (isset($coach_data) && is_array($coach_data)) {
         'new_referrals' => 0,
         'conversion_rate' => 0,
         'conversion_trend' => 0,
+        'points_earned_this_month' => 0,
     ];
     $top_performers = $coach_data['top_performers'] ?? [];
     $coach_rank = $coach_data['coach_rank'] ?? 1;
     $achievements = $coach_data['coach_achievements'] ?? [];
+    $tier_progress = $coach_data['tier_progress'] ?? 0;
+    $next_tier_requirements = $coach_data['next_tier_requirements'] ?? '';
+    $linked_customers_count = $coach_data['linked_customers_count'] ?? 0;
 } else {
     // Frontend dashboard context - get data from dashboard class
     $user_id = get_current_user_id();
@@ -46,6 +50,9 @@ if (isset($coach_data) && is_array($coach_data)) {
     $top_performers = $this->get_top_performers();
     $coach_rank = $this->get_coach_rank($user_id);
     $achievements = $this->get_coach_achievements($user_id);
+    $tier_progress = $this->get_tier_progress($tier, $referral_count);
+    $next_tier_requirements = $this->get_next_tier_requirements($tier, $referral_count);
+    $linked_customers_count = $this->get_linked_customers_count($user_id);
     $chart_labels = $this->get_chart_labels(30);
     $chart_referrals = $this->get_chart_data($user_id, 30, 'referrals');
     $chart_credits = $this->get_chart_data($user_id, 30, 'credits');
@@ -116,9 +123,27 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                     <?php echo number_format($points_balance, 0); ?>
                 </div>
                 <div class="stat-label"><?php esc_html_e('Points Balance', 'intersoccer-referral'); ?></div>
-                <div class="stat-change positive">
-                    <i class="icon-trend-up"></i>
-                    <?php esc_html_e('+12% this month', 'intersoccer-referral'); ?>
+                <div class="stat-change <?php echo $monthly_stats['points_earned_this_month'] > 0 ? 'positive' : ($monthly_stats['points_earned_this_month'] < 0 ? 'negative' : 'neutral'); ?>">
+                    <?php if ($monthly_stats['points_earned_this_month'] > 0): ?>
+                        <i class="icon-trend-up"></i>
+                        <?php
+                        printf(
+                            esc_html__('+%s this month', 'intersoccer-referral'),
+                            esc_html(number_format($monthly_stats['points_earned_this_month'], 0))
+                        );
+                        ?>
+                    <?php elseif (isset($monthly_stats['points_earned_this_month']) && $monthly_stats['points_earned_this_month'] < 0): ?>
+                        <i class="icon-trend-down"></i>
+                        <?php
+                        printf(
+                            esc_html__('%s this month', 'intersoccer-referral'),
+                            esc_html(number_format($monthly_stats['points_earned_this_month'], 0))
+                        );
+                        ?>
+                    <?php else: ?>
+                        <i class="icon-rank"></i>
+                        <?php esc_html_e('No change this month', 'intersoccer-referral'); ?>
+                    <?php endif; ?>
                 </div>
             </div>
             <div class="stat-sparkline">
@@ -171,10 +196,10 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
             </div>
             <div class="tier-progress">
                 <div class="progress-bar">
-                    <div class="progress-fill" style="width: <?php echo $this->get_tier_progress($tier, $referral_count); ?>%"></div>
+                    <div class="progress-fill" style="width: <?php echo esc_attr($tier_progress); ?>%"></div>
                 </div>
                 <div class="progress-text">
-                    <?php echo $this->get_next_tier_requirements($tier, $referral_count); ?>
+                    <?php echo esc_html($next_tier_requirements); ?>
                 </div>
             </div>
         </div>
@@ -208,8 +233,8 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                 <i class="icon-customers"></i>
             </div>
             <div class="stat-content">
-                <div class="stat-value" data-counter="<?php echo esc_attr($this->get_linked_customers_count($user_id)); ?>">
-                    <?php echo esc_html($this->get_linked_customers_count($user_id)); ?>
+                <div class="stat-value" data-counter="<?php echo esc_attr($linked_customers_count); ?>">
+                    <?php echo esc_html($linked_customers_count); ?>
                 </div>
                 <div class="stat-label"><?php esc_html_e('Linked Customers', 'intersoccer-referral'); ?></div>
                 <div class="stat-change positive">

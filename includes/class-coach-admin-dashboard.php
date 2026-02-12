@@ -258,6 +258,10 @@ class InterSoccer_Coach_Admin_Dashboard {
         // Get event participation stats
         $event_stats = $this->get_coach_event_stats($user_id);
 
+        $referral_count = $this->get_coach_referral_count($user_id);
+        $tier = intersoccer_get_coach_tier($user_id);
+        $monthly_stats = $this->get_monthly_stats($user_id);
+
         // Get dashboard data
         $coach_data = [
             'user_id' => $user_id,
@@ -265,14 +269,17 @@ class InterSoccer_Coach_Admin_Dashboard {
             'user_email' => wp_get_current_user()->user_email,
             'credits' => intersoccer_get_coach_credits($user_id),
             'points_balance' => self::get_coach_points_balance($user_id),
-            'tier' => intersoccer_get_coach_tier($user_id),
+            'tier' => $tier,
             'referral_link' => InterSoccer_Referral_Handler::generate_coach_referral_link($user_id),
             'referral_code' => InterSoccer_Referral_Handler::get_coach_referral_code($user_id),
-            'total_referrals' => $this->get_coach_referral_count($user_id),
+            'total_referrals' => $referral_count,
             'recent_referrals' => $this->get_recent_referrals($user_id, 5),
             'earnings_data' => $this->get_earnings_data($user_id),
-            'monthly_stats' => $this->get_monthly_stats($user_id),
+            'monthly_stats' => $monthly_stats,
             'coach_rank' => $this->get_coach_rank($user_id),
+            'tier_progress' => $this->get_tier_progress($tier, $referral_count),
+            'next_tier_requirements' => $this->get_next_tier_requirements($tier, $referral_count),
+            'linked_customers_count' => $this->get_linked_customers_count($user_id),
             'top_performers' => $this->get_top_performers(),
             'coach_achievements' => $this->get_coach_achievement_progress($user_id),
             'chart_labels' => $this->get_chart_labels(30),
@@ -325,8 +332,8 @@ class InterSoccer_Coach_Admin_Dashboard {
                             <span class="profile-value tier-badge tier-<?php echo strtolower($data['tier']); ?>"><?php echo esc_html($data['tier']); ?></span>
                         </div>
                         <div class="profile-row">
-                            <span class="profile-label">Referral Points:</span>
-                            <span class="profile-value"><?php echo number_format($data['credits'], 0); ?> CHF</span>
+                            <span class="profile-label"><?php esc_html_e('Points Balance', 'intersoccer-referral'); ?>:</span>
+                            <span class="profile-value"><?php echo number_format($data['points_balance'] ?? $data['credits'] ?? 0, 0); ?></span>
                         </div>
                     </div>
                 </div>
@@ -411,8 +418,8 @@ class InterSoccer_Coach_Admin_Dashboard {
                         <div class="stat-label">Total Referrals</div>
                     </div>
                     <div class="referral-stat-card">
-                        <div class="stat-number"><?php echo number_format($data['credits'], 0); ?> CHF</div>
-                        <div class="stat-label">Referral Earnings</div>
+                        <div class="stat-number"><?php echo number_format($data['points_balance'] ?? $data['credits'] ?? 0, 0); ?></div>
+                        <div class="stat-label"><?php esc_html_e('Points Balance', 'intersoccer-referral'); ?></div>
                     </div>
                 </div>
 
@@ -1101,6 +1108,12 @@ class InterSoccer_Coach_Admin_Dashboard {
             $current_month_start
         ));
 
+        $points_earned_this_month = (float) $wpdb->get_var($wpdb->prepare(
+            "SELECT COALESCE(SUM(commission_amount), 0) FROM $table_name WHERE coach_id = %d AND status = 'completed' AND created_at >= %s",
+            $coach_id,
+            $current_month_start
+        ));
+
         $conversion_rate = $current_referrals > 0
             ? min(100, ($current_referrals / max(1, $current_referrals + 5)) * 100)
             : 0;
@@ -1112,6 +1125,7 @@ class InterSoccer_Coach_Admin_Dashboard {
             'new_referrals' => $current_referrals,
             'conversion_rate' => round($conversion_rate, 1),
             'conversion_trend' => round($conversion_rate - $last_month_conversion, 1),
+            'points_earned_this_month' => $points_earned_this_month,
         ];
     }
 
