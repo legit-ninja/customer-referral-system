@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wpml-config>
+  <!--
+    This plugin relies heavily on WPML String Translation registration in code.
+    We still declare shortcodes so WPML detects them cleanly when embedded on pages.
+  -->
+  <shortcodes>
+    <shortcode>
+      <tag>intersoccer_coach_dashboard</tag>
+    </shortcode>
+    <shortcode>
+      <tag>intersoccer_customer_dashboard</tag>
+    </shortcode>
+  </shortcodes>
+</wpml-config>
+
