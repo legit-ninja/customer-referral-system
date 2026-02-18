@@ -7,7 +7,7 @@
 
 /* Referral Section */
 .referral-section {
-    background: white;
+    /* background: white; */
     padding: 25px;
     border-radius: 12px;
     margin-bottom: 30px;
@@ -21,19 +21,51 @@
     font-weight: bold;
 }
 
+/* Stack label above input+button row so they don't look smushed */
 .referral-link-container {
     display: flex;
-    gap: 10px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
     margin-bottom: 20px;
+}
+
+.referral-link-container label {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.referral-link-container > div {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.referral-code-container {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    margin-bottom: 20px;
+}
+
+.referral-code-container label {
+    display: block;
+    margin-bottom: 8px;
+}
+
+.referral-code-container > div {
+    display: flex;
+    gap: 10px;
+    align-items: center;
 }
 
 #referral-link {
     flex: 1;
+    min-width: 0;
     padding: 12px;
     border: 2px solid #e1e5e9;
     border-radius: 6px;
     font-family: monospace;
-    background: #f8f9fa;
 }
 
 .copy-button {
@@ -63,15 +95,6 @@
 
 .copy-button.copied .button-success {
     display: inline !important;
-}
-
-/* Hide theme's post_meta and post_footer elements on referral pages */
-.woocommerce-account .woocommerce-MyAccount-content .post_meta,
-.woocommerce-account .woocommerce-MyAccount-content .post_meta_single,
-.woocommerce-account .woocommerce-MyAccount-content .post_footer,
-.woocommerce-account .woocommerce-MyAccount-content .post_footer_single,
-.woocommerce-account .woocommerce-MyAccount-content .post_info_vertical {
-    display: none !important;
 }
 
 /* Hide "You May Also Like" section on referral pages */
