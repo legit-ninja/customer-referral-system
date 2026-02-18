@@ -283,7 +283,7 @@ class InterSoccer_Referral_Dashboard {
                 
                 <!-- Referral Code Display -->
                 <div class="referral-code-container" style="margin-bottom: 20px;">
-                    <label for="referral-code" style="display: block; margin-bottom: 8px; font-weight: 600; color: #2c3e50;">
+                    <label for="referral-code" style="display: block; margin-bottom: 8px; font-weight: 600;">
                         <?php echo esc_html($your_referral_code_label); ?>
                     </label>
                     <div style="display: flex; gap: 10px; align-items: center;">
@@ -291,7 +291,7 @@ class InterSoccer_Referral_Dashboard {
                                id="referral-code" 
                                value="<?php echo esc_attr($referral_code); ?>" 
                                readonly 
-                               style="flex: 1; padding: 14px; border: 2px solid #667eea; border-radius: 8px; font-size: 18px; font-weight: bold; text-align: center; letter-spacing: 2px; font-family: monospace; background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
+                               style="flex: 1; padding: 14px; border: 2px solid #667eea; border-radius: 8px; font-size: 18px; font-weight: bold; text-align: center; letter-spacing: 2px; font-family: monospace;">
                         <button id="copy-code-btn" class="copy-button" onclick="copyReferralCode()" style="padding: 14px 24px; font-size: 16px;">
                             <span class="button-text">📋 <?php echo esc_html($copy_code_text); ?></span>
                             <span class="button-success">✅ <?php echo esc_html($copied_text); ?></span>
@@ -301,7 +301,7 @@ class InterSoccer_Referral_Dashboard {
                 
                 <!-- Referral Link Display -->
                 <div class="referral-link-container">
-                    <label for="referral-link" style="display: block; margin-bottom: 8px; font-weight: 600; color: #2c3e50;">
+                    <label for="referral-link" style="display: block; margin-bottom: 8px; font-weight: 600;">
                         <?php echo esc_html($your_referral_link_label); ?>
                     </label>
                     <div style="display: flex; gap: 10px;">
@@ -309,7 +309,7 @@ class InterSoccer_Referral_Dashboard {
                                id="referral-link" 
                                value="<?php echo esc_attr($referral_link); ?>" 
                                readonly
-                               style="flex: 1; padding: 12px; border: 2px solid #e1e5e9; border-radius: 6px; font-family: monospace; background: #f8f9fa; font-size: 14px;">
+                               style="flex: 1; padding: 12px; border: 2px solid #e1e5e9; border-radius: 6px; font-family: monospace; font-size: 14px;">
                         <button id="copy-link-btn" class="copy-button" onclick="copyReferralLink()" style="padding: 12px 20px;">
                             <span class="button-text">📋 <?php echo esc_html($copy_link_text); ?></span>
                             <span class="button-success">✅ <?php echo esc_html($copied_text); ?></span>

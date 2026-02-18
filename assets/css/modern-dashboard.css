@@ -108,8 +108,8 @@
     box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
 }
 
-/* Stats Grid */
-.stats-grid {
+/* Stats Grid - use high specificity to override coach-admin-dashboard legacy styles */
+.modern-coach-dashboard .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: 1.5rem;
@@ -120,32 +120,37 @@
     z-index: 10;
 }
 
-.stat-card {
+.modern-coach-dashboard .stats-grid .stat-card {
     background: white;
+    color: #1e293b;
     padding: 1.5rem;
     border-radius: 16px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 1rem;
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
 }
 
-.stat-card:hover {
+.modern-coach-dashboard .stats-grid .stat-card:hover {
     transform: translateY(-4px);
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
 }
 
 .stat-icon {
     width: 60px;
+    min-width: 60px;
     height: 60px;
     border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 1.5rem;
+    flex-shrink: 0;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
 }
 
 .credits-card .stat-icon {
@@ -168,8 +173,14 @@
     color: white;
 }
 
+.customers-card .stat-icon {
+    background: linear-gradient(135deg, #a78bfa, #7c3aed);
+    color: white;
+}
+
 .stat-content {
     flex: 1;
+    min-width: 0;
 }
 
 .stat-value {
@@ -177,6 +188,13 @@
     font-weight: 700;
     margin-bottom: 0.25rem;
     color: #1e293b;
+    line-height: 1.2;
+}
+
+/* Tier badge as stat-value: keep consistent height with numeric values */
+.stat-value.tier-badge {
+    display: inline-block;
+    line-height: 1.4;
 }
 
 .tier-badge {
@@ -199,20 +217,84 @@
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    margin: 0 0 0.125rem 0;
 }
 
-.stat-change {
+/* Third column: sparklines and charts - consistent sizing and alignment */
+.stat-sparkline,
+.conversion-chart,
+.customer-chart {
+    flex-shrink: 0;
+    width: 60px;
+    height: 30px;
     display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.stat-sparkline canvas,
+.conversion-chart canvas,
+.customer-chart canvas {
+    display: block;
+}
+
+/* Tier progress replaces chart - align at top, consistent width */
+.stat-card .tier-progress {
+    flex-shrink: 0;
+    width: 80px;
+    min-width: 80px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.stat-card .tier-progress .progress-bar {
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.stat-card .tier-progress .progress-fill {
+    height: 100%;
+    background: linear-gradient(135deg, #4facfe, #00f2fe);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.stat-card .tier-progress .progress-text {
+    font-size: 0.65rem;
+    color: #64748b;
+    line-height: 1.2;
+    word-break: break-word;
+    text-align: center;
+}
+
+.modern-coach-dashboard .stats-grid .stat-change {
+    display: inline-flex;
     align-items: center;
     gap: 0.25rem;
     font-size: 0.75rem;
     font-weight: 600;
     margin-top: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 6px;
 }
 
-.stat-change.positive { color: #10b981; }
-.stat-change.negative { color: #ef4444; }
-.stat-change.neutral { color: #64748b; }
+.modern-coach-dashboard .stats-grid .stat-change.positive {
+    background: rgba(16, 185, 129, 0.15);
+    color: #047857;
+}
+
+.modern-coach-dashboard .stats-grid .stat-change.negative {
+    background: rgba(239, 68, 68, 0.15);
+    color: #b91c1c;
+}
+
+.modern-coach-dashboard .stats-grid .stat-change.neutral {
+    background: rgba(100, 116, 139, 0.15);
+    color: #475569;
+}
 
 /* Dashboard Grid */
 .dashboard-grid {
@@ -642,6 +724,29 @@
     border: 1px solid #334155;
 }
 
+.modern-coach-dashboard[data-theme="dark"] .stat-value {
+    color: #f1f5f9;
+}
+
+.modern-coach-dashboard[data-theme="dark"] .stat-label {
+    color: #94a3b8;
+}
+
+.modern-coach-dashboard[data-theme="dark"] .stat-change.positive {
+    background: rgba(16, 185, 129, 0.25);
+    color: #34d399;
+}
+
+.modern-coach-dashboard[data-theme="dark"] .stat-change.negative {
+    background: rgba(239, 68, 68, 0.25);
+    color: #f87171;
+}
+
+.modern-coach-dashboard[data-theme="dark"] .stat-change.neutral {
+    background: rgba(148, 163, 184, 0.2);
+    color: #94a3b8;
+}
+
 .modern-coach-dashboard[data-theme="dark"] .modal-content {
     background: #1e293b;
     color: #f1f5f9;
@@ -774,7 +879,20 @@
 
     .stat-card {
         flex-direction: column;
-        align-items: flex-start;
+        align-items: center;
+        text-align: center;
+    }
+
+    .stat-card .stat-content {
+        text-align: center;
+    }
+
+    .stat-card .stat-change {
+        justify-content: center;
+    }
+
+    .stat-card .tier-progress {
+        align-self: center;
     }
 
     .leaderboard-item {
@@ -826,6 +944,7 @@
 .icon-referrals:before { content: "👥"; }
 .icon-tier:before { content: "🏆"; }
 .icon-conversion:before { content: "📈"; }
+.icon-customers:before { content: "👥"; }
 .icon-trend-up:before { content: "↗️"; }
 .icon-trend-down:before { content: "↘️"; }
 .icon-rank:before { content: "#"; }
