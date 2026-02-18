@@ -29,8 +29,6 @@
             initializeCharts();
         }
 
-        // Initialize demo data handlers
-        initializeDemoDataHandlers();
     }
 
     /**
@@ -70,25 +68,40 @@
         const ctx = document.getElementById('referralTrendsChart').getContext('2d');
         const data = intersoccerChartData.referral_trends;
 
+        const datasets = [
+            {
+                label: 'Referrals',
+                data: data.referrals,
+                borderColor: '#3498db',
+                backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                tension: 0.4,
+                fill: true
+            },
+            {
+                label: 'Completed',
+                data: data.completed,
+                borderColor: '#27ae60',
+                backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                tension: 0.4,
+                fill: true
+            }
+        ];
+        if (data.points_earned && data.points_earned.length) {
+            datasets.push({
+                label: 'Points from purchases',
+                data: data.points_earned,
+                borderColor: '#e67e22',
+                backgroundColor: 'rgba(230, 126, 34, 0.1)',
+                tension: 0.4,
+                fill: true,
+                yAxisID: 'yPoints'
+            });
+        }
         charts.referralTrends = new Chart(ctx, {
             type: 'line',
             data: {
                 labels: data.labels,
-                datasets: [{
-                    label: 'Referrals',
-                    data: data.referrals,
-                    borderColor: '#3498db',
-                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
-                    tension: 0.4,
-                    fill: true
-                }, {
-                    label: 'Completed',
-                    data: data.completed,
-                    borderColor: '#27ae60',
-                    backgroundColor: 'rgba(39, 174, 96, 0.1)',
-                    tension: 0.4,
-                    fill: true
-                }]
+                datasets: datasets
             },
             options: {
                 responsive: true,
@@ -118,11 +131,24 @@
                     },
                     y: {
                         display: true,
+                        position: 'left',
                         title: {
                             display: true,
                             text: 'Count'
                         },
                         beginAtZero: true
+                    },
+                    yPoints: {
+                        display: !!data.points_earned && data.points_earned.length > 0,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Points'
+                        },
+                        beginAtZero: true,
+                        grid: {
+                            drawOnChartArea: false
+                        }
                     }
                 },
                 interaction: {
@@ -407,13 +433,6 @@
         });
     }
 
-    /**
-     * Initialize demo data handlers
-     */
-    function initializeDemoDataHandlers() {
-        // Event handlers moved to bindEvents() for proper timing
-    }
-
     function old_initializeDemoDataHandlers() {
         $('#populate-demo-data').on('click', function(e) {
             e.preventDefault();
@@ -505,37 +524,6 @@
             $button.html(originalText).prop('disabled', false);
         });
 
-        $('#credit-reconciliation').on('click', function(e) {
-            e.preventDefault();
-
-            const $button = $(this);
-            const originalText = $button.html();
-
-            $button.html('<span class="dashicons dashicons-update spin"></span> Reconciling...').prop('disabled', true);
-
-            $.ajax({
-                url: ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'intersoccer_credit_reconciliation',
-                    nonce: intersoccer_admin.nonce
-                },
-                success: function(response) {
-                    if (response.success) {
-                        alert('Credit reconciliation completed successfully!');
-                        location.reload();
-                    } else {
-                        alert('Error: ' + response.data);
-                        $button.html(originalText).prop('disabled', false);
-                    }
-                },
-                error: function() {
-                    alert('An error occurred during credit reconciliation.');
-                    $button.html(originalText).prop('disabled', false);
-                }
-            });
-        });
-
         $(document).on('click', '.intersoccer-eligibility-override', function(e) {
             e.preventDefault();
 
@@ -617,76 +605,6 @@
      * Bind general event handlers
      */
     function bindEvents() {
-        // Bind demo data button events
-        $('#clear-demo-data').on('click', function(e) {
-            e.preventDefault();
-
-            if (!confirm('This will clear all demo data. Continue?')) {
-                return;
-            }
-
-            const $button = $(this);
-            const originalText = $button.html();
-
-            $button.html('<span class="dashicons dashicons-update spin"></span> Clearing...').prop('disabled', true);
-
-            $.ajax({
-                url: ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'intersoccer_clear_demo_data',
-                    nonce: intersoccer_admin.nonce
-                },
-                success: function(response) {
-                    if (response.success) {
-                        alert('Demo data cleared successfully!');
-                        location.reload();
-                    } else {
-                        alert('Error: ' + response.data);
-                        $button.html(originalText).prop('disabled', false);
-                    }
-                },
-                error: function() {
-                    alert('An error occurred while clearing demo data.');
-                    $button.html(originalText).prop('disabled', false);
-                }
-            });
-        });
-
-        $('#populate-demo-data').on('click', function(e) {
-            e.preventDefault();
-
-            if (!confirm('This will populate the database with demo data. Continue?')) {
-                return;
-            }
-
-            const $button = $(this);
-            const originalText = $button.html();
-
-            $button.html('<span class="dashicons dashicons-update spin"></span> Populating...').prop('disabled', true);
-
-            $.ajax({
-                url: ajaxurl,
-                type: 'POST',
-                data: {
-                    action: 'intersoccer_populate_demo_data',
-                    nonce: intersoccer_admin.nonce
-                },
-                success: function(response) {
-                    if (response.success) {
-                        alert('Demo data populated successfully!');
-                        location.reload();
-                    } else {
-                        alert('Error: ' + response.data);
-                        $button.html(originalText).prop('disabled', false);
-                    }
-                },
-                error: function() {
-                    alert('An error occurred while populating demo data.');
-                    $button.html(originalText).prop('disabled', false);
-                }
-            });
-        });
     }
 
     /**
@@ -863,6 +781,9 @@
             return;
         }
 
+        initCoachBulkActions();
+        initCoachReferralCodeSend();
+
         $(document).on('click', '.edit-coach', function() {
             const coachId = $(this).data('coach-id');
             if (!coachId) return;
@@ -903,6 +824,102 @@
         $(document).on('click', '#add-new-coach-link', function(e) {
             e.preventDefault();
             window.location.href = 'user-new.php';
+        });
+    }
+
+    /**
+     * Coaches page: show/hide bulk actions when checkboxes change.
+     */
+    function initCoachBulkActions() {
+        const $bulkBar = $('.coach-bulk-actions');
+        const $checkboxes = $('.coach-checkbox');
+        const $sendSelected = $('#send-referral-selected');
+
+        function toggleBulkBar() {
+            const checked = $checkboxes.filter(':checked').length;
+            $bulkBar.toggle(checked > 0);
+        }
+
+        $checkboxes.on('change', toggleBulkBar);
+        toggleBulkBar();
+
+        $sendSelected.on('click', function() {
+            const ids = $checkboxes.filter(':checked').map(function() { return parseInt($(this).val(), 10); }).get();
+            if (ids.length === 0) {
+                window.alert('Please select at least one coach.');
+                return;
+            }
+            sendReferralCodes({ coach_ids: ids }, $(this));
+        });
+
+        $('#send-referral-all').on('click', function() {
+            if (!window.confirm('Send referral code email to all coaches?')) return;
+            sendReferralCodes({ send_all: '1' }, $(this));
+        });
+    }
+
+    /**
+     * Coaches page: send referral code (single coach or bulk via AJAX).
+     */
+    function initCoachReferralCodeSend() {
+        $(document).on('click', '.send-referral-code', function() {
+            const coachId = $(this).data('coach-id');
+            if (!coachId) return;
+            sendReferralCodes({ coach_id: coachId }, $(this));
+        });
+    }
+
+    /**
+     * AJAX helper: send referral codes to coaches.
+     * @param {Object} payload - { coach_id, coach_ids, or send_all }
+     * @param {jQuery} $trigger - Optional button that triggered the action (to show loading state)
+     */
+    function sendReferralCodes(payload, $trigger) {
+        const data = $.extend({
+            action: 'send_referral_code',
+            nonce: intersoccer_admin.nonce
+        }, payload);
+
+        const $buttons = $trigger ? $trigger : $('.send-referral-code, #send-referral-selected, #send-referral-all');
+        const originalStates = [];
+        $buttons.each(function() {
+            const $b = $(this);
+            originalStates.push({ $el: $b, html: $b.html(), disabled: $b.prop('disabled') });
+            $b.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span>');
+        });
+
+        $.ajax({
+            url: intersoccer_admin.ajax_url,
+            type: 'POST',
+            data: data
+        }).done(function(response) {
+            if (response && response.success) {
+                const msg = response.data && response.data.message ? response.data.message : 'Referral code(s) sent.';
+                if (response.data && response.data.results && response.data.results.length > 1) {
+                    const failed = response.data.results.filter(function(r) { return !r.success; });
+                    if (failed.length > 0) {
+                        const details = failed.map(function(r) { return r.message; }).join('\n');
+                        window.alert(msg + '\n\nFailures:\n' + details);
+                    } else {
+                        window.alert(msg);
+                    }
+                } else {
+                    window.alert(msg);
+                }
+                $('.coach-checkbox').prop('checked', false);
+                $('.coach-bulk-actions').hide();
+            } else {
+                const err = response && response.data && response.data.message ? response.data.message : 'An error occurred.';
+                window.alert('Error: ' + err);
+            }
+        }).fail(function(xhr) {
+            const err = xhr && xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message
+                ? xhr.responseJSON.data.message : 'Request failed. Please try again.';
+            window.alert('Error: ' + err);
+        }).always(function() {
+            originalStates.forEach(function(s) {
+                s.$el.prop('disabled', s.disabled).html(s.html);
+            });
         });
     }
 

@@ -4,9 +4,6 @@
 class InterSoccer_Admin_Dashboard_Main {
 
     public function __construct() {
-        // Add AJAX handlers for demo data
-        add_action('wp_ajax_intersoccer_populate_demo_data', [$this, 'populate_demo_data']);
-        add_action('wp_ajax_intersoccer_clear_demo_data', [$this, 'clear_demo_data']);
     }
 
     public function render_main_dashboard() {
@@ -20,17 +17,6 @@ class InterSoccer_Admin_Dashboard_Main {
         ?>
         <div class="wrap intersoccer-admin">
             <h1 class="wp-heading-inline">InterSoccer Referral Dashboard</h1>
-
-            <div class="intersoccer-demo-actions">
-                <button id="populate-demo-data" class="button button-secondary">
-                    <span class="dashicons dashicons-database-add"></span>
-                    Populate Demo Data
-                </button>
-                <button id="clear-demo-data" class="button button-secondary">
-                    <span class="dashicons dashicons-trash"></span>
-                    Clear Demo Data
-                </button>
-            </div>
 
             <!-- Enhanced Stats Cards with Credit Data -->
             <div class="intersoccer-stats-grid">
@@ -270,10 +256,6 @@ class InterSoccer_Admin_Dashboard_Main {
                         <button class="quick-action-btn" id="export-data">
                             <span class="dashicons dashicons-download"></span>
                             Export All Data
-                        </button>
-                        <button class="quick-action-btn" id="credit-reconciliation">
-                            <span class="dashicons dashicons-admin-settings"></span>
-                            Credit Reconciliation
                         </button>
                     </div>
                 </div>
@@ -534,6 +516,8 @@ class InterSoccer_Admin_Dashboard_Main {
 
         $data = [];
         $labels = [];
+        $go_live_date = get_option('intersoccer_points_golive_date', '');
+        $points_table = $wpdb->prefix . 'intersoccer_points_log';
 
         // Get last 12 months
         for ($i = 11; $i >= 0; $i--) {
@@ -543,28 +527,42 @@ class InterSoccer_Admin_Dashboard_Main {
 
             $labels[] = $label;
 
-            // Referrals count
+            // Referrals count (exclude demo/test rows so chart reflects real program only)
             $referrals = $wpdb->get_var($wpdb->prepare("
                 SELECT COUNT(*) FROM {$wpdb->prefix}intersoccer_referrals
                 WHERE created_at BETWEEN %s AND %s
-            ", $date, $end_date));
+                AND (referral_code IS NULL OR referral_code NOT LIKE %s)
+            ", $date, $end_date, 'DEMO%'));
 
-            // Completed referrals
+            // Completed referrals (same exclusion)
             $completed = $wpdb->get_var($wpdb->prepare("
                 SELECT COUNT(*) FROM {$wpdb->prefix}intersoccer_referrals
                 WHERE status = 'completed' AND created_at BETWEEN %s AND %s
-            ", $date, $end_date));
+                AND (referral_code IS NULL OR referral_code NOT LIKE %s)
+            ", $date, $end_date, 'DEMO%'));
+
+            // Points earned from purchases this month (respects Points Go-Live Date)
+            $points_sql = "SELECT COALESCE(SUM(points_amount), 0) FROM {$points_table}
+                WHERE transaction_type = 'order_purchase' AND created_at BETWEEN %s AND %s";
+            $points_params = [$date, $end_date];
+            if (!empty($go_live_date)) {
+                $points_sql .= " AND created_at >= %s";
+                $points_params[] = $go_live_date;
+            }
+            $points_earned = $wpdb->get_var($wpdb->prepare($points_sql, $points_params));
 
             $data[] = [
                 'referrals' => (int)$referrals,
-                'completed' => (int)$completed
+                'completed' => (int)$completed,
+                'points_earned' => (float)$points_earned
             ];
         }
 
         return [
             'labels' => $labels,
             'referrals' => array_column($data, 'referrals'),
-            'completed' => array_column($data, 'completed')
+            'completed' => array_column($data, 'completed'),
+            'points_earned' => array_column($data, 'points_earned')
         ];
     }
 
@@ -821,228 +819,4 @@ class InterSoccer_Admin_Dashboard_Main {
         return array_slice($activities, 0, $limit);
     }
 
-    /**
-     * Populate demo data for testing
-     */
-    public function populate_demo_data() {
-        // Security checks
-        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'intersoccer_admin_nonce')) {
-            wp_send_json_error('Invalid nonce');
-        }
-
-        if (!current_user_can('manage_options')) {
-            wp_send_json_error('Insufficient permissions');
-        }
-
-        global $wpdb;
-
-        try {
-            // Get existing users for demo data
-            $admin_user = get_user_by('ID', 1); // Admin user should exist
-            $coach_user = get_user_by('email', 'coach@example.com');
-            if (!$coach_user) {
-                // Create a demo coach user
-                $coach_id = wp_create_user('demo_coach', 'password123', 'coach@example.com');
-                if (!is_wp_error($coach_id)) {
-                    wp_update_user([
-                        'ID' => $coach_id,
-                        'first_name' => 'Demo',
-                        'last_name' => 'Coach',
-                        'role' => 'coach'
-                    ]);
-                    $coach_user = get_user_by('ID', $coach_id);
-                }
-            }
-
-            $customer_user = get_user_by('email', 'customer@example.com');
-            if (!$customer_user) {
-                // Create a demo customer user
-                $customer_id = wp_create_user('demo_customer', 'password123', 'customer@example.com');
-                if (!is_wp_error($customer_id)) {
-                    wp_update_user([
-                        'ID' => $customer_id,
-                        'first_name' => 'Demo',
-                        'last_name' => 'Customer'
-                    ]);
-                    $customer_user = get_user_by('ID', $customer_id);
-                }
-            }
-
-            // Use actual user IDs or fallback to admin
-            $coach_id = $coach_user ? $coach_user->ID : 1;
-            $customer_id = $customer_user ? $customer_user->ID : 1;
-
-            // Sample data for referrals
-            $sample_referrals = [
-                [
-                    'coach_id' => $coach_id,
-                    'customer_id' => $customer_id,
-                    'referrer_id' => $coach_id,
-                    'referrer_type' => 'coach',
-                    'order_id' => 1001,
-                    'commission_amount' => 100.00,
-                    'loyalty_bonus' => 10.00,
-                    'retention_bonus' => 5.00,
-                    'status' => 'completed',
-                    'purchase_count' => 1,
-                    'referral_code' => 'DEMO001',
-                    'conversion_date' => current_time('mysql'),
-                    'created_at' => current_time('mysql'),
-                    'updated_at' => current_time('mysql')
-                ]
-            ];
-
-            // Insert sample referrals
-            foreach ($sample_referrals as $referral) {
-                $wpdb->insert($wpdb->prefix . 'intersoccer_referrals', $referral);
-            }
-
-            // Sample data for referral credits
-            $sample_credits = [
-                [
-                    'referral_id' => $wpdb->insert_id, // Use the ID of the inserted referral
-                    'customer_id' => $customer_id,
-                    'coach_id' => $coach_id,
-                    'credit_amount' => 50.00,
-                    'credit_type' => 'referral',
-                    'status' => 'active',
-                    'expires_at' => null,
-                    'created_at' => current_time('mysql'),
-                    'updated_at' => current_time('mysql')
-                ]
-            ];
-
-            // Insert sample credits
-            foreach ($sample_credits as $credit) {
-                $wpdb->insert($wpdb->prefix . 'intersoccer_referral_credits', $credit);
-            }
-
-            // Sample data for credit redemptions
-            $sample_redemptions = [
-                [
-                    'customer_id' => $customer_id,
-                    'order_item_id' => null,
-                    'credit_amount' => 25.00,
-                    'order_total' => 100.00,
-                    'discount_applied' => 25.00,
-                    'created_at' => current_time('mysql')
-                ]
-            ];
-
-            // Insert sample redemptions
-            $redemption_ids = [];
-            foreach ($sample_redemptions as $redemption) {
-                $wpdb->insert($wpdb->prefix . 'intersoccer_credit_redemptions', $redemption);
-                $redemption_ids[] = $wpdb->insert_id;
-            }
-
-            // Sample data for points log
-            $sample_points = [
-                [
-                    'customer_id' => $customer_id,
-                    'order_id' => 1001,
-                    'transaction_type' => 'earned',
-                    'points_amount' => 10.00,
-                    'points_balance' => 10.00,
-                    'reference_type' => 'order',
-                    'reference_id' => 1001,
-                    'description' => 'Points earned from order #1001',
-                    'created_at' => current_time('mysql')
-                ],
-                [
-                    'customer_id' => $customer_id,
-                    'order_id' => 1001,
-                    'transaction_type' => 'redeemed',
-                    'points_amount' => -5.00,
-                    'points_balance' => 5.00,
-                    'reference_type' => 'redemption',
-                    'reference_id' => $redemption_ids[0] ?? null, // Use the first redemption ID
-                    'description' => 'Points redeemed for discount',
-                    'created_at' => current_time('mysql')
-                ]
-            ];
-
-            // Insert sample points
-            foreach ($sample_points as $point) {
-                $wpdb->insert($wpdb->prefix . 'intersoccer_points_log', $point);
-            }
-
-            wp_send_json_success('Demo data populated successfully.');
-        } catch (Exception $e) {
-            wp_send_json_error('Error populating demo data: ' . $e->getMessage());
-        }
-    }
-
-    /**
-     * Clear demo data for testing
-     */
-    public function clear_demo_data() {
-        intersoccer_referral_log('Clear demo data function called');
-
-        // Security checks
-        if (!wp_verify_nonce($_POST['nonce'] ?? '', 'intersoccer_admin_nonce')) {
-            intersoccer_referral_log('Invalid nonce in clear demo data');
-            wp_send_json_error('Invalid nonce');
-        }
-
-        if (!current_user_can('manage_options')) {
-            intersoccer_referral_log('Insufficient permissions in clear demo data');
-            wp_send_json_error('Insufficient permissions');
-        }
-
-        global $wpdb;
-
-        try {
-            // Clear tables (use DELETE FROM for safety) - check if tables exist first
-            $tables_to_clear = [
-                'intersoccer_referrals',
-                'intersoccer_referral_credits',
-                'intersoccer_credit_redemptions',
-                'intersoccer_points_log',
-                'intersoccer_referral_rewards',
-                'intersoccer_purchase_rewards',
-                'intersoccer_coach_achievements',
-                'intersoccer_coach_assignments',
-                'intersoccer_coach_commissions',
-                'intersoccer_audit_log',
-                'intersoccer_coach_notes',
-                'intersoccer_coach_performance',
-                'intersoccer_customer_activities',
-                'intersoccer_customer_partnerships',
-                'intersoccer_player_events',
-                'intersoccer_referral_tracking'
-            ];
-
-            foreach ($tables_to_clear as $table_name) {
-                $full_table_name = $wpdb->prefix . $table_name;
-                $table_exists = $wpdb->get_var($wpdb->prepare("SHOW TABLES LIKE %s", $full_table_name));
-                if ($table_exists) {
-                    $result = $wpdb->query("DELETE FROM $full_table_name");
-                    intersoccer_referral_log("Cleared $table_name: $result rows deleted");
-                } else {
-                    intersoccer_referral_log("Table $table_name does not exist, skipping");
-                }
-            }
-
-            // Clear user meta data
-            $meta_result = $wpdb->query("DELETE FROM {$wpdb->usermeta} WHERE meta_key LIKE 'intersoccer%'");
-            intersoccer_referral_log("Cleared user meta data: $meta_result rows deleted");
-
-            // Clear options (be selective to avoid breaking core functionality)
-            $options_to_clear = [
-                'intersoccer_audit_log',
-                'intersoccer_points_sync_status',
-                'intersoccer_last_coach_import'
-            ];
-
-            foreach ($options_to_clear as $option_pattern) {
-                $option_result = $wpdb->query($wpdb->prepare("DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", $option_pattern));
-                intersoccer_referral_log("Cleared options matching '$option_pattern': $option_result rows deleted");
-            }
-
-            wp_send_json_success('Demo data cleared successfully.');
-        } catch (Exception $e) {
-            wp_send_json_error('Error clearing demo data: ' . $e->getMessage());
-        }
-    }
 }
