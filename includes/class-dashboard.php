@@ -207,6 +207,7 @@ class InterSoccer_Referral_Dashboard {
                     $name
                 ));
                 
+                $translation = null;
                 if ($string_id) {
                     // Check if translation exists for current language
                     // Try both 'fr' and 'fr_FR' format (WPML might use either)
@@ -225,42 +226,89 @@ class InterSoccer_Referral_Dashboard {
                             $lang_with_locale
                         ));
                     }
-                    
-                    // If translation found and status is 10 (complete), use it
-                    if ($translation && $translation->status == 10 && !empty($translation->value)) {
-                        return $translation->value;
+                }
+                
+                $out = $original;
+                // If translation found and status is 10 (complete), use it
+                if ($translation && (int) $translation->status === 10 && !empty($translation->value)) {
+                    $out = $translation->value;
+                } else {
+                    // Fallback: Try apply_filters (newer WPML method)
+                    if (has_filter('wpml_translate_single_string')) {
+                        $out = apply_filters('wpml_translate_single_string', $original, 'Intersoccer Referral System', $name, $current_lang);
+                    }
+                    if ($out === $original && function_exists('icl_t')) {
+                        $out = icl_t('Intersoccer Referral System', $name, $original);
                     }
                 }
-                
-                // Fallback: Try apply_filters (newer WPML method)
-                if (has_filter('wpml_translate_single_string')) {
-                    return apply_filters('wpml_translate_single_string', $original, 'Intersoccer Referral System', $name, $current_lang);
-                }
-                
-                // Fallback: Try icl_t()
-                if (function_exists('icl_t')) {
-                    return icl_t('Intersoccer Referral System', $name, $original);
-                }
-                
-                return $original;
+                return $out;
             };
             
-            $share_earn_title = $get_translation($original_share_earn, $string_name_share_earn);
-            $earn_text = $get_translation($original_earn_text, $string_name_earn_text);
-            $for_every_friend = $get_translation($original_for_every_friend, $string_name_for_every_friend);
-            $share_description = $get_translation($original_share_description, $string_name_share_description);
-            $your_referral_code_label = $get_translation($original_your_referral_code, $string_name_your_referral_code);
-            $your_referral_link_label = $get_translation($original_your_referral_link, $string_name_your_referral_link);
-            $copy_code_text = $get_translation($original_copy_code, $string_name_copy_code);
-            $copy_link_text = $get_translation($original_copy_link, $string_name_copy_link);
-            $copied_text = $get_translation($original_copied, $string_name_copied);
-            $whatsapp_label = $get_translation($original_whatsapp, $string_name_whatsapp);
-            $facebook_label = $get_translation($original_facebook, $string_name_facebook);
-            $email_label = $get_translation($original_email, $string_name_email);
-            $whatsapp_message_template = $get_translation($original_whatsapp_message, $string_name_whatsapp_message);
-            $facebook_message_template = $get_translation($original_facebook_message, $string_name_facebook_message);
-            $email_subject = $get_translation($original_email_subject, $string_name_email_subject);
-            $email_body_template = $get_translation($original_email_body, $string_name_email_body);
+            // Use WPML translation only when it differs from original; otherwise keep __() result (plugin .mo fallback)
+            $t = $get_translation($original_share_earn, $string_name_share_earn);
+            if ($t !== $original_share_earn) {
+                $share_earn_title = $t;
+            }
+            $t = $get_translation($original_earn_text, $string_name_earn_text);
+            if ($t !== $original_earn_text) {
+                $earn_text = $t;
+            }
+            $t = $get_translation($original_for_every_friend, $string_name_for_every_friend);
+            if ($t !== $original_for_every_friend) {
+                $for_every_friend = $t;
+            }
+            $t = $get_translation($original_share_description, $string_name_share_description);
+            if ($t !== $original_share_description) {
+                $share_description = $t;
+            }
+            $t = $get_translation($original_your_referral_code, $string_name_your_referral_code);
+            if ($t !== $original_your_referral_code) {
+                $your_referral_code_label = $t;
+            }
+            $t = $get_translation($original_your_referral_link, $string_name_your_referral_link);
+            if ($t !== $original_your_referral_link) {
+                $your_referral_link_label = $t;
+            }
+            $t = $get_translation($original_copy_code, $string_name_copy_code);
+            if ($t !== $original_copy_code) {
+                $copy_code_text = $t;
+            }
+            $t = $get_translation($original_copy_link, $string_name_copy_link);
+            if ($t !== $original_copy_link) {
+                $copy_link_text = $t;
+            }
+            $t = $get_translation($original_copied, $string_name_copied);
+            if ($t !== $original_copied) {
+                $copied_text = $t;
+            }
+            $t = $get_translation($original_whatsapp, $string_name_whatsapp);
+            if ($t !== $original_whatsapp) {
+                $whatsapp_label = $t;
+            }
+            $t = $get_translation($original_facebook, $string_name_facebook);
+            if ($t !== $original_facebook) {
+                $facebook_label = $t;
+            }
+            $t = $get_translation($original_email, $string_name_email);
+            if ($t !== $original_email) {
+                $email_label = $t;
+            }
+            $t = $get_translation($original_whatsapp_message, $string_name_whatsapp_message);
+            if ($t !== $original_whatsapp_message) {
+                $whatsapp_message_template = $t;
+            }
+            $t = $get_translation($original_facebook_message, $string_name_facebook_message);
+            if ($t !== $original_facebook_message) {
+                $facebook_message_template = $t;
+            }
+            $t = $get_translation($original_email_subject, $string_name_email_subject);
+            if ($t !== $original_email_subject) {
+                $email_subject = $t;
+            }
+            $t = $get_translation($original_email_body, $string_name_email_body);
+            if ($t !== $original_email_body) {
+                $email_body_template = $t;
+            }
         }
         
         // Build messages with referral code and link

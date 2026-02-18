@@ -81,45 +81,40 @@ class InterSoccer_Referral_System {
     
     private function __construct() {
         add_action('plugins_loaded', [$this, 'init']);
+        add_action('init', [$this, 'load_referral_textdomain'], 1);
         register_activation_hook(__FILE__, [$this, 'activate']);
         register_deactivation_hook(__FILE__, [$this, 'deactivate']);
         register_uninstall_hook(__FILE__, ['InterSoccer_Referral_System', 'uninstall']);
     }
-    
-    public function init() {
-        // Load text domain with explicit path priority
-        // Try plugin's languages/ directory first, then wp-content/languages/plugins/
+
+    /**
+     * Load plugin text domain. Called on plugins_loaded (via init) and again on init priority 1
+     * so that when WPML (or other plugins) set the locale after plugins_loaded, we load the
+     * correct .mo for the current language (e.g. fr_FR, de_DE).
+     */
+    public function load_referral_textdomain() {
         $plugin_rel_path = dirname(INTERSOCCER_REFERRAL_BASENAME);
         $plugin_lang_dir = WP_PLUGIN_DIR . '/' . $plugin_rel_path . '/languages/';
-        
         $locale = determine_locale();
         $domain = 'intersoccer-referral';
         $attempts = [];
         $locale_parts = preg_split('/[_-]/', (string) $locale);
 
-        // Exact locale first (e.g. fr_FR)
         $attempts[] = $locale;
-
-        // Base language fallback (e.g. fr)
         if (!empty($locale_parts[0])) {
             $base_lang = $locale_parts[0];
             if ($base_lang !== $locale) {
                 $attempts[] = $base_lang;
             }
- 
-             // Any regional variant we ship for that base language (e.g. fr_CH)
-             foreach (glob($plugin_lang_dir . $domain . '-' . $base_lang . '_*.mo') as $regional_file) {
+            foreach (glob($plugin_lang_dir . $domain . '-' . $base_lang . '_*.mo') as $regional_file) {
                 $regional_locale = str_replace($domain . '-', '', basename($regional_file, '.mo'));
                 if ($regional_locale && $regional_locale !== $locale) {
                     $attempts[] = $regional_locale;
                 }
-             }
-         }
- 
-         // Always allow a catch-all file if we add one (e.g. domain.mo)
-         $attempts[] = '';
-
-         $attempts = array_unique($attempts);
+            }
+        }
+        $attempts[] = '';
+        $attempts = array_unique($attempts);
 
         $loaded = false;
         foreach ($attempts as $attempt_locale) {
@@ -136,13 +131,16 @@ class InterSoccer_Referral_System {
             }
         }
 
-        // Fallback to global directory (WPML may place files here)
         if (!$loaded) {
             load_plugin_textdomain($domain, false, $plugin_rel_path . '/languages');
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 intersoccer_referral_log('InterSoccer Referral: Attempted fallback translation loading for locale: ' . $locale);
             }
         }
+    }
+    
+    public function init() {
+        $this->load_referral_textdomain();
 
         // Initialize core classes
         new InterSoccer_Referral_Handler();
