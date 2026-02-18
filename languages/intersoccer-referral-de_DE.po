@@ -404,3 +404,46 @@ msgstr "Möchten Sie %s wirklich als Coach-Partner:in auswählen?"
 msgid "Refer & Earn"
 msgstr "Empfehlen & verdienen"
 
+# Customer referral dashboard (My Account)
+msgid "Share & Earn"
+msgstr "Teilen & Verdienen"
+
+msgid "Earn 10% of their purchase value"
+msgstr "Verdienen Sie 10 % des Kaufwerts"
+
+msgid "for every friend who makes a purchase!"
+msgstr "für jeden Freund, der einen Kauf tätigt!"
+
+msgid "Share your personalized referral code or link:"
+msgstr "Teilen Sie Ihren persönlichen Empfehlungscode oder -link:"
+
+msgid "Your Referral Code"
+msgstr "Ihr Empfehlungscode"
+
+msgid "Your Referral Link"
+msgstr "Ihr Empfehlungslink"
+
+msgid "Copy Code"
+msgstr "Code kopieren"
+
+msgid "Copy Link"
+msgstr "Link kopieren"
+
+msgid "Copied!"
+msgstr "Kopiert!"
+
+#, php-format
+msgid "Join me at InterSoccer for amazing soccer training! Use my referral code: %s or visit: %s"
+msgstr "Mach mit bei InterSoccer für tolles Fussballtraining! Nutze meinen Empfehlungscode: %s oder besuche: %s"
+
+#, php-format
+msgid "Join InterSoccer! Use my referral code: %s"
+msgstr "Bei InterSoccer mitmachen! Nutze meinen Empfehlungscode: %s"
+
+msgid "Join InterSoccer!"
+msgstr "Bei InterSoccer mitmachen!"
+
+#, php-format
+msgid "I thought you'd love InterSoccer's soccer training programs! Use my referral code: %s or visit: %s"
+msgstr "Ich dachte, dir gefallen InterSoccers Fussballprogramme! Nutze meinen Empfehlungscode: %s oder besuche: %s"
+
