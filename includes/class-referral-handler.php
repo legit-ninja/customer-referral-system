@@ -59,6 +59,57 @@ class InterSoccer_Referral_Handler {
     }
 
     /**
+     * Send referral code email to a coach (admin-triggered).
+     *
+     * @param int $coach_id User ID of the coach.
+     * @return array{success: bool, message: string}
+     */
+    public static function send_referral_code_email($coach_id) {
+        $coach = get_user_by('ID', $coach_id);
+        if (!$coach || !in_array('coach', (array) $coach->roles)) {
+            return ['success' => false, 'message' => __('Invalid coach.', 'intersoccer-referral')];
+        }
+        if (empty($coach->user_email) || !is_email($coach->user_email)) {
+            return ['success' => false, 'message' => sprintf(__('Coach %s has no valid email.', 'intersoccer-referral'), $coach->display_name)];
+        }
+
+        $code = self::get_coach_referral_code($coach_id);
+        $referral_link = self::generate_coach_referral_link($coach_id);
+        $dashboard_url = admin_url('admin.php?page=intersoccer-coach-dashboard');
+        $site_name = get_bloginfo('name');
+
+        $subject = sprintf(
+            /* translators: 1: site name */
+            __('Your Coach Connection Referral Code - %s', 'intersoccer-referral'),
+            $site_name
+        );
+
+        $message = sprintf(
+            __(
+                "Hi %s,\n\n" .
+                "Here is your Coach Connection referral code and link:\n\n" .
+                "Referral Code: %s\n" .
+                "Referral Link: %s\n\n" .
+                "Share this link with your players and families. When they use it during checkout, you'll receive credit for their purchase.\n\n" .
+                "You can view your referral stats and dashboard here:\n%s\n\n" .
+                "Best regards,\nThe %s Team",
+                'intersoccer-referral'
+            ),
+            $coach->display_name,
+            $code,
+            $referral_link,
+            $dashboard_url,
+            $site_name
+        );
+
+        $sent = wp_mail($coach->user_email, $subject, $message);
+        if (!$sent) {
+            return ['success' => false, 'message' => sprintf(__('Failed to send email to %s.', 'intersoccer-referral'), $coach->user_email)];
+        }
+        return ['success' => true, 'message' => sprintf(__('Referral code sent to %s.', 'intersoccer-referral'), $coach->display_name)];
+    }
+
+    /**
      * Handle coach partnership selection AJAX
      */
     public function handle_coach_partnership_selection() {

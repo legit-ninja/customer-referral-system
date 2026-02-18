@@ -17,6 +17,16 @@ class InterSoccer_Admin_Coaches {
                     <span class="dashicons dashicons-plus"></span>
                     Add New Coach
                 </button>
+                <div class="coach-bulk-actions" style="display: none;">
+                    <button type="button" class="button button-secondary" id="send-referral-selected" title="<?php esc_attr_e('Send referral code to selected coaches', 'intersoccer-referral'); ?>">
+                        <span class="dashicons dashicons-email-alt"></span>
+                        <?php esc_html_e('Send referral code to selected', 'intersoccer-referral'); ?>
+                    </button>
+                    <button type="button" class="button button-secondary" id="send-referral-all" title="<?php esc_attr_e('Send referral code to all coaches', 'intersoccer-referral'); ?>">
+                        <span class="dashicons dashicons-email-alt"></span>
+                        <?php esc_html_e('Send referral code to all', 'intersoccer-referral'); ?>
+                    </button>
+                </div>
             </div>
 
             <!-- Coach Import Modal -->
@@ -148,6 +158,10 @@ class InterSoccer_Admin_Coaches {
             ?>
             <div class="coach-card" data-coach-id="<?php echo $coach->ID; ?>" data-search="<?php echo esc_attr($search_tokens); ?>">
                 <div class="coach-card-header">
+                    <div class="coach-select">
+                        <label class="screen-reader-text" for="coach-select-<?php echo $coach->ID; ?>"><?php esc_html_e('Select coach', 'intersoccer-referral'); ?></label>
+                        <input type="checkbox" class="coach-checkbox" id="coach-select-<?php echo $coach->ID; ?>" value="<?php echo $coach->ID; ?>" aria-label="<?php esc_attr_e('Select coach', 'intersoccer-referral'); ?>">
+                    </div>
                     <div class="coach-avatar">
                         <?php echo get_avatar($coach->ID, 60); ?>
                     </div>
@@ -159,13 +173,16 @@ class InterSoccer_Admin_Coaches {
                         </div>
                     </div>
                     <div class="coach-actions">
-                        <button class="coach-action-btn edit-coach" data-coach-id="<?php echo $coach->ID; ?>" title="Edit Coach">
+                        <button class="coach-action-btn send-referral-code" data-coach-id="<?php echo $coach->ID; ?>" title="<?php esc_attr_e('Send referral code', 'intersoccer-referral'); ?>">
+                            <span class="dashicons dashicons-email-alt"></span>
+                        </button>
+                        <button class="coach-action-btn edit-coach" data-coach-id="<?php echo $coach->ID; ?>" title="<?php esc_attr_e('Edit Coach', 'intersoccer-referral'); ?>">
                             <span class="dashicons dashicons-edit"></span>
                         </button>
-                        <button class="coach-action-btn message-coach" data-coach-id="<?php echo $coach->ID; ?>" title="Send Message">
+                        <button class="coach-action-btn message-coach" data-coach-id="<?php echo $coach->ID; ?>" title="<?php esc_attr_e('Send Message', 'intersoccer-referral'); ?>">
                             <span class="dashicons dashicons-email"></span>
                         </button>
-                        <button class="coach-action-btn deactivate-coach" data-coach-id="<?php echo $coach->ID; ?>" title="Deactivate Coach">
+                        <button class="coach-action-btn deactivate-coach" data-coach-id="<?php echo $coach->ID; ?>" title="<?php esc_attr_e('Deactivate Coach', 'intersoccer-referral'); ?>">
                             <span class="dashicons dashicons-no"></span>
                         </button>
                     </div>

@@ -47,6 +47,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         add_action('wp_ajax_export_roi_report', [$this, 'export_roi_report']);
         add_action('wp_ajax_send_coach_message', [$this, 'send_coach_message']);
         add_action('wp_ajax_deactivate_coach', [$this, 'deactivate_coach']);
+        add_action('wp_ajax_send_referral_code', [$this, 'send_referral_code']);
         add_action('wp_ajax_update_customer_credits', [$this, 'update_customer_credits']);
         add_action('wp_ajax_import_customers_credits', [$this, 'import_customers_and_assign_credits']);
         add_action('wp_ajax_emergency_cleanup_import', [$this, 'emergency_cleanup_import_session']);
@@ -426,6 +427,67 @@ class InterSoccer_Referral_Admin_Dashboard {
     }
 
     /**
+     * Send referral code email to one or more coaches.
+     * Expects: coach_ids (array of ints) or coach_id (single int), or send_all (bool).
+     */
+    public function send_referral_code() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => __('Unauthorized.', 'intersoccer-referral')]);
+        }
+
+        $coach_ids = [];
+        if (!empty($_POST['send_all']) && $_POST['send_all'] === '1') {
+            $users = get_users(['role' => 'coach', 'fields' => 'ID']);
+            $coach_ids = array_map('intval', $users);
+        } elseif (!empty($_POST['coach_ids']) && is_array($_POST['coach_ids'])) {
+            $coach_ids = array_map('intval', $_POST['coach_ids']);
+        } elseif (!empty($_POST['coach_id'])) {
+            $coach_ids = [intval($_POST['coach_id'])];
+        }
+
+        if (empty($coach_ids)) {
+            wp_send_json_error(['message' => __('No coaches selected.', 'intersoccer-referral')]);
+        }
+
+        $results = [];
+        $success_count = 0;
+        $fail_count = 0;
+
+        foreach ($coach_ids as $id) {
+            $result = InterSoccer_Referral_Handler::send_referral_code_email($id);
+            $results[] = ['coach_id' => $id, 'success' => $result['success'], 'message' => $result['message']];
+            if ($result['success']) {
+                $success_count++;
+            } else {
+                $fail_count++;
+            }
+        }
+
+        $total = count($coach_ids);
+        if ($fail_count === 0) {
+            $summary = sprintf(
+                /* translators: %d: number of coaches */
+                _n('Referral code sent to %d coach.', 'Referral codes sent to %d coaches.', $total, 'intersoccer-referral'),
+                $total
+            );
+        } else {
+            $summary = sprintf(
+                __('%1$d sent, %2$d failed.', 'intersoccer-referral'),
+                $success_count,
+                $fail_count
+            );
+        }
+
+        wp_send_json_success([
+            'message' => $summary,
+            'results' => $results,
+            'success_count' => $success_count,
+            'fail_count' => $fail_count,
+        ]);
+    }
+
+    /**
      * Update customer credits
      */
     public function update_customer_credits() {
@@ -533,15 +595,14 @@ class InterSoccer_Referral_Admin_Dashboard {
             WC()->session->set('intersoccer_referral_status_message', null);
         }
 
-        echo '<div class="intersoccer-referral-code-wrapper" style="width: 100%; clear: both; margin-bottom: 20px;">';
-        echo '<div class="intersoccer-referral-code" style="border: 1px solid #e1e5e9; border-radius: 8px; padding: 16px; margin: 0; background: #f0f9ff; width: 100%; box-sizing: border-box;">';
-        echo '<div style="margin-bottom: 12px;">';
-        echo '<label for="intersoccer_referral_code" style="font-weight: 600; color: #111827; margin: 0; display: block; margin-bottom: 8px;">' . __('Referral Code (Optional)', 'intersoccer-referral') . '</label>';
-        echo '<p style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px;">' . __('Support your favorite coach! Enter their referral code to give them credit for this purchase.', 'intersoccer-referral') . '</p>';
-        echo '<input type="text" name="intersoccer_referral_code" id="intersoccer_referral_code" placeholder="Enter referral code" style="width: 100%; max-width: 300px; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px;"' . $input_attributes . $input_disabled . ' />';
-        echo '<button type="button" id="apply_referral_code" class="button button-secondary" data-auto-apply="' . esc_attr($auto_apply) . '" style="margin-left: 8px; padding: 8px 16px;"' . $button_disabled . '>' . esc_html($button_label) . '</button>';
+        echo '<div class="intersoccer-referral-code-wrapper">';
+        echo '<div class="intersoccer-referral-code">';
+        echo '<div class="intersoccer-referral-code-inner">';
+        echo '<label for="intersoccer_referral_code">' . __('Referral Code (Optional)', 'intersoccer-referral') . '</label>';
+        echo '<input type="text" name="intersoccer_referral_code" id="intersoccer_referral_code" placeholder="Enter referral code"' . $input_attributes . $input_disabled . ' />';
+        echo '<button type="button" id="apply_referral_code" class="button button-secondary" data-auto-apply="' . esc_attr($auto_apply) . '"' . $button_disabled . '>' . esc_html($button_label) . '</button>';
         echo '</div>';
-        echo '<div id="referral_code_message" class="' . esc_attr($message_classes) . '" data-applied="' . ($is_code_applied ? 'yes' : 'no') . '"' . $message_status_attr . ' style="display: ' . $message_display . '; margin-top: 8px; padding: 8px; border-radius: 4px; font-size: 14px; background: ' . ($is_code_applied ? '#ecfdf5' : '#fff') . '; color: ' . ($is_code_applied ? '#065f46' : '#111827') . ';">' . esc_html($message_text) . '</div>';
+        echo '<div id="referral_code_message" class="' . esc_attr($message_classes) . '" data-applied="' . ($is_code_applied ? 'yes' : 'no') . '"' . $message_status_attr . ' style="display: ' . $message_display . ';">' . esc_html($message_text) . '</div>';
         echo '</div>';
         echo '</div>';
     }
@@ -563,34 +624,30 @@ class InterSoccer_Referral_Admin_Dashboard {
             // Get cart total for context
             $cart_total = WC()->cart->get_total('edit');
 
-            echo '<div class="intersoccer-points-redemption-wrapper" style="width: 100%; clear: both; margin-bottom: 20px;">';
-            echo '<div class="intersoccer-points-redemption" style="border: 1px solid #e1e5e9; border-radius: 8px; padding: 16px; margin: 0; background: #f8fafc; width: 100%; box-sizing: border-box;">';
-            echo '<div style="display: flex; align-items: center; margin-bottom: 12px;">';
-            echo '<input type="checkbox" name="intersoccer_use_points" id="intersoccer_use_points" style="margin-right: 8px;" />';
-            echo '<label for="intersoccer_use_points" style="font-weight: 600; color: #111827; margin: 0;">' . __('Use Loyalty Points', 'intersoccer-referral') . '</label>';
+            echo '<div class="intersoccer-points-redemption-wrapper">';
+            echo '<div class="intersoccer-points-redemption">';
+            echo '<div class="intersoccer-points-redemption-toggle">';
+            echo '<input type="checkbox" name="intersoccer_use_points" id="intersoccer_use_points" />';
+            echo '<label for="intersoccer_use_points">' . __('Use Loyalty Points', 'intersoccer-referral') . '</label>';
             echo '</div>';
 
-            echo '<div class="points-details" style="display: none; margin-left: 24px;">';
-            echo '<p style="margin: 8px 0; color: #6b7280; font-size: 14px;">' . sprintf(__('You have %s points available', 'intersoccer-referral'), '<strong>' . number_format($available_credits, 0) . '</strong>') . '</p>';
+            echo '<div class="points-details" style="display: none;">';
+            echo '<p class="points-available">' . sprintf(__('You have %s points available', 'intersoccer-referral'), '<strong>' . number_format($available_credits, 0) . '</strong>') . '</p>';
 
-            // Quick apply buttons
-            echo '<div class="points-quick-apply" style="margin: 12px 0;">';
-            echo '<button type="button" class="apply-all-points button button-secondary" style="margin-right: 8px; padding: 6px 12px; font-size: 12px;">' . __('Apply All Available', 'intersoccer-referral') . '</button>';
+            echo '<div class="points-quick-apply">';
+            echo '<button type="button" class="apply-all-points button button-secondary">' . __('Apply All Available', 'intersoccer-referral') . '</button>';
             echo '</div>';
 
-            // Custom amount input
-            echo '<div class="custom-amount" style="margin: 12px 0;">';
-            echo '<label for="intersoccer_points_to_redeem" style="display: block; margin-bottom: 4px; font-size: 14px; color: #374151;">' . __('Or enter custom amount:', 'intersoccer-referral') . '</label>';
-            echo '<input type="number" name="intersoccer_points_to_redeem" id="intersoccer_points_to_redeem" min="0" max="' . $available_credits . '" step="1" placeholder="0" style="width: 120px; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px;" />';
-            echo '<span style="margin-left: 8px; color: #6b7280; font-size: 14px;">points</span>';
+            echo '<div class="custom-amount">';
+            echo '<label for="intersoccer_points_to_redeem">' . __('Or enter custom amount:', 'intersoccer-referral') . '</label>';
+            echo '<input type="number" name="intersoccer_points_to_redeem" id="intersoccer_points_to_redeem" min="0" max="' . $available_credits . '" step="1" placeholder="0" />';
+            echo '<span class="points-unit">points</span>';
             echo '</div>';
-            
-            // Help text explaining the limit
-            echo '<p style="margin: 8px 0; color: #6b7280; font-size: 12px; font-style: italic;">' . __('You can redeem up to your cart total or available points, whichever is less.', 'intersoccer-referral') . '</p>';
 
-            // Applied amount display
-            echo '<div class="applied-amount" style="margin: 8px 0; padding: 8px; background: #ecfdf5; border: 1px solid #d1fae5; border-radius: 4px; display: none;">';
-            echo '<span class="applied-text" style="color: #065f46; font-size: 14px;"></span>';
+            echo '<p class="points-limit-desc">' . __('You can redeem up to your cart total or available points, whichever is less.', 'intersoccer-referral') . '</p>';
+
+            echo '<div class="applied-amount" style="display: none;">';
+            echo '<span class="applied-text"></span>';
             echo '</div>';
 
             echo '</div>';
@@ -1241,11 +1298,19 @@ class InterSoccer_Referral_Admin_Dashboard {
             $coach_name = $coach->display_name;
         }
 
+        $current_user_id = get_current_user_id();
+        if ((int) $coach->ID === (int) $current_user_id) {
+            do_action('intersoccer_referral_code_invalid', $referral_code, 'self_referral');
+            return [
+                'success' => false,
+                'message' => __('You cannot use your own referral code.', 'intersoccer-referral')
+            ];
+        }
+
         $session->set('intersoccer_applied_referral_code', $referral_code);
         $session->set('intersoccer_referral_coach_id', $coach->ID);
         $session->set('coach_referral_code', $referral_code);
 
-        $current_user_id = get_current_user_id();
         $eligible_for_discount = $this->customer_is_eligible_for_first_order_discount($current_user_id);
 
         if ($eligible_for_discount) {
