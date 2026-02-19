@@ -262,7 +262,7 @@
 /* Coaches Page */
 .coaches-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
     gap: 20px;
 }
 
@@ -281,10 +281,33 @@
     border-left: 1px solid #d1d5db;
 }
 
+.coaches-grid .coach-card {
+    min-width: 0;
+}
+
 .coach-card .coach-card-header {
     display: flex;
     align-items: flex-start;
     gap: 12px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.coach-card .coach-card-header .coach-info {
+    flex: 1 1 0%;
+    min-width: 0;
+}
+
+.coach-card .coach-card-header .coach-info h3,
+.coach-card .coach-card-header .coach-info .coach-email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.coach-card .coach-card-header .coach-actions {
+    flex-shrink: 0;
+    min-width: 152px;
 }
 
 .coach-select {
@@ -302,7 +325,7 @@
     background: white;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
+    overflow: visible;
 }
 
 .intersoccer-coaches-search {
@@ -1030,7 +1053,7 @@
 /* Coach Management Page Styles */
 .coaches-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
     gap: 20px;
     margin-top: 20px;
 }
@@ -1039,7 +1062,7 @@
     background: white;
     border-radius: 12px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    overflow: hidden;
+    overflow: visible;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
