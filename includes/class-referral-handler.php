@@ -232,30 +232,47 @@ class InterSoccer_Referral_Handler {
 
     public function handle_gift_credits() {
         check_ajax_referer('intersoccer_dashboard_nonce');
-        $amount = floatval($_POST['gift_amount']);
-        $recipient = get_user_by('email', sanitize_email($_POST['recipient_email']));
-        $sender_id = get_current_user_id();
-        $sender_credits = intersoccer_get_customer_credits($sender_id);
-        if ($recipient && $amount >= 50 && $amount <= $sender_credits) {
-            update_user_meta($sender_id, 'intersoccer_customer_credits', $sender_credits - $amount);
-            update_user_meta($recipient->ID, 'intersoccer_customer_credits', intersoccer_get_customer_credits($recipient->ID) + $amount);
-            update_user_meta($sender_id, 'intersoccer_customer_credits', $sender_credits - $amount + 20); // Reciprocity bonus
-            
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                intersoccer_referral_log('InterSoccer Referral: Credits gifted - ' . $amount . ' from user ' . $sender_id . ' to ' . $recipient->ID);
-            }
-            
-            wp_send_json_success(['message' => 'Credits gifted! You earned a 20-point bonus!']);
+
+        if ( ! is_user_logged_in() ) {
+            wp_send_json_error( [ 'message' => 'Must be logged in' ] );
         }
-        wp_send_json_error(['message' => 'Invalid gift request']);
+
+        $amount    = floatval( $_POST['gift_amount'] );
+        $recipient = get_user_by( 'email', sanitize_email( $_POST['recipient_email'] ) );
+        $sender_id = get_current_user_id();
+
+        // Prevent self-gifting
+        if ( $recipient && (int) $recipient->ID === (int) $sender_id ) {
+            wp_send_json_error( [ 'message' => 'Cannot gift credits to yourself' ] );
+        }
+
+        $sender_credits = intersoccer_get_customer_credits( $sender_id );
+
+        if ( $recipient && $amount >= 50 && $amount <= $sender_credits ) {
+            // Deduct from sender first, then add bonus — using a single atomic-style update.
+            // The bonus (20 pts) is applied to the sender's balance AFTER the deduction so
+            // the net cost to the sender is ($amount - 20), not $amount.
+            $sender_new = $sender_credits - $amount + 20; // net: sender pays ($amount - 20)
+            update_user_meta( $sender_id, 'intersoccer_customer_credits', $sender_new );
+            update_user_meta( $recipient->ID, 'intersoccer_customer_credits', intersoccer_get_customer_credits( $recipient->ID ) + $amount );
+
+            if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+                intersoccer_referral_log( 'InterSoccer Referral: Credits gifted - ' . $amount . ' from user ' . $sender_id . ' to ' . $recipient->ID );
+            }
+
+            wp_send_json_success( [ 'message' => 'Credits gifted! You earned a 20-point bonus!' ] );
+        }
+
+        wp_send_json_error( [ 'message' => 'Invalid gift request' ] );
     }
 
     public function render_gift_form() {
-        $credits = intersoccer_get_customer_credits();
+        $credits = (float) intersoccer_get_customer_credits();
+        $credits_escaped = esc_attr( number_format( $credits, 0, '.', '' ) );
         ?>
         <form id="gift-credits" method="post">
-            <label>Gift Points (Max <?php echo $credits; ?>):</label>
-            <input type="number" name="gift_amount" max="<?php echo $credits; ?>" min="50" step="10">
+            <label>Gift Points (Max <?php echo esc_html( number_format( $credits, 0 ) ); ?>):</label>
+            <input type="number" name="gift_amount" max="<?php echo $credits_escaped; ?>" min="50" step="10">
             <label>To User (Email):</label>
             <input type="email" name="recipient_email">
             <button type="submit">Gift</button>
@@ -332,6 +349,19 @@ class InterSoccer_Referral_Handler {
         $table_name = $wpdb->prefix . 'intersoccer_referrals';
         $referrer = $this->get_referrer_by_code($ref_code);
         if (!$referrer) return;
+
+        // Prevent self-referral: a customer cannot be their own referrer
+        if ($customer_id && (int) $referrer['id'] === (int) $customer_id) {
+            if (defined('WP_DEBUG') && WP_DEBUG) {
+                intersoccer_referral_log(sprintf(
+                    'InterSoccer Referral: Self-referral blocked for order #%d - customer %d attempted to use their own code %s',
+                    $order_id,
+                    $customer_id,
+                    $ref_code
+                ));
+            }
+            return;
+        }
 
         update_post_meta($order_id, '_intersoccer_referral_code', $ref_code);
         update_post_meta($order_id, '_intersoccer_referrer_type', $referrer['type']);
@@ -959,12 +989,13 @@ class InterSoccer_Referral_Handler {
 
     // Add credit field to checkout
     public function add_credit_field() {
-        $credits = intersoccer_get_customer_credits();
+        $credits = (float) intersoccer_get_customer_credits();
+        $credits_escaped = esc_attr( number_format( $credits, 2, '.', '' ) );
         ?>
         <div class="intersoccer-credits">
             <h3>Apply Credits</h3>
-            <p>Available: <span id="avail-credits"><?php echo $credits; ?> CHF</p>
-            <input type="range" id="credit-slider" name="intersoccer_apply_credits" min="0" max="<?php echo $credits; ?>" step="0.01" value="0">
+            <p>Available: <span id="avail-credits"><?php echo esc_html( number_format( $credits, 2 ) ); ?> CHF</p>
+            <input type="range" id="credit-slider" name="intersoccer_apply_credits" min="0" max="<?php echo $credits_escaped; ?>" step="0.01" value="0">
             <span id="credit-display">0 CHF</span>
             <button type="button" id="apply-max-credits">Apply Max</button>
         </div>

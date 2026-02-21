@@ -344,12 +344,22 @@ class InterSoccer_Admin_Audit {
      * Get unique values for filter dropdowns
      */
     private function get_unique_values($column) {
+        // Whitelist allowed column names to prevent SQL injection via column interpolation.
+        $allowed_columns = [ 'event_type', 'category' ];
+        if ( ! in_array( $column, $allowed_columns, true ) ) {
+            return [];
+        }
+
         global $wpdb;
         $table_name = $wpdb->prefix . 'intersoccer_audit_log';
 
-        $results = $wpdb->get_col($wpdb->prepare(
-            "SELECT DISTINCT {$column} FROM {$table_name} WHERE {$column} != '' ORDER BY {$column} LIMIT 100"
-        ));
+        // $column is safe after the whitelist check above; backtick-quote it for clarity.
+        $quoted_column = '`' . $column . '`';
+
+        // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- column name is whitelisted above
+        $results = $wpdb->get_col(
+            "SELECT DISTINCT {$quoted_column} FROM {$table_name} WHERE {$quoted_column} != '' ORDER BY {$quoted_column} LIMIT 100"
+        );
 
         return $results ?: [];
     }

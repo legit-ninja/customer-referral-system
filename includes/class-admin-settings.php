@@ -2065,7 +2065,8 @@ class InterSoccer_Admin_Settings {
         ];
 
         foreach ($tables as $table) {
-            if ($wpdb->get_var("SHOW TABLES LIKE '$table'") !== $table) {
+            // Use $wpdb->prepare() to prevent potential SQL injection via the table name placeholder.
+            if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table)) !== $table) {
                 return false;
             }
         }
@@ -2237,27 +2238,22 @@ class InterSoccer_Admin_Settings {
      */
     public function ajax_import_coaches_from_csv() {
         try {
-            // Debug logging
-            intersoccer_referral_log('AJAX import called at ' . current_time('mysql'));
-            intersoccer_referral_log('POST data: ' . print_r($_POST, true));
-            intersoccer_referral_log('FILES data: ' . print_r($_FILES, true));
-
-            // Verify nonce and permissions
+            // Verify nonce and permissions before any logging to avoid leaking request data
             if (!wp_verify_nonce($_POST['_wpnonce'] ?? '', 'import_coaches_from_csv')) {
-                intersoccer_referral_log('Nonce verification failed');
+                intersoccer_referral_log('InterSoccer: Coach CSV AJAX import — nonce verification failed');
                 wp_send_json_error('Invalid nonce');
                 return;
             }
 
             if (!current_user_can('manage_options')) {
-                intersoccer_referral_log('Permission check failed');
+                intersoccer_referral_log('InterSoccer: Coach CSV AJAX import — permission check failed for user ' . get_current_user_id());
                 wp_send_json_error('Insufficient permissions');
                 return;
             }
 
             if (!isset($_FILES['coaches_csv']) || $_FILES['coaches_csv']['error'] !== UPLOAD_ERR_OK) {
-                $error_code = $_FILES['coaches_csv']['error'] ?? 'no file';
-                intersoccer_referral_log('File upload error: ' . $error_code);
+                $error_code = isset($_FILES['coaches_csv']['error']) ? (int) $_FILES['coaches_csv']['error'] : -1;
+                intersoccer_referral_log('InterSoccer: Coach CSV AJAX import — file upload error code: ' . $error_code);
                 wp_send_json_error('File upload error: ' . $error_code);
                 return;
             }
@@ -2265,7 +2261,7 @@ class InterSoccer_Admin_Settings {
             $file = $_FILES['coaches_csv']['tmp_name'];
             $update_existing = isset($_POST['update_existing']) && $_POST['update_existing'] == '1';
 
-            intersoccer_referral_log('Processing file: ' . $file . ', update_existing: ' . ($update_existing ? 'yes' : 'no'));
+            intersoccer_referral_log('InterSoccer: Coach CSV AJAX import started, update_existing: ' . ($update_existing ? 'yes' : 'no'));
 
             $results = $this->process_coach_csv_import($file, $update_existing);
 
