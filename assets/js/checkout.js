@@ -133,6 +133,37 @@
             applyReferralCode();
         });
 
+        $(document).off('click', '#change_referral_code').on('click', '#change_referral_code', function (event) {
+            event.preventDefault();
+            const $changeBtn = $(this);
+            $changeBtn.prop('disabled', true).text(config.i18n.clearing || 'Clearing\u2026');
+
+            $.ajax({
+                url: config.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'intersoccer_clear_referral_code',
+                    nonce: config.nonce
+                }
+            }).done(function (response) {
+                if (response && response.success) {
+                    $referralInput.val('').prop('disabled', false).data('code-applied', 'no');
+                    $referralButton.prop('disabled', false).text(config.i18n.apply_code);
+                    $referralMessage.removeClass('success error').hide().removeAttr('data-applied');
+                    $changeBtn.remove();
+                    $(document.body).trigger('update_checkout');
+                } else {
+                    const msg = response && response.data && response.data.message
+                        ? response.data.message : 'Error clearing referral code.';
+                    $changeBtn.prop('disabled', false).text(config.i18n.change_code || 'Change Code');
+                    window.alert(msg);
+                }
+            }).fail(function () {
+                $changeBtn.prop('disabled', false).text(config.i18n.change_code || 'Change Code');
+                window.alert('Network error. Please try again.');
+            });
+        });
+
         // Auto-apply referral code if requested
         if ($referralInput.length && $referralButton.length) {
             const shouldAutoApply = $referralButton.data('auto-apply') === 'yes';
