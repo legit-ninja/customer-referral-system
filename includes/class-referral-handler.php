@@ -309,6 +309,21 @@ class InterSoccer_Referral_Handler {
 
             $this->set_referral_cookie($payload);
         }
+
+        // Customer referral link: ?cust_ref=CODE — store same payload shape for checkout/order processing
+        if (isset($_GET['cust_ref']) && !empty($_GET['cust_ref'])) {
+            $ref_code = strtoupper(sanitize_text_field($_GET['cust_ref']));
+            $payload = [
+                'code' => $ref_code,
+                'event_id' => null,
+                'coach_event_id' => null,
+                'set_at' => time(),
+            ];
+            if (function_exists('WC') && WC()->session) {
+                WC()->session->set('intersoccer_referral', $payload);
+            }
+            $this->set_referral_cookie($payload);
+        }
     }
 
     // Process referral on order completion
@@ -318,11 +333,20 @@ class InterSoccer_Referral_Handler {
             return;
         }
 
-        if ('yes' === get_post_meta($order_id, '_intersoccer_referral_processed', true)) {
+        // #region agent log
+        $already_processed = get_post_meta($order_id, '_intersoccer_referral_processed', true);
+        $order_status      = $order->get_status();
+        error_log('[ddc888][H-A/B/C] process_referral_order entry | order=' . $order_id . ' status=' . $order_status . ' already_processed=' . ($already_processed ?: 'no'));
+        // #endregion
+
+        if ('yes' === $already_processed) {
             return;
         }
 
         $referral_payload = $this->get_referral_payload();
+        // #region agent log
+        error_log('[ddc888][H-B] payload_from_session | order=' . $order_id . ' code=' . ($referral_payload['code'] ?? 'empty'));
+        // #endregion
         if (!empty($referral_payload['code'])) {
             update_post_meta($order_id, '_intersoccer_referral_payload', $referral_payload);
         } else {
@@ -330,13 +354,22 @@ class InterSoccer_Referral_Handler {
             if (is_array($stored_payload)) {
                 $referral_payload = $this->normalize_referral_payload($stored_payload);
             }
+            // #region agent log
+            error_log('[ddc888][H-B] payload_from_meta | order=' . $order_id . ' code=' . ($referral_payload['code'] ?? 'empty'));
+            // #endregion
         }
 
         if (empty($referral_payload['code'])) {
+            // #region agent log
+            error_log('[ddc888][H-B] EXIT no_payload | order=' . $order_id);
+            // #endregion
             return;
         }
 
         if (!$order->has_status(['completed', 'wc-completed'])) {
+            // #region agent log
+            error_log('[ddc888][H-A] EXIT not_completed | order=' . $order_id . ' status=' . $order_status . ' code=' . $referral_payload['code']);
+            // #endregion
             return;
         }
 
@@ -452,6 +485,10 @@ class InterSoccer_Referral_Handler {
 
         // Continue with existing referral processing...
         if ($referrer_reward_points > 0) {
+            // Credit referrer with Loyalty Points (intersoccer_points_balance) so they can redeem at checkout
+            $current_points = (float) get_user_meta($referrer['id'], 'intersoccer_points_balance', true);
+            update_user_meta($referrer['id'], 'intersoccer_points_balance', $current_points + $referrer_reward_points);
+            // Also keep customer_credits for backward compatibility / admin views
             $customer_credits = (float) get_user_meta($referrer['id'], 'intersoccer_customer_credits', true);
             update_user_meta($referrer['id'], 'intersoccer_customer_credits', $customer_credits + $referrer_reward_points);
             $referrals_made = get_user_meta($referrer['id'], 'intersoccer_referrals_made', true) ?: [];
