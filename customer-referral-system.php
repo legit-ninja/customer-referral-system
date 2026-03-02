@@ -614,15 +614,25 @@ class InterSoccer_Referral_System {
         add_option('intersoccer_commission_second', 7.5);
         add_option('intersoccer_commission_third', 5);
 
-        // Loyalty bonuses
-        add_option('intersoccer_loyalty_bonus_first', 5);
-        add_option('intersoccer_loyalty_bonus_second', 8);
-        add_option('intersoccer_loyalty_bonus_third', 15);
+        // Loyalty bonuses (percentages of order total) - opt-in, default 0
+        add_option('intersoccer_loyalty_bonus_first', 0);
+        add_option('intersoccer_loyalty_bonus_second', 0);
+        add_option('intersoccer_loyalty_bonus_third', 0);
 
-        // Retention bonuses
-        add_option('intersoccer_retention_season_2', 25);
-        add_option('intersoccer_retention_season_3', 50);
-        add_option('intersoccer_network_effect_bonus', 15);
+        // Retention bonuses (fixed CHF) - opt-in, default 0
+        add_option('intersoccer_retention_season_2', 0);
+        add_option('intersoccer_retention_season_3', 0);
+
+        // Network effect bonus (fixed CHF) - opt-in, default 0
+        add_option('intersoccer_network_effect_bonus', 0);
+
+        // Seasonal bonuses (percentages of base commission) - opt-in, default 0
+        add_option('intersoccer_seasonal_bonus_aug_sep', 0);
+        add_option('intersoccer_seasonal_bonus_nov_dec', 0);
+        add_option('intersoccer_seasonal_bonus_mar_apr', 0);
+
+        // Weekend bonus (percentage of base commission) - opt-in, default 0
+        add_option('intersoccer_weekend_bonus', 0);
 
         // Tier thresholds
         add_option('intersoccer_tier_silver', 5);
@@ -1008,6 +1018,8 @@ class InterSoccer_Referral_System {
                     'error_applying_referral_code' => __('Error applying referral code', 'intersoccer-referral'),
                     'discount_label' => __('Discount:', 'intersoccer-referral'),
                     'points_discount' => __('points discount', 'intersoccer-referral'),
+                    'change_code' => __('Change Code', 'intersoccer-referral'),
+                    'clearing' => __('Clearing...', 'intersoccer-referral'),
                 ],
             ]);
         }

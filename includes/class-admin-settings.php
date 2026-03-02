@@ -629,6 +629,202 @@ class InterSoccer_Admin_Settings {
                     </button>
                 </div>
             </div>
+
+            <!-- Commission Bonuses (Loyalty, Retention, Network Effect) -->
+            <div class="intersoccer-settings-section" style="margin-top: 40px;">
+                <h2><?php esc_html_e('Commission Bonuses', 'intersoccer-referral'); ?></h2>
+                <p class="description">
+                    <?php esc_html_e('Configure additional bonuses that are applied on top of the tiered base commission. Set a value to 0 to disable a specific bonus type.', 'intersoccer-referral'); ?>
+                </p>
+
+                <form method="post" action="options.php">
+                    <?php
+                    settings_fields('intersoccer_commission_bonuses');
+
+                    $loyalty_first  = get_option('intersoccer_loyalty_bonus_first', 0);
+                    $loyalty_second = get_option('intersoccer_loyalty_bonus_second', 0);
+                    $loyalty_third  = get_option('intersoccer_loyalty_bonus_third', 0);
+                    $network_bonus  = get_option('intersoccer_network_effect_bonus', 0);
+                    $retention_2    = get_option('intersoccer_retention_season_2', 0);
+                    $retention_3    = get_option('intersoccer_retention_season_3', 0);
+                    $season_aug_sep = get_option('intersoccer_seasonal_bonus_aug_sep', 0);
+                    $season_nov_dec = get_option('intersoccer_seasonal_bonus_nov_dec', 0);
+                    $season_mar_apr = get_option('intersoccer_seasonal_bonus_mar_apr', 0);
+                    $weekend_bonus  = get_option('intersoccer_weekend_bonus', 0);
+                    ?>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row">
+                                <?php esc_html_e('Loyalty Bonus (1st Purchase) %', 'intersoccer-referral'); ?>
+                            </th>
+                            <td>
+                                <input type="number"
+                                       name="intersoccer_loyalty_bonus_first"
+                                       value="<?php echo esc_attr($loyalty_first); ?>"
+                                       min="0"
+                                       max="100"
+                                       step="0.1"
+                                       class="small-text">
+                                <p class="description">
+                                    <?php esc_html_e('Extra commission as a percentage of the order total when the customer makes their first purchase.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <?php esc_html_e('Seasonal Bonus – Aug/Sept % of Base', 'intersoccer-referral'); ?>
+                            </th>
+                            <td>
+                                <input type="number"
+                                       name="intersoccer_seasonal_bonus_aug_sep"
+                                       value="<?php echo esc_attr($season_aug_sep); ?>"
+                                       min="0"
+                                       max="100"
+                                       step="0.1"
+                                       class="small-text">
+                                <p class="description">
+                                    <?php esc_html_e('Extra commission as a percentage of the base commission for orders in August–September.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <?php esc_html_e('Seasonal Bonus – Nov/Dec % of Base', 'intersoccer-referral'); ?>
+                            </th>
+                            <td>
+                                <input type="number"
+                                       name="intersoccer_seasonal_bonus_nov_dec"
+                                       value="<?php echo esc_attr($season_nov_dec); ?>"
+                                       min="0"
+                                       max="100"
+                                       step="0.1"
+                                       class="small-text">
+                                <p class="description">
+                                    <?php esc_html_e('Extra commission as a percentage of the base commission for orders in November–December.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <?php esc_html_e('Seasonal Bonus – Mar/Apr % of Base', 'intersoccer-referral'); ?>
+                            </th>
+                            <td>
+                                <input type="number"
+                                       name="intersoccer_seasonal_bonus_mar_apr"
+                                       value="<?php echo esc_attr($season_mar_apr); ?>"
+                                       min="0"
+                                       max="100"
+                                       step="0.1"
+                                       class="small-text">
+                                <p class="description">
+                                    <?php esc_html_e('Extra commission as a percentage of the base commission for orders in March–April.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <?php esc_html_e('Weekend Bonus % of Base (Sat/Sun)', 'intersoccer-referral'); ?>
+                            </th>
+                            <td>
+                                <input type="number"
+                                       name="intersoccer_weekend_bonus"
+                                       value="<?php echo esc_attr($weekend_bonus); ?>"
+                                       min="0"
+                                       max="100"
+                                       step="0.1"
+                                       class="small-text">
+                                <p class="description">
+                                    <?php esc_html_e('Extra commission as a percentage of the base commission for orders placed on Saturday or Sunday.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <?php esc_html_e('Loyalty Bonus (2nd Purchase) %', 'intersoccer-referral'); ?>
+                            </th>
+                            <td>
+                                <input type="number"
+                                       name="intersoccer_loyalty_bonus_second"
+                                       value="<?php echo esc_attr($loyalty_second); ?>"
+                                       min="0"
+                                       max="100"
+                                       step="0.1"
+                                       class="small-text">
+                                <p class="description">
+                                    <?php esc_html_e('Extra commission percentage for the customer\'s second purchase.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <?php esc_html_e('Loyalty Bonus (3rd+ Purchase) %', 'intersoccer-referral'); ?>
+                            </th>
+                            <td>
+                                <input type="number"
+                                       name="intersoccer_loyalty_bonus_third"
+                                       value="<?php echo esc_attr($loyalty_third); ?>"
+                                       min="0"
+                                       max="100"
+                                       step="0.1"
+                                       class="small-text">
+                                <p class="description">
+                                    <?php esc_html_e('Extra commission percentage once the customer reaches their third purchase and beyond.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <?php esc_html_e('Network Effect Bonus (CHF)', 'intersoccer-referral'); ?>
+                            </th>
+                            <td>
+                                <input type="number"
+                                       name="intersoccer_network_effect_bonus"
+                                       value="<?php echo esc_attr($network_bonus); ?>"
+                                       min="0"
+                                       step="0.01"
+                                       class="small-text">
+                                <p class="description">
+                                    <?php esc_html_e('Fixed CHF bonus when the referred customer has also referred other customers.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <?php esc_html_e('Retention Bonus – Season 2+ (CHF)', 'intersoccer-referral'); ?>
+                            </th>
+                            <td>
+                                <input type="number"
+                                       name="intersoccer_retention_season_2"
+                                       value="<?php echo esc_attr($retention_2); ?>"
+                                       min="0"
+                                       step="0.01"
+                                       class="small-text">
+                                <p class="description">
+                                    <?php esc_html_e('Fixed CHF bonus when a customer returns for a second season or later.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <?php esc_html_e('Retention Bonus – Season 3+ (CHF)', 'intersoccer-referral'); ?>
+                            </th>
+                            <td>
+                                <input type="number"
+                                       name="intersoccer_retention_season_3"
+                                       value="<?php echo esc_attr($retention_3); ?>"
+                                       min="0"
+                                       step="0.01"
+                                       class="small-text">
+                                <p class="description">
+                                    <?php esc_html_e('Additional fixed CHF bonus when a customer returns for a third season or later.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+
+                    <?php submit_button(__('Save Commission Bonuses', 'intersoccer-referral')); ?>
+                </form>
+            </div>
             <?php endif; ?>
         </div>
         <?php
@@ -2867,6 +3063,76 @@ class InterSoccer_Admin_Settings {
             'default' => true,
             'sanitize_callback' => 'boolval'
         ]);
+
+        // Commission bonus controls (loyalty, retention, network effect, seasonal, weekend)
+        register_setting('intersoccer_commission_bonuses', 'intersoccer_loyalty_bonus_first', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => [$this, 'sanitize_percentage_option']
+        ]);
+
+        register_setting('intersoccer_commission_bonuses', 'intersoccer_loyalty_bonus_second', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => [$this, 'sanitize_percentage_option']
+        ]);
+
+        register_setting('intersoccer_commission_bonuses', 'intersoccer_loyalty_bonus_third', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => [$this, 'sanitize_percentage_option']
+        ]);
+
+        register_setting('intersoccer_commission_bonuses', 'intersoccer_network_effect_bonus', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => function($value) {
+                $value = floatval($value);
+                return $value < 0 ? 0 : $value;
+            }
+        ]);
+
+        register_setting('intersoccer_commission_bonuses', 'intersoccer_retention_season_2', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => function($value) {
+                $value = floatval($value);
+                return $value < 0 ? 0 : $value;
+            }
+        ]);
+
+        register_setting('intersoccer_commission_bonuses', 'intersoccer_retention_season_3', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => function($value) {
+                $value = floatval($value);
+                return $value < 0 ? 0 : $value;
+            }
+        ]);
+
+        register_setting('intersoccer_commission_bonuses', 'intersoccer_seasonal_bonus_aug_sep', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => [$this, 'sanitize_percentage_option']
+        ]);
+
+        register_setting('intersoccer_commission_bonuses', 'intersoccer_seasonal_bonus_nov_dec', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => [$this, 'sanitize_percentage_option']
+        ]);
+
+        register_setting('intersoccer_commission_bonuses', 'intersoccer_seasonal_bonus_mar_apr', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => [$this, 'sanitize_percentage_option']
+        ]);
+
+        register_setting('intersoccer_commission_bonuses', 'intersoccer_weekend_bonus', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => [$this, 'sanitize_percentage_option']
+        ]);
     }
 
     /**
@@ -3081,6 +3347,13 @@ class InterSoccer_Admin_Settings {
         $tiers_json = sanitize_text_field($_POST['tiers']);
         $all_tiers = json_decode(stripslashes($tiers_json), true);
 
+        // #region agent log
+        $log_path = '/home/jeremy-lee/projects/underdog/intersoccer/players-and-events/.cursor/debug-ddc888.log';
+        $log_entry_save = json_encode(['sessionId'=>'ddc888','runId'=>'run1','hypothesisId'=>'H-A/B','location'=>'class-admin-settings.php:3082','message'=>'save_commission_tiers_ajax entry','data'=>['raw_post_length'=>strlen($_POST['tiers'] ?? ''),'sanitized_length'=>strlen($tiers_json),'json_decode_is_array'=>is_array($all_tiers),'json_decode_keys'=>is_array($all_tiers)?array_keys($all_tiers):[]],'timestamp'=>round(microtime(true)*1000)]);
+        file_put_contents($log_path, $log_entry_save . "\n", FILE_APPEND);
+        error_log('[ddc888] save_commission_tiers_ajax | raw_len=' . strlen($_POST['tiers'] ?? '') . ' sanitized_len=' . strlen($tiers_json) . ' is_array=' . (is_array($all_tiers) ? 'yes' : 'no') . ' keys=' . (is_array($all_tiers) ? implode(',', array_keys($all_tiers)) : ''));
+        // #endregion
+
         if (!is_array($all_tiers) || empty($all_tiers)) {
             wp_send_json_error(['message' => 'Invalid tiers data']);
         }
@@ -3121,6 +3394,11 @@ class InterSoccer_Admin_Settings {
             $option_name = 'intersoccer_commission_tiers_' . $role;
             update_option($option_name, $sanitized_tiers);
             $total_tiers += count($sanitized_tiers);
+            // #region agent log
+            $log_path_save = '/home/jeremy-lee/projects/underdog/intersoccer/players-and-events/.cursor/debug-ddc888.log';
+            $log_entry_saved = json_encode(['sessionId'=>'ddc888','runId'=>'run1','hypothesisId'=>'H-A','location'=>'class-admin-settings.php:3122','message'=>'option_saved','data'=>['option'=>$option_name,'tier_count'=>count($sanitized_tiers),'tiers'=>$sanitized_tiers],'timestamp'=>round(microtime(true)*1000)]);
+            file_put_contents($log_path_save, $log_entry_saved . "\n", FILE_APPEND);
+            // #endregion
 
             $this->log_audit('commission_tiers_updated', sprintf(
                 'Commission tiers updated for %s: %d tiers configured',

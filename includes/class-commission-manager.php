@@ -98,6 +98,12 @@ class InterSoccer_Commission_Manager {
             ['min_customers' => 11, 'max_customers' => 24, 'rate' => 15],
             ['min_customers' => 25, 'max_customers' => 999999, 'rate' => 20],
         ]);
+        // #region agent log
+        $__log_path_cm = '/home/jeremy-lee/projects/underdog/intersoccer/players-and-events/.cursor/debug-ddc888.log';
+        $__log_raw = get_option($option_name, '__NOT_SET__');
+        file_put_contents($__log_path_cm, json_encode(['sessionId'=>'ddc888','runId'=>'run1','hypothesisId'=>'H-C/D','location'=>'class-commission-manager.php:96','message'=>'get_commission_rate_for_customer_count','data'=>['role'=>$role,'customer_count'=>$customer_count,'option_name'=>$option_name,'option_is_false'=>(get_option($option_name)===false),'tiers_count'=>count($tiers),'first_tier'=>$tiers[0]??null],'timestamp'=>round(microtime(true)*1000)])."\n", FILE_APPEND);
+        error_log('[ddc888] get_commission_rate_for_customer_count | role=' . $role . ' customer_count=' . $customer_count . ' option=' . $option_name . ' tiers_count=' . count($tiers) . ' first_tier=' . json_encode($tiers[0] ?? null));
+        // #endregion
 
         // Find the first matching tier
         foreach ($tiers as $tier) {
@@ -226,6 +232,10 @@ class InterSoccer_Commission_Manager {
             "SELECT * FROM $referrals_table WHERE order_id = %d",
             $order_id
         ));
+
+        // #region agent log
+        error_log('[ddc888][H-D] process_referral_commissions | order=' . $order_id . ' referral_found=' . ($referral ? 'yes coach_id=' . $referral->coach_id : 'NO'));
+        // #endregion
 
         if ($referral) {
             $commission_data = self::calculate_total_commission(
@@ -629,28 +639,55 @@ class InterSoccer_Commission_Manager {
     }
 
     /**
-     * Calculate complete commission structure for an order
-     * Note: Base commission already includes tier-based rates from Commission Tiers
+     * Calculate complete commission structure for an order.
+     *
+     * Base commission comes from Commission Tiers; all bonus components are
+     * configurable and default to 0 so they are opt-in.
      */
     public static function calculate_total_commission($order, $coach_id, $customer_id, $purchase_count) {
         $base_commission = self::calculate_base_commission($order, $coach_id);
-        $loyalty_bonus = self::calculate_loyalty_bonus($order, $purchase_count);
+
+        $loyalty_bonus   = self::calculate_loyalty_bonus($order, $purchase_count);
         $retention_bonus = self::calculate_retention_bonus($customer_id, date('Y'));
-        $network_bonus = self::calculate_network_bonus($customer_id);
+        $network_bonus   = self::calculate_network_bonus($customer_id);
         // Tier bonuses deprecated - Commission Tiers handle tiering
-        $tier_bonus = 0.0;
-        $seasonal_bonus = self::calculate_seasonal_bonus($base_commission);
-        $weekend_bonus = self::calculate_weekend_bonus($base_commission);
+        $tier_bonus      = 0.0;
+        $seasonal_bonus  = self::calculate_seasonal_bonus($base_commission);
+        $weekend_bonus   = self::calculate_weekend_bonus($base_commission);
+
+        $total_amount = round(
+            $base_commission +
+            $loyalty_bonus +
+            $retention_bonus +
+            $network_bonus +
+            $seasonal_bonus +
+            $weekend_bonus,
+            2
+        );
+
+        // #region agent log
+        error_log(
+            '[ddc888] calculate_total_commission | order=' .
+            (is_object($order) && method_exists($order, 'get_id') ? $order->get_id() : '') .
+            ' base=' . round($base_commission, 2) .
+            ' loyalty=' . round($loyalty_bonus, 2) .
+            ' retention=' . round($retention_bonus, 2) .
+            ' network=' . round($network_bonus, 2) .
+            ' seasonal=' . round($seasonal_bonus, 2) .
+            ' weekend=' . round($weekend_bonus, 2) .
+            ' total=' . $total_amount
+        );
+        // #endregion
 
         return [
-            'base_commission' => round($base_commission, 2),
-            'loyalty_bonus' => round($loyalty_bonus, 2),
-            'retention_bonus' => round($retention_bonus, 2),
-            'network_bonus' => round($network_bonus, 2),
-            'tier_bonus' => 0.0, // Deprecated - Commission Tiers handle tiering
-            'seasonal_bonus' => round($seasonal_bonus, 2),
-            'weekend_bonus' => round($weekend_bonus, 2),
-            'total_amount' => round($base_commission + $loyalty_bonus + $retention_bonus + $network_bonus + $seasonal_bonus + $weekend_bonus, 2)
+            'base_commission'  => round($base_commission, 2),
+            'loyalty_bonus'    => round($loyalty_bonus, 2),
+            'retention_bonus'  => round($retention_bonus, 2),
+            'network_bonus'    => round($network_bonus, 2),
+            'tier_bonus'       => 0.0, // Deprecated - Commission Tiers handle tiering
+            'seasonal_bonus'   => round($seasonal_bonus, 2),
+            'weekend_bonus'    => round($weekend_bonus, 2),
+            'total_amount'     => $total_amount
         ];
     }
 
@@ -729,22 +766,26 @@ class InterSoccer_Commission_Manager {
         }
 
         $month = date('m', strtotime($order_date));
-        $seasonal_multiplier = 1.0;
+        $percentage = 0.0;
 
         // Back to school season (August-September)
         if (in_array($month, ['08', '09'])) {
-            $seasonal_multiplier = 1.5; // 50% bonus
+            $percentage = floatval(get_option('intersoccer_seasonal_bonus_aug_sep', 0));
         }
         // Holiday season (November-December)
         elseif (in_array($month, ['11', '12'])) {
-            $seasonal_multiplier = 1.3; // 30% bonus
+            $percentage = floatval(get_option('intersoccer_seasonal_bonus_nov_dec', 0));
         }
         // Spring season (March-April)
         elseif (in_array($month, ['03', '04'])) {
-            $seasonal_multiplier = 1.2; // 20% bonus
+            $percentage = floatval(get_option('intersoccer_seasonal_bonus_mar_apr', 0));
         }
 
-        return $base_amount * ($seasonal_multiplier - 1); // Return only the bonus amount
+        if ($percentage <= 0) {
+            return 0.0;
+        }
+
+        return $base_amount * ($percentage / 100.0);
     }
 
     /**
@@ -759,10 +800,13 @@ class InterSoccer_Commission_Manager {
 
         // Weekend bonus (Saturday and Sunday)
         if (in_array($day_of_week, [6, 7])) {
-            return $base_amount * 0.1; // 10% weekend bonus
+            $percentage = floatval(get_option('intersoccer_weekend_bonus', 0));
+            if ($percentage > 0) {
+                return $base_amount * ($percentage / 100.0);
+            }
         }
 
-        return 0;
+        return 0.0;
     }
 
     /**
