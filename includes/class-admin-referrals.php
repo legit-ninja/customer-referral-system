@@ -104,6 +104,9 @@ class InterSoccer_Admin_Referrals {
         $conditions = ['1=1'];
         $params     = [];
 
+        // Only coach referrals: exclude customer (friend) referrals which have coach_id = null
+        $conditions[] = 'r.coach_id IS NOT NULL';
+
         if (!empty($args['referral_id'])) {
             $conditions[] = 'r.id = %d';
             $params[]     = (int) $args['referral_id'];
@@ -179,7 +182,7 @@ class InterSoccer_Admin_Referrals {
         $referrals = $this->get_coach_referrals();
 
         ?>
-        <table class="wp-list-table widefat fixed striped">
+        <table class="wp-list-table widefat fixed striped intersoccer-referrals-table">
             <thead>
                 <tr>
                     <th>Date</th>
@@ -196,79 +199,120 @@ class InterSoccer_Admin_Referrals {
                     <th>Actions</th>
                 </tr>
             </thead>
-            <tbody>
-                <?php foreach ($referrals as $referral): ?>
-                <?php $duplicate_count = isset($referral->duplicate_count) ? (int) $referral->duplicate_count : 0; ?>
-                <tr>
-                    <td><?php echo date('M j, Y', strtotime($referral->created_at)); ?></td>
-                    <td>
-                        <?php
-                        $order_link = get_edit_post_link($referral->order_id);
-                        $order_label = '#' . (int) $referral->order_id;
-                        $order_total = $this->format_order_total($referral);
-
-                        if ($order_link) {
-                            printf(
-                                '<a href="%s" target="_blank" rel="noopener noreferrer">%s</a><br><span class="muted">%s</span>',
-                                esc_url($order_link),
-                                esc_html($order_label),
-                                esc_html($order_total)
-                            );
-                        } else {
-                            printf(
-                                '<strong>%s</strong><br><span class="muted">%s</span>',
-                                esc_html($order_label),
-                                esc_html($order_total)
-                            );
-                        }
-                        ?>
-                    </td>
-                    <td><?php echo $this->format_coach_display($referral); ?></td>
-                    <td><?php echo $this->format_email_display($referral->coach_email ?? ''); ?></td>
-                    <td><?php echo $this->format_customer_display($referral); ?></td>
-                    <td><?php echo $this->format_email_display($referral->customer_email ?? ''); ?></td>
-                    <td><?php echo $this->format_commission_amount($referral); ?></td>
-                    <td>
-                        <span class="status-badge <?php echo esc_attr($referral->status); ?>">
-                            <?php echo esc_html(ucfirst($referral->status)); ?>
-                        </span>
-                        <?php if ($duplicate_count > 1): ?>
-                            <span class="duplicate-flag">
-                                <?php esc_html_e('Duplicate detected', 'intersoccer-referral'); ?>
-                            </span>
-                        <?php endif; ?>
-                    </td>
-                    <td class="eligibility-column">
-                        <?php
-                        $eligibility_data = $this->normalize_eligibility_data($referral->eligibility_meta);
-                        $eligibility_view = $this->prepare_eligibility_view_model($eligibility_data);
-                        echo $this->build_eligibility_markup($referral->id, $referral->order_id, $eligibility_view);
-                        ?>
-                    </td>
-                    <td class="returning-column">
-                        <?php echo $this->build_returning_customer_markup($eligibility_data); ?>
-                    </td>
-                    <td class="first-time-column">
-                        <?php echo $this->build_first_time_indicator($eligibility_data); ?>
-                    </td>
-                    <td class="actions-column">
-                        <?php echo $this->build_payout_controls($referral); ?>
-                        <?php if ($duplicate_count > 1 && strtolower($referral->status) !== 'completed'): ?>
-                            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                                <?php wp_nonce_field('intersoccer_delete_referral_' . $referral->id, '_referral_delete_nonce'); ?>
-                                <input type="hidden" name="action" value="intersoccer_delete_referral">
-                                <input type="hidden" name="referral_id" value="<?php echo (int) $referral->id; ?>">
-                                <button type="submit" class="button button-link-delete">
-                                    <?php esc_html_e('Remove Duplicate', 'intersoccer-referral'); ?>
-                                </button>
-                            </form>
-                        <?php endif; ?>
-                    </td>
-                </tr>
-                <?php endforeach; ?>
+            <tbody id="coach-referrals-tbody">
+                <?php echo $this->build_referral_rows($referrals); ?>
             </tbody>
         </table>
         <?php
+    }
+
+    /**
+     * Render <tr> elements for a set of referral records.
+     * Returns an empty-state row when the array is empty.
+     *
+     * @param array<stdClass> $referrals
+     * @return string
+     */
+    private function build_referral_rows(array $referrals): string {
+        if (empty($referrals)) {
+            return '<tr><td colspan="12" style="text-align:center;padding:40px 0;color:#999;">'
+                . esc_html__('No coach referrals found. Referrals appear here when customers complete orders using a coach\'s referral link.', 'intersoccer-referral')
+                . '</td></tr>';
+        }
+
+        ob_start();
+        foreach ($referrals as $referral):
+            $duplicate_count  = isset($referral->duplicate_count) ? (int) $referral->duplicate_count : 0;
+            $eligibility_data = $this->normalize_eligibility_data($referral->eligibility_meta);
+            $eligibility_view = $this->prepare_eligibility_view_model($eligibility_data);
+            ?>
+            <tr>
+                <td><?php echo esc_html(date('M j, Y', strtotime($referral->created_at))); ?></td>
+                <td>
+                    <?php
+                    $order_link  = get_edit_post_link($referral->order_id);
+                    $order_label = '#' . (int) $referral->order_id;
+                    $order_total = $this->format_order_total($referral);
+
+                    if ($order_link) {
+                        printf(
+                            '<a href="%s" target="_blank" rel="noopener noreferrer">%s</a><br><span class="muted">%s</span>',
+                            esc_url($order_link),
+                            esc_html($order_label),
+                            esc_html($order_total)
+                        );
+                    } else {
+                        printf(
+                            '<strong>%s</strong><br><span class="muted">%s</span>',
+                            esc_html($order_label),
+                            esc_html($order_total)
+                        );
+                    }
+                    ?>
+                </td>
+                <td><?php echo $this->format_coach_display($referral); ?></td>
+                <td><?php echo $this->format_email_display($referral->coach_email ?? ''); ?></td>
+                <td><?php echo $this->format_customer_display($referral); ?></td>
+                <td><?php echo $this->format_email_display($referral->customer_email ?? ''); ?></td>
+                <td><?php echo $this->format_commission_amount($referral); ?></td>
+                <td>
+                    <span class="status-badge <?php echo esc_attr($referral->status); ?>">
+                        <?php echo esc_html(ucfirst($referral->status)); ?>
+                    </span>
+                    <?php if ($duplicate_count > 1): ?>
+                        <span class="duplicate-flag">
+                            <?php esc_html_e('Duplicate detected', 'intersoccer-referral'); ?>
+                        </span>
+                    <?php endif; ?>
+                </td>
+                <td class="eligibility-column">
+                    <?php echo $this->build_eligibility_markup($referral->id, $referral->order_id, $eligibility_view); ?>
+                </td>
+                <td class="returning-column">
+                    <?php echo $this->build_returning_customer_markup($eligibility_data); ?>
+                </td>
+                <td class="first-time-column">
+                    <?php echo $this->build_first_time_indicator($eligibility_data); ?>
+                </td>
+                <td class="actions-column">
+                    <?php echo $this->build_payout_controls($referral); ?>
+                    <?php if ($duplicate_count > 1 && strtolower($referral->status) !== 'completed'): ?>
+                        <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                            <?php wp_nonce_field('intersoccer_delete_referral_' . $referral->id, '_referral_delete_nonce'); ?>
+                            <input type="hidden" name="action" value="intersoccer_delete_referral">
+                            <input type="hidden" name="referral_id" value="<?php echo (int) $referral->id; ?>">
+                            <button type="submit" class="button button-link-delete">
+                                <?php esc_html_e('Remove Duplicate', 'intersoccer-referral'); ?>
+                            </button>
+                        </form>
+                    <?php endif; ?>
+                </td>
+            </tr>
+            <?php
+        endforeach;
+        return ob_get_clean();
+    }
+
+    /**
+     * AJAX handler: return filtered coach referral rows as HTML.
+     */
+    public function ajax_filter_coach_referrals() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => __('You do not have permission to filter referrals.', 'intersoccer-referral')], 403);
+        }
+
+        $args = [
+            'coach_id'  => !empty($_POST['coach_id']) ? absint($_POST['coach_id']) : null,
+            'date_from' => !empty($_POST['date_from']) ? sanitize_text_field($_POST['date_from']) : null,
+            'date_to'   => !empty($_POST['date_to']) ? sanitize_text_field($_POST['date_to']) : null,
+            'limit'     => 50,
+        ];
+
+        $referrals = $this->get_coach_referrals($args);
+
+        wp_send_json_success(['html' => $this->build_referral_rows($referrals)]);
     }
 
     public function render_customer_referrals_page() {

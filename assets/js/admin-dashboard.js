@@ -22,6 +22,114 @@
     });
 
     /**
+     * Coach Referrals page: wire up the filter button.
+     */
+    function initCoachReferralsFilter() {
+        const $btn = $('#filter-referrals');
+
+        if ($btn.length === 0) {
+            return;
+        }
+
+        $btn.on('click', function(e) {
+            e.preventDefault();
+
+            const coachId  = $('#coach-filter').val()  || '';
+            const dateFrom = $('#date-from').val()     || '';
+            const dateTo   = $('#date-to').val()       || '';
+
+            $btn.prop('disabled', true).text('Filtering\u2026');
+
+            $.ajax({
+                url:      intersoccer_admin.ajax_url,
+                type:     'POST',
+                dataType: 'json',
+                data: {
+                    action:    'intersoccer_filter_coach_referrals',
+                    nonce:     intersoccer_admin.nonce,
+                    coach_id:  coachId,
+                    date_from: dateFrom,
+                    date_to:   dateTo
+                }
+            }).done(function(response) {
+                if (response && response.success && response.data && response.data.html !== undefined) {
+                    $('#coach-referrals-tbody').html(response.data.html);
+                } else {
+                    const msg = response && response.data && response.data.message
+                        ? response.data.message : 'Filter failed. Please try again.';
+                    window.alert('Error: ' + msg);
+                }
+            }).fail(function() {
+                window.alert('Network error. Please try again.');
+            }).always(function() {
+                $btn.prop('disabled', false).text('Filter');
+            });
+        });
+    }
+
+    /**
+     * Customer Credits page: manual credit update per customer row.
+     */
+    function initUpdateCredits() {
+        $(document).on('click', '.update-credits', function(e) {
+            e.preventDefault();
+
+            const $button = $(this);
+            const userId = $button.data('user-id');
+            if (!userId) {
+                return;
+            }
+
+            const $row = $button.closest('tr');
+            const currentText = $row.find('td:nth-child(3) strong').text().replace(/[^0-9.-]/g, '');
+            const current = parseFloat(currentText) || 0;
+
+            const input = window.prompt('Enter new credit balance for this customer (CHF):', current);
+            if (input === null) {
+                return;
+            }
+
+            const newCredits = parseFloat(input);
+            if (isNaN(newCredits) || newCredits < 0) {
+                window.alert('Please enter a valid non-negative number.');
+                return;
+            }
+
+            $button.prop('disabled', true).text('Saving…');
+
+            $.ajax({
+                url: intersoccer_admin.ajax_url,
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    action: 'update_customer_credits',
+                    nonce: intersoccer_admin.nonce,
+                    user_id: userId,
+                    credits: newCredits
+                }
+            }).done(function(response) {
+                if (response && response.success) {
+                    const updated = response.data && response.data.credits !== undefined
+                        ? parseFloat(response.data.credits)
+                        : newCredits;
+                    $row.find('td:nth-child(3) strong').text(Math.round(updated).toLocaleString() + ' CHF');
+                    $button.text('Update');
+                } else {
+                    const msg = response && response.data && response.data.message
+                        ? response.data.message : 'An error occurred. Please try again.';
+                    window.alert('Error: ' + msg);
+                    $button.text('Update');
+                }
+            }).fail(function() {
+                window.alert('Network error. Please try again.');
+                $button.text('Update');
+            }).always(function() {
+                $button.prop('disabled', false);
+            });
+        });
+    }
+
+    /**
      * Initialize all dashboard components
      */
     function initializeDashboard() {
@@ -605,6 +713,8 @@
      * Bind general event handlers
      */
     function bindEvents() {
+        initUpdateCredits();
+        initCoachReferralsFilter();
     }
 
     /**
