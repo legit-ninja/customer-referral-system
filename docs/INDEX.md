@@ -8,7 +8,9 @@ This folder contains all documentation for the InterSoccer Customer Referral Sys
 
 User-facing guides and how-to documentation:
 
-- **[TESTING.md](guides/TESTING.md)** - Comprehensive testing guide
+- **[INTERN-TUTORIAL.md](guides/INTERN-TUTORIAL.md)** - Intern/support staff guide: understanding the system, adjusting points, and troubleshooting
+- **[TEST-PLAN.md](guides/TEST-PLAN.md)** - Functional QA test plan covering all referral and points scenarios
+- **[TESTING.md](guides/TESTING.md)** - Developer testing guide (PHPUnit & Cypress setup)
 - **[TESTS-QUICK-START.md](guides/TESTS-QUICK-START.md)** - Quick start guide for running tests
 - **[TEST-QUICK-REFERENCE.md](guides/TEST-QUICK-REFERENCE.md)** - Quick reference for test commands
 - **[WPML-SETUP.md](guides/WPML-SETUP.md)** - Multilingual setup with WPML
@@ -52,9 +54,13 @@ Historical documentation and migration notes:
 - Setup multilingual support: [WPML-SETUP.md](guides/WPML-SETUP.md)
 - Import coaches: [CSV-IMPORT-FORMATS.md](guides/CSV-IMPORT-FORMATS.md)
 
+### For Interns & Support Staff
+- Understanding the system and troubleshooting: [INTERN-TUTORIAL.md](guides/INTERN-TUTORIAL.md)
+
 ### For QA/Testing
+- Functional test plan: [TEST-PLAN.md](guides/TEST-PLAN.md)
 - Quick start: [TESTS-QUICK-START.md](guides/TESTS-QUICK-START.md)
-- Full testing guide: [TESTING.md](guides/TESTING.md)
+- Full developer testing guide: [TESTING.md](guides/TESTING.md)
 - Command reference: [TEST-QUICK-REFERENCE.md](guides/TEST-QUICK-REFERENCE.md)
 
 ## 📝 Contributing to Documentation
