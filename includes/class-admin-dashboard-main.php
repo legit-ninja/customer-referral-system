@@ -328,68 +328,62 @@ class InterSoccer_Admin_Dashboard_Main {
      */
     private function get_customer_credit_stats() {
         global $wpdb;
+        $points_log = $wpdb->prefix . 'intersoccer_points_log';
 
-        // Get total credits earned all time
+        // Total loyalty points earned by customers all time (from points ledger)
         $total_credits_earned = $wpdb->get_var("
-            SELECT COALESCE(SUM(credit_amount), 0)
-            FROM {$wpdb->prefix}intersoccer_referral_credits
+            SELECT COALESCE(SUM(points_amount), 0)
+            FROM {$points_log}
+            WHERE points_amount > 0
         ");
 
-        // Get credits earned this month
+        // Loyalty points earned this month
         $this_month_start = date('Y-m-01');
-        $this_month_end = date('Y-m-t');
+        $this_month_end   = date('Y-m-t');
         $credits_earned_this_month = $wpdb->get_var($wpdb->prepare("
-            SELECT COALESCE(SUM(credit_amount), 0)
-            FROM {$wpdb->prefix}intersoccer_referral_credits
-            WHERE created_at BETWEEN %s AND %s
-        ", $this_month_start, $this_month_end));
+            SELECT COALESCE(SUM(points_amount), 0)
+            FROM {$points_log}
+            WHERE points_amount > 0
+              AND created_at BETWEEN %s AND %s
+        ", $this_month_start, $this_month_end . ' 23:59:59'));
 
-        // Get total credits redeemed all time
+        // Total points redeemed all time (negative ledger entries = spend)
         $total_credits_used = $wpdb->get_var("
-            SELECT COALESCE(SUM(credit_amount), 0)
-            FROM {$wpdb->prefix}intersoccer_credit_redemptions
+            SELECT COALESCE(ABS(SUM(points_amount)), 0)
+            FROM {$points_log}
+            WHERE points_amount < 0
         ");
 
-        // Calculate redemption rate
+        // Redemption rate
         $redemption_rate = $total_credits_earned > 0 ? ($total_credits_used / $total_credits_earned) * 100 : 0;
 
-        // Get active credits (current balance across all customers)
+        // Active referral credits outstanding (current balance in user meta — the true liability)
         $active_credits = $wpdb->get_var("
             SELECT COALESCE(SUM(meta_value), 0)
             FROM {$wpdb->usermeta}
             WHERE meta_key = 'intersoccer_customer_credits'
-            AND meta_value > 0
+              AND meta_value > 0
         ");
 
-        // Get active credits from last month for comparison
+        // Net points balance as of start of last month — for month-over-month liability change
         $last_month_start = date('Y-m-01', strtotime('last month'));
-        $last_month_end = date('Y-m-t', strtotime('last month'));
         $active_credits_last_month = $wpdb->get_var($wpdb->prepare("
-            SELECT COALESCE(SUM(credit_amount), 0) - COALESCE(SUM(redeemed_amount), 0) as active_credits
-            FROM (
-                SELECT
-                    COALESCE(SUM(rc.credit_amount), 0) as credit_amount,
-                    0 as redeemed_amount
-                FROM {$wpdb->prefix}intersoccer_referral_credits rc
-                WHERE rc.created_at < %s
-                UNION ALL
-                SELECT
-                    0 as credit_amount,
-                    COALESCE(SUM(cr.credit_amount), 0) as redeemed_amount
-                FROM {$wpdb->prefix}intersoccer_credit_redemptions cr
-                WHERE cr.created_at < %s
-            ) as combined
-        ", $last_month_start, $last_month_start));
+            SELECT
+                COALESCE(SUM(CASE WHEN points_amount > 0 THEN points_amount ELSE 0 END), 0)
+                - COALESCE(ABS(SUM(CASE WHEN points_amount < 0 THEN points_amount ELSE 0 END)), 0)
+            FROM {$points_log}
+            WHERE created_at < %s
+        ", $last_month_start));
 
-        $liability_change = $active_credits - $active_credits_last_month;
+        $liability_change = $active_credits - (float) $active_credits_last_month;
 
         return [
-            'total_credits_earned' => (float)$total_credits_earned,
-            'credits_earned_this_month' => (float)$credits_earned_this_month,
-            'total_credits_used' => (float)$total_credits_used,
-            'redemption_rate' => round($redemption_rate, 1),
-            'active_credits' => (float)$active_credits,
-            'liability_change' => (float)$liability_change
+            'total_credits_earned'      => (float) $total_credits_earned,
+            'credits_earned_this_month' => (float) $credits_earned_this_month,
+            'total_credits_used'        => (float) $total_credits_used,
+            'redemption_rate'           => round($redemption_rate, 1),
+            'active_credits'            => (float) $active_credits,
+            'liability_change'          => (float) $liability_change,
         ];
     }
 
@@ -422,17 +416,12 @@ class InterSoccer_Admin_Dashboard_Main {
             SELECT
                 c.ID as coach_id,
                 c.display_name,
-                COUNT(r.id) as referral_count,
+                COUNT(DISTINCT r.id) as referral_count,
                 COALESCE(SUM(rc.credit_amount), 0) as total_commission,
-                COALESCE(SUM(rc.credit_amount) * 0.1, 0) as partnership_earnings
+                COALESCE(SUM(CASE WHEN rc.credit_type = 'partnership' THEN rc.credit_amount ELSE 0 END), 0) as partnership_earnings
             FROM {$wpdb->users} c
-            LEFT JOIN {$wpdb->prefix}intersoccer_referrals r ON c.ID = r.coach_id
+            INNER JOIN {$wpdb->prefix}intersoccer_referrals r ON c.ID = r.coach_id
             LEFT JOIN {$wpdb->prefix}intersoccer_referral_credits rc ON r.id = rc.referral_id
-            WHERE c.ID IN (
-                SELECT DISTINCT coach_id
-                FROM {$wpdb->prefix}intersoccer_referrals
-                WHERE coach_id IS NOT NULL
-            )
             GROUP BY c.ID, c.display_name
             ORDER BY total_commission DESC
             LIMIT %d
@@ -454,9 +443,9 @@ class InterSoccer_Admin_Dashboard_Main {
             WHERE created_at BETWEEN %s AND %s
         ", $this_month_start, $this_month_end));
 
-        // Credit utilization rate (percentage of earned credits that have been redeemed)
-        $total_earned = $wpdb->get_var("SELECT COALESCE(SUM(credit_amount), 0) FROM {$wpdb->prefix}intersoccer_referral_credits");
-        $total_redeemed = $wpdb->get_var("SELECT COALESCE(SUM(credit_amount), 0) FROM {$wpdb->prefix}intersoccer_credit_redemptions");
+        // Credit utilization rate (points redeemed vs total points earned)
+        $total_earned   = $wpdb->get_var("SELECT COALESCE(SUM(credit_amount), 0) FROM {$wpdb->prefix}intersoccer_referral_credits");
+        $total_redeemed = $wpdb->get_var("SELECT COALESCE(ABS(SUM(points_amount)), 0) FROM {$wpdb->prefix}intersoccer_points_log WHERE points_amount < 0");
         $credit_utilization_rate = $total_earned > 0 ? ($total_redeemed / $total_earned) * 100 : 0;
 
         // Average credits per customer
@@ -590,19 +579,22 @@ class InterSoccer_Admin_Dashboard_Main {
                 WHERE created_at BETWEEN %s AND %s
             ", $date, $end_date));
 
-            // Credits redeemed
+            // Points redeemed this month (negative ledger entries)
             $redeemed = $wpdb->get_var($wpdb->prepare("
-                SELECT COALESCE(SUM(credit_amount), 0)
-                FROM {$wpdb->prefix}intersoccer_credit_redemptions
-                WHERE created_at BETWEEN %s AND %s
-            ", $date, $end_date));
+                SELECT COALESCE(ABS(SUM(points_amount)), 0)
+                FROM {$wpdb->prefix}intersoccer_points_log
+                WHERE points_amount < 0
+                  AND created_at BETWEEN %s AND %s
+            ", $date, $end_date . ' 23:59:59'));
 
-            // Active credits (earned - redeemed up to this month)
+            // Running net points balance as of end of this month
             $active = $wpdb->get_var($wpdb->prepare("
                 SELECT
-                    (SELECT COALESCE(SUM(credit_amount), 0) FROM {$wpdb->prefix}intersoccer_referral_credits WHERE created_at <= %s) -
-                    (SELECT COALESCE(SUM(credit_amount), 0) FROM {$wpdb->prefix}intersoccer_credit_redemptions WHERE created_at <= %s)
-            ", $end_date, $end_date));
+                    COALESCE(SUM(CASE WHEN points_amount > 0 THEN points_amount ELSE 0 END), 0)
+                    - COALESCE(ABS(SUM(CASE WHEN points_amount < 0 THEN points_amount ELSE 0 END)), 0)
+                FROM {$wpdb->prefix}intersoccer_points_log
+                WHERE created_at <= %s
+            ", $end_date . ' 23:59:59'));
 
             $data[] = [
                 'earned' => (float)$earned,
@@ -656,10 +648,11 @@ class InterSoccer_Admin_Dashboard_Main {
             FROM {$wpdb->prefix}intersoccer_referral_credits
         ");
 
-        // Customer credits redeemed
+        // Points redeemed by customers (all time, from points ledger)
         $customer_redemptions = $wpdb->get_var("
-            SELECT COALESCE(SUM(credit_amount), 0)
-            FROM {$wpdb->prefix}intersoccer_credit_redemptions
+            SELECT COALESCE(ABS(SUM(points_amount)), 0)
+            FROM {$wpdb->prefix}intersoccer_points_log
+            WHERE points_amount < 0
         ");
 
         $total = $coach_commissions + $customer_redemptions;
@@ -680,46 +673,49 @@ class InterSoccer_Admin_Dashboard_Main {
     }
 
     /**
-     * Get redemption activity data for charts
+     * Get redemption activity data for charts (6 months)
+     * Uses intersoccer_points_log as the single source of truth for earned/redeemed points.
      */
     private function get_redemption_activity_data() {
         global $wpdb;
+        $points_log = $wpdb->prefix . 'intersoccer_points_log';
 
-        $data = [];
+        $data   = [];
         $labels = [];
 
-        // Get last 6 months
         for ($i = 5; $i >= 0; $i--) {
-            $date = date('Y-m-01', strtotime("-$i months"));
+            $date     = date('Y-m-01', strtotime("-$i months"));
             $end_date = date('Y-m-t', strtotime("-$i months"));
-            $label = date('M Y', strtotime("-$i months"));
+            $label    = date('M Y', strtotime("-$i months"));
 
             $labels[] = $label;
 
-            // Credits earned
+            // Points earned from purchases this month
             $earned = $wpdb->get_var($wpdb->prepare("
-                SELECT COALESCE(SUM(credit_amount), 0)
-                FROM {$wpdb->prefix}intersoccer_referral_credits
-                WHERE created_at BETWEEN %s AND %s
-            ", $date, $end_date));
+                SELECT COALESCE(SUM(points_amount), 0)
+                FROM {$points_log}
+                WHERE points_amount > 0
+                  AND created_at BETWEEN %s AND %s
+            ", $date, $end_date . ' 23:59:59'));
 
-            // Credits redeemed
+            // Points redeemed this month
             $redeemed = $wpdb->get_var($wpdb->prepare("
-                SELECT COALESCE(SUM(credit_amount), 0)
-                FROM {$wpdb->prefix}intersoccer_credit_redemptions
-                WHERE created_at BETWEEN %s AND %s
-            ", $date, $end_date));
+                SELECT COALESCE(ABS(SUM(points_amount)), 0)
+                FROM {$points_log}
+                WHERE points_amount < 0
+                  AND created_at BETWEEN %s AND %s
+            ", $date, $end_date . ' 23:59:59'));
 
             $data[] = [
-                'earned' => (float)$earned,
-                'redeemed' => (float)$redeemed
+                'earned'   => (float) $earned,
+                'redeemed' => (float) $redeemed,
             ];
         }
 
         return [
-            'labels' => $labels,
-            'earned' => array_column($data, 'earned'),
-            'redeemed' => array_column($data, 'redeemed')
+            'labels'   => $labels,
+            'earned'   => array_column($data, 'earned'),
+            'redeemed' => array_column($data, 'redeemed'),
         ];
     }
 
@@ -791,23 +787,27 @@ class InterSoccer_Admin_Dashboard_Main {
             ];
         }
 
-        // Recent redemptions
+        // Recent redemptions — points_log negative entries are the only reliably populated source
         $redemptions = $wpdb->get_results($wpdb->prepare("
-            SELECT created_at, credit_amount as amount, customer_id as user_id
-            FROM {$wpdb->prefix}intersoccer_credit_redemptions
+            SELECT created_at, ABS(points_amount) AS amount, customer_id AS user_id
+            FROM {$wpdb->prefix}intersoccer_points_log
+            WHERE points_amount < 0
             ORDER BY created_at DESC
             LIMIT %d
         ", $limit));
 
         foreach ($redemptions as $redemption) {
             $user = get_user_by('ID', $redemption->user_id);
+            if (!$user) {
+                continue;
+            }
             $activities[] = (object) [
-                'type' => 'redemption',
-                'icon' => 'cart',
-                'message' => esc_html($user->display_name) . ' redeemed credits',
-                'created_at' => $redemption->created_at,
-                'amount' => $redemption->amount,
-                'amount_prefix' => '-'
+                'type'          => 'redemption',
+                'icon'          => 'cart',
+                'message'       => esc_html($user->display_name) . ' redeemed points',
+                'created_at'    => $redemption->created_at,
+                'amount'        => $redemption->amount,
+                'amount_prefix' => '-',
             ];
         }
 
