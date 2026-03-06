@@ -179,8 +179,13 @@ class InterSoccer_Admin_Coaches {
                         <button class="coach-action-btn edit-coach" data-coach-id="<?php echo $coach->ID; ?>" title="<?php esc_attr_e('Edit Coach', 'intersoccer-referral'); ?>">
                             <span class="dashicons dashicons-edit"></span>
                         </button>
-                        <button class="coach-action-btn message-coach" data-coach-id="<?php echo $coach->ID; ?>" title="<?php esc_attr_e('Send Message', 'intersoccer-referral'); ?>">
-                            <span class="dashicons dashicons-email"></span>
+                        <button
+                            class="coach-action-btn message-coach"
+                            data-coach-id="<?php echo $coach->ID; ?>"
+                            data-coach-email="<?php echo esc_attr($coach->user_email); ?>"
+                            title="<?php esc_attr_e('Contact via MS Teams', 'intersoccer-referral'); ?>"
+                        >
+                            <span class="dashicons dashicons-format-chat"></span>
                         </button>
                         <button class="coach-action-btn deactivate-coach" data-coach-id="<?php echo $coach->ID; ?>" title="<?php esc_attr_e('Deactivate Coach', 'intersoccer-referral'); ?>">
                             <span class="dashicons dashicons-no"></span>

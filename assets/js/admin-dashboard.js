@@ -901,8 +901,28 @@
         });
 
         $(document).on('click', '.message-coach', function() {
-            const coachId = $(this).data('coach-id');
-            window.alert('Message functionality coming soon for coach ID: ' + coachId);
+            const $button   = $(this);
+            const coachId   = $button.data('coach-id');
+            let coachEmail  = $button.data('coach-email');
+
+            // Fallback: read email from the card if data attribute is missing
+            if (!coachEmail) {
+                const $card = $button.closest('.coach-card');
+                const text  = $card.find('.coach-email').text().trim();
+                if (text && text.indexOf('@') !== -1) {
+                    coachEmail = text;
+                }
+            }
+
+            if (!coachEmail || coachEmail.indexOf('@') === -1) {
+                window.alert('No valid email is available for this coach, so a Microsoft Teams chat cannot be started.');
+                return;
+            }
+
+            const teamsUrl = 'https://teams.microsoft.com/l/chat/0/0?users=' + encodeURIComponent(coachEmail);
+
+            // Open Teams chat in a new tab/window. Browser/OS will route to web or desktop app.
+            window.open(teamsUrl, '_blank');
         });
 
         $(document).on('click', '.deactivate-coach', function() {
