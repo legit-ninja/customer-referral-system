@@ -17,6 +17,7 @@ class InterSoccer_Admin_Settings {
         self::$instance = $this;
         add_action('admin_post_import_coaches_from_csv', [$this, 'import_coaches_from_csv']);
         add_action('wp_ajax_reset_all_customer_credits', [$this, 'reset_all_customer_credits']);
+        add_action('wp_ajax_intersoccer_reset_referral_data', [$this, 'ajax_reset_referral_data']);
         add_action('wp_ajax_allocate_credits_to_customers', [$this, 'allocate_credits_to_customers']);
         add_action('wp_ajax_clear_audit_log', [$this, 'clear_audit_log']);
         add_action('wp_ajax_export_audit_log', [$this, 'export_audit_log']);
@@ -838,6 +839,10 @@ class InterSoccer_Admin_Settings {
      * errors when visiting the Tools submenu.
      */
     public function render_tools_page() {
+        $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'main';
+        if (!in_array($current_tab, ['main', 'reset'], true)) {
+            $current_tab = 'main';
+        }
         ?>
         <div class="wrap intersoccer-admin">
             <h1 class="wp-heading-inline"><?php esc_html_e('Referral Tools', 'intersoccer-referral'); ?></h1>
@@ -845,6 +850,16 @@ class InterSoccer_Admin_Settings {
                 <?php esc_html_e('Maintenance and data tools for managing points, credits, imports, and system maintenance.', 'intersoccer-referral'); ?>
             </p>
 
+            <nav class="nav-tab-wrapper" style="margin: 20px 0 0 0;">
+                <a href="<?php echo esc_url(admin_url('admin.php?page=intersoccer-tools&tab=main')); ?>" class="nav-tab <?php echo $current_tab === 'main' ? 'nav-tab-active' : ''; ?>">
+                    <?php esc_html_e('Points & Simulator', 'intersoccer-referral'); ?>
+                </a>
+                <a href="<?php echo esc_url(admin_url('admin.php?page=intersoccer-tools&tab=reset')); ?>" class="nav-tab <?php echo $current_tab === 'reset' ? 'nav-tab-active' : ''; ?>">
+                    <?php esc_html_e('Reset Data', 'intersoccer-referral'); ?>
+                </a>
+            </nav>
+
+            <?php if ($current_tab === 'main') : ?>
             <!-- Points Management -->
             <div class="intersoccer-settings-section">
                 <h2><?php esc_html_e('Points Management', 'intersoccer-referral'); ?></h2>
@@ -1682,6 +1697,120 @@ class InterSoccer_Admin_Settings {
                     </form>
                 </div>
             </div>
+            <?php endif; ?>
+
+            <?php if ($current_tab === 'reset') : ?>
+            <div class="intersoccer-settings-section" style="margin-top: 20px;">
+                <h2><?php esc_html_e('Reset Data', 'intersoccer-referral'); ?></h2>
+                <p class="description">
+                    <?php esc_html_e('Reset user profile point/credit balances and empty referral and points database tables. Use for testing or a full program reset. These actions cannot be undone.', 'intersoccer-referral'); ?>
+                </p>
+
+                <div id="reset-data-message" class="notice" style="display: none; margin: 15px 0;"></div>
+
+                <div class="settings-card" style="max-width: 700px; margin-top: 20px; padding: 20px;">
+                    <h3><?php esc_html_e('User profile point totals', 'intersoccer-referral'); ?></h3>
+                    <p class="description">
+                        <?php esc_html_e('Removes all point and credit balances stored in user profiles (all users): loyalty points balance (intersoccer_points_balance), legacy customer credits and related meta, and import summary options.', 'intersoccer-referral'); ?>
+                    </p>
+                    <button type="button" class="button button-primary" id="reset-profile-points-credits">
+                        <?php esc_html_e('Reset all profile points and credits', 'intersoccer-referral'); ?>
+                    </button>
+                </div>
+
+                <div class="settings-card" style="max-width: 700px; margin-top: 25px; padding: 20px;">
+                    <h3><?php esc_html_e('Database tables', 'intersoccer-referral'); ?></h3>
+                    <p class="description">
+                        <?php esc_html_e('Empty selected referral/points tables (all rows removed, table structure kept). Select the tables you want to reset.', 'intersoccer-referral'); ?>
+                    </p>
+                    <table class="widefat striped" style="max-width: 600px; margin-top: 15px;">
+                        <thead>
+                            <tr>
+                                <th style="width: 30px;"> </th>
+                                <th><?php esc_html_e('Table', 'intersoccer-referral'); ?></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><input type="checkbox" name="reset_tables[]" value="points_log" id="reset-table-points-log"></td>
+                                <td><label for="reset-table-points-log"><?php esc_html_e('Points ledger', 'intersoccer-referral'); ?></label></td>
+                            </tr>
+                            <tr>
+                                <td><input type="checkbox" name="reset_tables[]" value="referrals" id="reset-table-referrals"></td>
+                                <td><label for="reset-table-referrals"><?php esc_html_e('Referrals', 'intersoccer-referral'); ?></label></td>
+                            </tr>
+                            <tr>
+                                <td><input type="checkbox" name="reset_tables[]" value="referral_credits" id="reset-table-referral-credits"></td>
+                                <td><label for="reset-table-referral-credits"><?php esc_html_e('Referral credits (coach commissions ledger)', 'intersoccer-referral'); ?></label></td>
+                            </tr>
+                            <tr>
+                                <td><input type="checkbox" name="reset_tables[]" value="coach_commissions" id="reset-table-coach-commissions"></td>
+                                <td><label for="reset-table-coach-commissions"><?php esc_html_e('Coach commissions', 'intersoccer-referral'); ?></label></td>
+                            </tr>
+                            <tr>
+                                <td><input type="checkbox" name="reset_tables[]" value="credit_redemptions" id="reset-table-credit-redemptions"></td>
+                                <td><label for="reset-table-credit-redemptions"><?php esc_html_e('Credit redemptions', 'intersoccer-referral'); ?></label></td>
+                            </tr>
+                            <tr>
+                                <td><input type="checkbox" name="reset_tables[]" value="referral_rewards" id="reset-table-referral-rewards"></td>
+                                <td><label for="reset-table-referral-rewards"><?php esc_html_e('Referral rewards', 'intersoccer-referral'); ?></label></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <button type="button" class="button button-primary" id="reset-selected-tables" style="margin-top: 15px;">
+                        <?php esc_html_e('Reset selected tables', 'intersoccer-referral'); ?>
+                    </button>
+                </div>
+            </div>
+            <script>
+            (function() {
+                var ajaxUrl = <?php echo json_encode(admin_url('admin-ajax.php')); ?>;
+                var nonce = <?php echo json_encode(wp_create_nonce('intersoccer_admin_nonce')); ?>;
+                if (typeof window.intersoccer_admin === 'undefined') { window.intersoccer_admin = {}; }
+                window.intersoccer_admin.ajax_url = ajaxUrl;
+                window.intersoccer_admin.nonce = nonce;
+                jQuery(function($) {
+                    var $profileBtn = $('#reset-profile-points-credits');
+                    var $tablesBtn = $('#reset-selected-tables');
+                    var $message = $('#reset-data-message');
+                    function showMsg(text, isError) {
+                        if (!$message.length) return;
+                        $message.removeClass('notice-success notice-error').addClass(isError ? 'notice-error' : 'notice-success').html('<p>' + (text || '') + '</p>').show();
+                    }
+                    $profileBtn.off('click.intersoccerReset').on('click.intersoccerReset', function(e) {
+                        e.preventDefault();
+                        if (!confirm('This will set all users\' point and credit balances to zero. This cannot be undone. Continue?')) return;
+                        var $btn = $(this);
+                        var orig = $btn.text();
+                        $btn.prop('disabled', true).text('Resetting…');
+                        $.ajax({ url: ajaxUrl, type: 'POST', dataType: 'json', data: { action: 'intersoccer_reset_referral_data', nonce: nonce, scope: 'profile' } })
+                            .done(function(r) {
+                                if (r && r.success && r.data && r.data.message) showMsg(r.data.message, false);
+                                else showMsg((r && r.data && r.data.message) ? r.data.message : 'An error occurred.', true);
+                            })
+                            .fail(function() { showMsg('Network error. Please try again.', true); })
+                            .always(function() { $btn.prop('disabled', false).text(orig); });
+                    });
+                    $tablesBtn.off('click.intersoccerReset').on('click.intersoccerReset', function(e) {
+                        e.preventDefault();
+                        var selected = $('input[name="reset_tables[]"]:checked').map(function() { return $(this).val(); }).get();
+                        if (!selected.length) { alert('Please select at least one table to reset.'); return; }
+                        if (!confirm('This will permanently delete all rows in the selected tables. This cannot be undone. Continue?')) return;
+                        var $btn = $(this);
+                        var orig = $btn.text();
+                        $btn.prop('disabled', true).text('Resetting…');
+                        $.ajax({ url: ajaxUrl, type: 'POST', dataType: 'json', data: { action: 'intersoccer_reset_referral_data', nonce: nonce, scope: 'tables', tables: selected } })
+                            .done(function(r) {
+                                if (r && r.success && r.data && r.data.message) showMsg(r.data.message, false);
+                                else showMsg((r && r.data && r.data.message) ? r.data.message : 'An error occurred.', true);
+                            })
+                            .fail(function() { showMsg('Network error. Please try again.', true); })
+                            .always(function() { $btn.prop('disabled', false).text(orig); });
+                    });
+                });
+            })();
+            </script>
+            <?php endif; ?>
         </div>
         <?php
     }
@@ -2312,6 +2441,88 @@ class InterSoccer_Admin_Settings {
         wp_send_json_success([
             'message' => "Reset complete! Deleted {$deleted_total} credit records from all customers.",
             'deleted_records' => $deleted_total
+        ]);
+    }
+
+    /**
+     * AJAX: Reset referral data by scope (profile = user meta + options; tables = truncate selected tables).
+     */
+    public function ajax_reset_referral_data() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => __('Unauthorized', 'intersoccer-referral')]);
+        }
+
+        $scope = isset($_POST['scope']) ? sanitize_text_field($_POST['scope']) : '';
+        if (!in_array($scope, ['profile', 'tables'], true)) {
+            wp_send_json_error(['message' => __('Invalid scope.', 'intersoccer-referral')]);
+        }
+
+        global $wpdb;
+        $messages = [];
+
+        if ($scope === 'profile') {
+            $credit_meta_keys = [
+                'intersoccer_points_balance',
+                'intersoccer_customer_credits',
+                'intersoccer_total_credits_earned',
+                'intersoccer_credits_imported',
+                'intersoccer_import_date',
+                'intersoccer_credit_breakdown',
+                'intersoccer_credit_adjustments',
+                'intersoccer_credits_used_total'
+            ];
+            $deleted_total = 0;
+            foreach ($credit_meta_keys as $meta_key) {
+                $deleted = $wpdb->query($wpdb->prepare(
+                    "DELETE FROM {$wpdb->usermeta} WHERE meta_key = %s",
+                    $meta_key
+                ));
+                $deleted_total += $deleted;
+            }
+            delete_option('intersoccer_last_import_summary');
+            delete_option('intersoccer_last_customer_import_report');
+            $this->log_audit('data_reset', "Profile reset: deleted {$deleted_total} user meta records and cleared import options.");
+            $messages[] = sprintf(
+                /* translators: %d number of deleted records */
+                __('Deleted %d user meta records and cleared import options.', 'intersoccer-referral'),
+                $deleted_total
+            );
+        }
+
+        if ($scope === 'tables') {
+            $allowed_tables = [
+                'points_log'           => $wpdb->prefix . 'intersoccer_points_log',
+                'referrals'            => $wpdb->prefix . 'intersoccer_referrals',
+                'referral_credits'     => $wpdb->prefix . 'intersoccer_referral_credits',
+                'coach_commissions'    => $wpdb->prefix . 'intersoccer_coach_commissions',
+                'credit_redemptions'   => $wpdb->prefix . 'intersoccer_credit_redemptions',
+                'referral_rewards'     => $wpdb->prefix . 'intersoccer_referral_rewards',
+            ];
+            $requested = isset($_POST['tables']) && is_array($_POST['tables']) ? array_map('sanitize_text_field', $_POST['tables']) : [];
+            $truncated = [];
+            foreach ($requested as $key) {
+                if (!isset($allowed_tables[$key])) {
+                    continue;
+                }
+                $table = $allowed_tables[$key];
+                $wpdb->query("TRUNCATE TABLE `{$table}`");
+                $truncated[] = $key;
+            }
+            if (!empty($truncated)) {
+                $this->log_audit('data_reset', 'Tables truncated: ' . implode(', ', $truncated));
+                $messages[] = sprintf(
+                    /* translators: %s comma-separated list of table names */
+                    __('Truncated tables: %s', 'intersoccer-referral'),
+                    implode(', ', $truncated)
+                );
+            } else {
+                wp_send_json_error(['message' => __('No valid tables selected.', 'intersoccer-referral')]);
+            }
+        }
+
+        wp_send_json_success([
+            'message' => implode(' ', $messages),
         ]);
     }
 

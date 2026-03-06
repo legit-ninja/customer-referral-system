@@ -710,11 +710,104 @@
     }
 
     /**
+     * Tools page Reset Data tab: profile reset and table truncate buttons.
+     */
+    function initResetDataTab() {
+        const $profileBtn = $('#reset-profile-points-credits');
+        const $tablesBtn = $('#reset-selected-tables');
+        const $message = $('#reset-data-message');
+
+        if ($profileBtn.length === 0 && $tablesBtn.length === 0) {
+            return;
+        }
+
+        function showMessage(text, isError) {
+            if (!$message.length) {
+                return;
+            }
+            $message
+                .removeClass('notice-success notice-error')
+                .addClass(isError ? 'notice-error' : 'notice-success')
+                .html('<p>' + (text || '') + '</p>')
+                .show();
+        }
+
+        $profileBtn.on('click', function(e) {
+            e.preventDefault();
+            if (!window.confirm('This will set all users\' point and credit balances to zero. This cannot be undone. Continue?')) {
+                return;
+            }
+            const $btn = $(this);
+            const originalText = $btn.text();
+            $btn.prop('disabled', true).text('Resetting…');
+            $.ajax({
+                url: typeof intersoccer_admin !== 'undefined' ? intersoccer_admin.ajax_url : '',
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    action: 'intersoccer_reset_referral_data',
+                    nonce: typeof intersoccer_admin !== 'undefined' ? intersoccer_admin.nonce : '',
+                    scope: 'profile'
+                }
+            }).done(function(response) {
+                if (response && response.success && response.data && response.data.message) {
+                    showMessage(response.data.message, false);
+                } else {
+                    showMessage((response && response.data && response.data.message) ? response.data.message : 'An error occurred.', true);
+                }
+            }).fail(function() {
+                showMessage('Network error. Please try again.', true);
+            }).always(function() {
+                $btn.prop('disabled', false).text(originalText);
+            });
+        });
+
+        $tablesBtn.on('click', function(e) {
+            e.preventDefault();
+            const selected = $('input[name="reset_tables[]"]:checked').map(function() {
+                return $(this).val();
+            }).get();
+            if (!selected.length) {
+                window.alert('Please select at least one table to reset.');
+                return;
+            }
+            if (!window.confirm('This will permanently delete all rows in the selected tables. This cannot be undone. Continue?')) {
+                return;
+            }
+            const $btn = $(this);
+            const originalText = $btn.text();
+            $btn.prop('disabled', true).text('Resetting…');
+            $.ajax({
+                url: typeof intersoccer_admin !== 'undefined' ? intersoccer_admin.ajax_url : '',
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    action: 'intersoccer_reset_referral_data',
+                    nonce: typeof intersoccer_admin !== 'undefined' ? intersoccer_admin.nonce : '',
+                    scope: 'tables',
+                    tables: selected
+                }
+            }).done(function(response) {
+                if (response && response.success && response.data && response.data.message) {
+                    showMessage(response.data.message, false);
+                } else {
+                    showMessage((response && response.data && response.data.message) ? response.data.message : 'An error occurred.', true);
+                }
+            }).fail(function() {
+                showMessage('Network error. Please try again.', true);
+            }).always(function() {
+                $btn.prop('disabled', false).text(originalText);
+            });
+        });
+    }
+
+    /**
      * Bind general event handlers
      */
     function bindEvents() {
         initUpdateCredits();
         initCoachReferralsFilter();
+        initResetDataTab();
     }
 
     /**
