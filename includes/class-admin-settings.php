@@ -18,6 +18,7 @@ class InterSoccer_Admin_Settings {
         add_action('admin_post_import_coaches_from_csv', [$this, 'import_coaches_from_csv']);
         add_action('wp_ajax_reset_all_customer_credits', [$this, 'reset_all_customer_credits']);
         add_action('wp_ajax_intersoccer_reset_referral_data', [$this, 'ajax_reset_referral_data']);
+        add_action('wp_ajax_intersoccer_backfill_points', [$this, 'ajax_backfill_points']);
         add_action('wp_ajax_allocate_credits_to_customers', [$this, 'allocate_credits_to_customers']);
         add_action('wp_ajax_clear_audit_log', [$this, 'clear_audit_log']);
         add_action('wp_ajax_export_audit_log', [$this, 'export_audit_log']);
@@ -840,7 +841,7 @@ class InterSoccer_Admin_Settings {
      */
     public function render_tools_page() {
         $current_tab = isset($_GET['tab']) ? sanitize_text_field($_GET['tab']) : 'main';
-        if (!in_array($current_tab, ['main', 'reset'], true)) {
+        if (!in_array($current_tab, ['main', 'reset', 'backfill'], true)) {
             $current_tab = 'main';
         }
         ?>
@@ -856,6 +857,9 @@ class InterSoccer_Admin_Settings {
                 </a>
                 <a href="<?php echo esc_url(admin_url('admin.php?page=intersoccer-tools&tab=reset')); ?>" class="nav-tab <?php echo $current_tab === 'reset' ? 'nav-tab-active' : ''; ?>">
                     <?php esc_html_e('Reset Data', 'intersoccer-referral'); ?>
+                </a>
+                <a href="<?php echo esc_url(admin_url('admin.php?page=intersoccer-tools&tab=backfill')); ?>" class="nav-tab <?php echo $current_tab === 'backfill' ? 'nav-tab-active' : ''; ?>">
+                    <?php esc_html_e('Backfill Points', 'intersoccer-referral'); ?>
                 </a>
             </nav>
 
@@ -1811,6 +1815,126 @@ class InterSoccer_Admin_Settings {
             })();
             </script>
             <?php endif; ?>
+
+            <?php if ($current_tab === 'backfill') : ?>
+            <?php
+            // Same option as Settings > Points Configuration (admin.php?page=intersoccer-settings&tab=points)
+            $backfill_go_live = get_option('intersoccer_points_golive_date', '');
+            $backfill_go_live_formatted = $backfill_go_live ? date_i18n(get_option('date_format', 'Y-m-d'), strtotime($backfill_go_live . ' 00:00:00')) : '';
+            $backfill_today = gmdate('Y-m-d', current_time('timestamp'));
+            $backfill_settings_points_url = admin_url('admin.php?page=intersoccer-settings&tab=points');
+            ?>
+            <div class="intersoccer-settings-section" style="margin-top: 20px;">
+                <h2><?php esc_html_e('Backfill Customer Points', 'intersoccer-referral'); ?></h2>
+                <p class="description">
+                    <?php esc_html_e('When the Points go-live date is set to a date before the plugin went live, use this tool to award points for completed orders in that period. Only orders that do not already have points allocated will be processed. Run a dry run first to preview.', 'intersoccer-referral'); ?>
+                </p>
+
+                <div id="backfill-message" class="notice" style="display: none; margin: 15px 0;"></div>
+
+                <div class="settings-card" style="max-width: 700px; margin-top: 20px; padding: 20px;">
+                    <p>
+                        <strong><?php esc_html_e('Points go-live date (start):', 'intersoccer-referral'); ?></strong>
+                        <?php if ($backfill_go_live_formatted) : ?>
+                            <span id="backfill-golive-display"><?php echo esc_html($backfill_go_live_formatted); ?></span>
+                            <span class="description">(<?php esc_html_e('from', 'intersoccer-referral'); ?> <a href="<?php echo esc_url($backfill_settings_points_url); ?>"><?php esc_html_e('Settings → Points Configuration', 'intersoccer-referral'); ?></a>)</span>
+                        <?php else : ?>
+                            <span id="backfill-golive-display" class="description"><?php esc_html_e('Not set.', 'intersoccer-referral'); ?></span>
+                            <a href="<?php echo esc_url($backfill_settings_points_url); ?>"><?php esc_html_e('Set it in Settings → Points Configuration', 'intersoccer-referral'); ?></a>
+                        <?php endif; ?>
+                    </p>
+                    <p>
+                        <label for="backfill-end-date"><strong><?php esc_html_e('End date:', 'intersoccer-referral'); ?></strong></label>
+                        <input type="date" id="backfill-end-date" value="<?php echo esc_attr($backfill_today); ?>" class="regular-text">
+                        <span class="description"><?php esc_html_e('Only orders created on or before this date are included.', 'intersoccer-referral'); ?></span>
+                    </p>
+                    <p>
+                        <button type="button" class="button button-secondary" id="backfill-dry-run"><?php esc_html_e('Dry run (preview)', 'intersoccer-referral'); ?></button>
+                        <button type="button" class="button button-primary" id="backfill-run"><?php esc_html_e('Run backfill', 'intersoccer-referral'); ?></button>
+                    </p>
+                </div>
+            </div>
+            <script>
+            (function() {
+                var ajaxUrl = <?php echo json_encode(admin_url('admin-ajax.php')); ?>;
+                var nonce = <?php echo json_encode(wp_create_nonce('intersoccer_admin_nonce')); ?>;
+                jQuery(function($) {
+                    var $msg = $('#backfill-message');
+                    var $dryRun = $('#backfill-dry-run');
+                    var $run = $('#backfill-run');
+
+                    function showBackfillMsg(text, isError) {
+                        if (!$msg.length) return;
+                        $msg.removeClass('notice-success notice-error').addClass(isError ? 'notice-error' : 'notice-success').html('<p>' + (text || '') + '</p>').show();
+                    }
+
+                    $dryRun.on('click', function() {
+                        var endDate = $('#backfill-end-date').val();
+                        if (!endDate) { showBackfillMsg('Please choose an end date.', true); return; }
+                        var $btn = $(this);
+                        var orig = $btn.text();
+                        $btn.prop('disabled', true).text('<?php echo esc_js(__('Checking…', 'intersoccer-referral')); ?>');
+                        $.ajax({
+                            url: ajaxUrl,
+                            type: 'POST',
+                            dataType: 'json',
+                            data: { action: 'intersoccer_backfill_points', nonce: nonce, dry_run: '1', end_date: endDate }
+                        }).done(function(r) {
+                            if (r && r.success && r.data) {
+                                showBackfillMsg(
+                                    (r.data.order_count === 0 ? '<?php echo esc_js(__('No orders in the selected period need points.', 'intersoccer-referral')); ?>' : '<?php echo esc_js(__('Orders that would receive points:', 'intersoccer-referral')); ?> ' + r.data.order_count + '. <?php echo esc_js(__('Total points:', 'intersoccer-referral')); ?> ' + (r.data.total_points || 0)),
+                                    false
+                                );
+                            } else {
+                                showBackfillMsg((r && r.data && r.data.message) ? r.data.message : '<?php echo esc_js(__('Request failed.', 'intersoccer-referral')); ?>', true);
+                            }
+                        }).fail(function() {
+                            showBackfillMsg('<?php echo esc_js(__('Network error. Please try again.', 'intersoccer-referral')); ?>', true);
+                        }).always(function() { $btn.prop('disabled', false).text(orig); });
+                    });
+
+                    $run.on('click', function() {
+                    var endDate = $('#backfill-end-date').val();
+                    if (!endDate) { showBackfillMsg('<?php echo esc_js(__('Please choose an end date.', 'intersoccer-referral')); ?>', true); return; }
+                    if (!confirm('<?php echo esc_js(__('Run backfill for completed orders up to the end date? This will allocate points in batches.', 'intersoccer-referral')); ?>')) return;
+                    var $btn = $(this);
+                    var orig = $btn.text();
+                    $btn.prop('disabled', true);
+                    var totalProcessed = 0;
+                    var totalPoints = 0;
+
+                    function doBatch(offset) {
+                        $btn.text('<?php echo esc_js(__('Processing…', 'intersoccer-referral')); ?> ' + (offset > 0 ? '(offset ' + offset + ')' : ''));
+                        $.ajax({
+                            url: ajaxUrl,
+                            type: 'POST',
+                            dataType: 'json',
+                            data: { action: 'intersoccer_backfill_points', nonce: nonce, end_date: endDate, offset: offset }
+                        }).done(function(r) {
+                            if (r && r.success && r.data) {
+                                totalProcessed += r.data.processed || 0;
+                                totalPoints += r.data.points_added || 0;
+                                if (r.data.done) {
+                                    showBackfillMsg('<?php echo esc_js(__('Backfill complete. Orders processed:', 'intersoccer-referral')); ?> ' + totalProcessed + '. <?php echo esc_js(__('Points added:', 'intersoccer-referral')); ?> ' + totalPoints, false);
+                                    $btn.prop('disabled', false).text(orig);
+                                } else {
+                                    doBatch(r.data.next_offset || (offset + 50));
+                                }
+                            } else {
+                                showBackfillMsg((r && r.data && r.data.message) ? r.data.message : '<?php echo esc_js(__('Request failed.', 'intersoccer-referral')); ?>', true);
+                                $btn.prop('disabled', false).text(orig);
+                            }
+                        }).fail(function() {
+                            showBackfillMsg('<?php echo esc_js(__('Network error. Please try again.', 'intersoccer-referral')); ?>', true);
+                            $btn.prop('disabled', false).text(orig);
+                        });
+                    }
+                    doBatch(0);
+                });
+                });
+            })();
+            </script>
+            <?php endif; ?>
         </div>
         <?php
     }
@@ -2523,6 +2647,105 @@ class InterSoccer_Admin_Settings {
 
         wp_send_json_success([
             'message' => implode(' ', $messages),
+        ]);
+    }
+
+    /**
+     * AJAX: Backfill customer points for completed orders from go-live date to end date.
+     * Supports dry_run (preview) and batched execution.
+     */
+    public function ajax_backfill_points() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => __('Unauthorized', 'intersoccer-referral')]);
+        }
+
+        $go_live_date = get_option('intersoccer_points_golive_date', '');
+        if (empty($go_live_date) || !strtotime($go_live_date . ' 00:00:00')) {
+            wp_send_json_error(['message' => __('Backfill requires a Points go-live date to be set in Settings > Points Configuration.', 'intersoccer-referral')]);
+        }
+
+        $end_date = isset($_POST['end_date']) ? sanitize_text_field($_POST['end_date']) : '';
+        if (empty($end_date)) {
+            $end_date = gmdate('Y-m-d', current_time('timestamp'));
+        }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $end_date) || !strtotime($end_date . ' 23:59:59')) {
+            wp_send_json_error(['message' => __('Invalid end date. Use Y-m-d format.', 'intersoccer-referral')]);
+        }
+
+        $dry_run = !empty($_POST['dry_run']);
+        $batch_size = 50;
+        $offset = isset($_POST['offset']) ? max(0, (int) $_POST['offset']) : 0;
+
+        if (!class_exists('InterSoccer_Points_Manager') || !function_exists('wc_get_orders')) {
+            wp_send_json_error(['message' => __('WooCommerce and Points Manager are required for backfill.', 'intersoccer-referral')]);
+        }
+
+        $points_manager = new InterSoccer_Points_Manager();
+
+        $date_created_range = $go_live_date . '...' . $end_date;
+
+        if ($dry_run) {
+            $order_ids = wc_get_orders([
+                'type'         => 'shop_order',
+                'status'       => ['wc-completed', 'completed'],
+                'date_created' => $date_created_range,
+                'orderby'      => 'date',
+                'order'        => 'ASC',
+                'limit'        => 5000,
+                'return'       => 'ids',
+            ]);
+            $order_count = 0;
+            $total_points = 0;
+            foreach (is_array($order_ids) ? $order_ids : [] as $order_id) {
+                if ($points_manager->order_has_points_allocated($order_id)) {
+                    continue;
+                }
+                $order_count++;
+                $total_points += $points_manager->get_points_for_order_dry_run($order_id);
+            }
+            wp_send_json_success([
+                'order_count'  => $order_count,
+                'total_points' => $total_points,
+                'dry_run'      => true,
+            ]);
+        }
+
+        $order_ids = wc_get_orders([
+            'type'         => 'shop_order',
+            'status'       => ['wc-completed', 'completed'],
+            'date_created' => $date_created_range,
+            'orderby'      => 'date',
+            'order'        => 'ASC',
+            'limit'        => $batch_size,
+            'offset'       => $offset,
+            'return'       => 'ids',
+        ]);
+
+        $order_ids = is_array($order_ids) ? $order_ids : [];
+        $to_process = [];
+        foreach ($order_ids as $order_id) {
+            if (!$points_manager->order_has_points_allocated($order_id)) {
+                $to_process[] = $order_id;
+            }
+        }
+
+        $processed = 0;
+        $points_added = 0;
+        foreach ($to_process as $order_id) {
+            $points_added += $points_manager->allocate_points_for_order_backfill($order_id);
+            $processed++;
+        }
+
+        $fetched = count($order_ids);
+        $done = $fetched < $batch_size;
+        $next_offset = $offset + $fetched;
+
+        wp_send_json_success([
+            'processed'    => $processed,
+            'points_added' => $points_added,
+            'done'         => $done,
+            'next_offset'  => $next_offset,
         ]);
     }
 
