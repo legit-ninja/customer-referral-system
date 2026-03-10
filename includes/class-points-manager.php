@@ -119,6 +119,120 @@ class InterSoccer_Points_Manager {
     }
 
     /**
+     * Allocate points for an order during backfill (no go-live date check).
+     * Used when backfilling historical orders from the Tools > Backfill tab.
+     *
+     * @param int $order_id WooCommerce order ID
+     * @return int Points allocated (0 if skipped or zero total)
+     */
+    public function allocate_points_for_order_backfill($order_id) {
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return 0;
+        }
+        // Skip refunds: OrderRefund does not have get_customer_id() and we do not award points for refunds.
+        if (is_callable([$order, 'is_type']) && $order->is_type('refund')) {
+            return 0;
+        }
+        if (!method_exists($order, 'get_customer_id')) {
+            return 0;
+        }
+
+        $customer_id = $order->get_customer_id();
+        if (!$customer_id) {
+            return 0;
+        }
+
+        if ($this->order_has_points_allocated($order_id)) {
+            return 0;
+        }
+
+        $order_total = max(0, $order->get_total());
+        $allocation_mode = $this->get_allocation_mode();
+        $allocation_meta = [
+            'method' => $allocation_mode,
+        ];
+
+        $is_first_time = false;
+        if ($allocation_mode === 'percentage') {
+            $allocation_meta['percentage_rate'] = $this->get_points_percentage_rate($customer_id);
+        } else {
+            $is_first_time = $this->is_first_time_customer($customer_id, $order_id);
+            $allocation_meta['points_rate'] = $this->get_points_rate_for_user($customer_id, 'purchase', $is_first_time);
+        }
+
+        $points_to_allocate = $this->calculate_points_from_amount($order_total, $customer_id, $is_first_time);
+
+        if ($points_to_allocate > 0) {
+            do_action('intersoccer_points_earned', $customer_id, $points_to_allocate, 'order_purchase', $order_id);
+
+            $this->add_points_transaction(
+                $customer_id,
+                'order_purchase',
+                $points_to_allocate,
+                $order_id,
+                'Points allocated for order #' . $order_id . ' (backfill)',
+                [
+                    'order_total' => $order_total,
+                    'currency' => $order->get_currency(),
+                    'points_rate' => $allocation_meta['method'] === 'ratio'
+                        ? $allocation_meta['points_rate']
+                        : null,
+                    'percentage_rate' => $allocation_meta['method'] === 'percentage'
+                        ? $allocation_meta['percentage_rate']
+                        : null,
+                    'allocation_method' => $allocation_meta['method'],
+                    'backfill' => true,
+                ]
+            );
+
+            $this->update_user_points_balance($customer_id);
+            intersoccer_referral_log("InterSoccer: Backfill allocated {$points_to_allocate} points to customer {$customer_id} for order {$order_id}");
+        }
+
+        return $points_to_allocate;
+    }
+
+    /**
+     * Return the points that would be allocated for an order (for dry-run / preview).
+     * Does not write to the points log or user meta.
+     *
+     * @param int $order_id WooCommerce order ID
+     * @return int Points that would be allocated (0 if already allocated, no customer, or zero total)
+     */
+    public function get_points_for_order_dry_run($order_id) {
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return 0;
+        }
+        // Skip refunds: OrderRefund does not have get_customer_id(); dry-run should match backfill behaviour.
+        if (is_callable([$order, 'is_type']) && $order->is_type('refund')) {
+            return 0;
+        }
+        if (!method_exists($order, 'get_customer_id')) {
+            return 0;
+        }
+
+        $customer_id = $order->get_customer_id();
+        if (!$customer_id) {
+            return 0;
+        }
+
+        if ($this->order_has_points_allocated($order_id)) {
+            return 0;
+        }
+
+        $order_total = max(0, $order->get_total());
+        $allocation_mode = $this->get_allocation_mode();
+        $is_first_time = false;
+        if ($allocation_mode !== 'percentage') {
+            $is_first_time = $this->is_first_time_customer($customer_id, $order_id);
+        }
+
+        return $this->calculate_points_from_amount($order_total, $customer_id, $is_first_time);
+    }
+
+    /**
      * Queue order for deferred points allocation
      * Stores order ID in a transient for weekly processing
      */
@@ -454,8 +568,11 @@ class InterSoccer_Points_Manager {
 
     /**
      * Check if an order already has points allocated
+     *
+     * @param int $order_id WooCommerce order ID
+     * @return bool
      */
-    private function order_has_points_allocated($order_id) {
+    public function order_has_points_allocated($order_id) {
         global $wpdb;
 
         $count = $wpdb->get_var($wpdb->prepare(
