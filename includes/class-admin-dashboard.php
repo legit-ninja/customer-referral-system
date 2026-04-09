@@ -455,28 +455,35 @@ class InterSoccer_Referral_Admin_Dashboard {
         $results = [];
         $success_count = 0;
         $fail_count = 0;
+        $skipped_count = 0;
 
         foreach ($coach_ids as $id) {
             $result = InterSoccer_Referral_Handler::send_referral_code_email($id);
-            $results[] = ['coach_id' => $id, 'success' => $result['success'], 'message' => $result['message']];
-            if ($result['success']) {
+            $sent = isset($result['sent']) ? (bool) $result['sent'] : (bool) $result['success'];
+            $results[] = ['coach_id' => $id, 'success' => $result['success'], 'sent' => $sent, 'message' => $result['message']];
+            if ($result['success'] && $sent) {
                 $success_count++;
+            } elseif ($result['success'] && !$sent) {
+                $skipped_count++;
             } else {
                 $fail_count++;
             }
         }
 
         $total = count($coach_ids);
-        if ($fail_count === 0) {
+        if ($fail_count === 0 && $skipped_count === 0) {
             $summary = sprintf(
                 /* translators: %d: number of coaches */
                 _n('Referral code sent to %d coach.', 'Referral codes sent to %d coaches.', $total, 'intersoccer-referral'),
                 $total
             );
+        } elseif ($success_count === 0 && $fail_count === 0 && $skipped_count > 0) {
+            $summary = __('Email notifications are disabled in settings. No referral emails were sent.', 'intersoccer-referral');
         } else {
             $summary = sprintf(
-                __('%1$d sent, %2$d failed.', 'intersoccer-referral'),
+                __('%1$d sent, %2$d skipped, %3$d failed.', 'intersoccer-referral'),
                 $success_count,
+                $skipped_count,
                 $fail_count
             );
         }
@@ -485,6 +492,7 @@ class InterSoccer_Referral_Admin_Dashboard {
             'message' => $summary,
             'results' => $results,
             'success_count' => $success_count,
+            'skipped_count' => $skipped_count,
             'fail_count' => $fail_count,
         ]);
     }

@@ -62,15 +62,23 @@ class InterSoccer_Referral_Handler {
      * Send referral code email to a coach (admin-triggered).
      *
      * @param int $coach_id User ID of the coach.
-     * @return array{success: bool, message: string}
+     * @return array{success: bool, sent: bool, message: string}
      */
     public static function send_referral_code_email($coach_id) {
+        if (!get_option('intersoccer_enable_email_notifications', 1)) {
+            return [
+                'success' => true,
+                'sent' => false,
+                'message' => __('Email notifications are disabled in settings.', 'intersoccer-referral'),
+            ];
+        }
+
         $coach = get_user_by('ID', $coach_id);
         if (!$coach || !in_array('coach', (array) $coach->roles)) {
-            return ['success' => false, 'message' => __('Invalid coach.', 'intersoccer-referral')];
+            return ['success' => false, 'sent' => false, 'message' => __('Invalid coach.', 'intersoccer-referral')];
         }
         if (empty($coach->user_email) || !is_email($coach->user_email)) {
-            return ['success' => false, 'message' => sprintf(__('Coach %s has no valid email.', 'intersoccer-referral'), $coach->display_name)];
+            return ['success' => false, 'sent' => false, 'message' => sprintf(__('Coach %s has no valid email.', 'intersoccer-referral'), $coach->display_name)];
         }
 
         $code = self::get_coach_referral_code($coach_id);
@@ -104,9 +112,9 @@ class InterSoccer_Referral_Handler {
 
         $sent = wp_mail($coach->user_email, $subject, $message);
         if (!$sent) {
-            return ['success' => false, 'message' => sprintf(__('Failed to send email to %s.', 'intersoccer-referral'), $coach->user_email)];
+            return ['success' => false, 'sent' => false, 'message' => sprintf(__('Failed to send email to %s.', 'intersoccer-referral'), $coach->user_email)];
         }
-        return ['success' => true, 'message' => sprintf(__('Referral code sent to %s.', 'intersoccer-referral'), $coach->display_name)];
+        return ['success' => true, 'sent' => true, 'message' => sprintf(__('Referral code sent to %s.', 'intersoccer-referral'), $coach->display_name)];
     }
 
     /**
@@ -333,20 +341,14 @@ class InterSoccer_Referral_Handler {
             return;
         }
 
-        // #region agent log
         $already_processed = get_post_meta($order_id, '_intersoccer_referral_processed', true);
         $order_status      = $order->get_status();
-        error_log('[ddc888][H-A/B/C] process_referral_order entry | order=' . $order_id . ' status=' . $order_status . ' already_processed=' . ($already_processed ?: 'no'));
-        // #endregion
 
         if ('yes' === $already_processed) {
             return;
         }
 
         $referral_payload = $this->get_referral_payload();
-        // #region agent log
-        error_log('[ddc888][H-B] payload_from_session | order=' . $order_id . ' code=' . ($referral_payload['code'] ?? 'empty'));
-        // #endregion
         if (!empty($referral_payload['code'])) {
             update_post_meta($order_id, '_intersoccer_referral_payload', $referral_payload);
         } else {
@@ -354,22 +356,13 @@ class InterSoccer_Referral_Handler {
             if (is_array($stored_payload)) {
                 $referral_payload = $this->normalize_referral_payload($stored_payload);
             }
-            // #region agent log
-            error_log('[ddc888][H-B] payload_from_meta | order=' . $order_id . ' code=' . ($referral_payload['code'] ?? 'empty'));
-            // #endregion
         }
 
         if (empty($referral_payload['code'])) {
-            // #region agent log
-            error_log('[ddc888][H-B] EXIT no_payload | order=' . $order_id);
-            // #endregion
             return;
         }
 
         if (!$order->has_status(['completed', 'wc-completed'])) {
-            // #region agent log
-            error_log('[ddc888][H-A] EXIT not_completed | order=' . $order_id . ' status=' . $order_status . ' code=' . $referral_payload['code']);
-            // #endregion
             return;
         }
 
@@ -478,7 +471,9 @@ class InterSoccer_Referral_Handler {
                         $coach->display_name
                     );
                     
-                    wp_mail($customer->user_email, $subject, $message);
+                    if (get_option('intersoccer_enable_email_notifications', 1)) {
+                        wp_mail($customer->user_email, $subject, $message);
+                    }
                 }
             }
         }
@@ -509,7 +504,7 @@ class InterSoccer_Referral_Handler {
         }
 
         // Apply first-time customer benefits (email notification)
-        if ($is_first_purchase && $customer_bonus_points > 0) {
+        if ($is_first_purchase && $customer_bonus_points > 0 && get_option('intersoccer_enable_email_notifications', 1)) {
             wp_mail(
                 $order->get_billing_email(),
                 'Welcome to InterSoccer!',

@@ -29,6 +29,11 @@ class InterSoccer_Admin_Settings {
         add_action('wp_ajax_get_points_statistics', [$this, 'get_points_statistics_ajax']);
         add_action('wp_ajax_get_points_ledger', [$this, 'get_points_ledger_ajax']);
         add_action('admin_init', [$this, 'register_settings']);
+        add_action('show_user_profile', [$this, 'render_coach_referral_code_profile_field']);
+        add_action('edit_user_profile', [$this, 'render_coach_referral_code_profile_field']);
+        add_action('personal_options_update', [$this, 'save_coach_referral_code_profile_field']);
+        add_action('edit_user_profile_update', [$this, 'save_coach_referral_code_profile_field']);
+        add_action('admin_notices', [$this, 'render_coach_referral_code_admin_notice']);
 
         // Add AJAX handler for coach import
         add_action('wp_ajax_import_coaches_from_csv', [$this, 'ajax_import_coaches_from_csv']);
@@ -220,6 +225,16 @@ class InterSoccer_Admin_Settings {
                                 <input type="checkbox" name="intersoccer_passive_mode" value="1" <?php checked(get_option('intersoccer_passive_mode', false), true); ?>>
                                 <p class="description">
                                     <?php esc_html_e('When enabled, the system will track customer purchases and monitor point accrual, but checkout fields (referral code and points redemption) will be hidden from customers. This allows you to monitor the system before enabling customer-facing features.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php esc_html_e('Enable Email Notifications', 'intersoccer-referral'); ?></th>
+                            <td>
+                                <input type="hidden" name="intersoccer_enable_email_notifications" value="0">
+                                <input type="checkbox" name="intersoccer_enable_email_notifications" value="1" <?php checked((int) get_option('intersoccer_enable_email_notifications', 1), 1); ?>>
+                                <p class="description">
+                                    <?php esc_html_e('Disable to suppress plugin-generated emails (weekly reports, coach notifications, and referral code emails).', 'intersoccer-referral'); ?>
                                 </p>
                             </td>
                         </tr>
@@ -878,9 +893,14 @@ class InterSoccer_Admin_Settings {
 
                     <div class="settings-card">
                         <h3><?php esc_html_e('Points Ledger', 'intersoccer-referral'); ?></h3>
-                        <p><?php esc_html_e('View detailed points transaction history.', 'intersoccer-referral'); ?></p>
+                        <p><?php esc_html_e('View detailed points transaction history. Filter by customer to see one user\'s point history.', 'intersoccer-referral'); ?></p>
+                        <p>
+                            <label for="points-ledger-customer-search"><?php esc_html_e('Customer (ID or email)', 'intersoccer-referral'); ?></label>
+                            <input type="text" id="points-ledger-customer-search" class="regular-text" placeholder="<?php esc_attr_e('Leave blank for all', 'intersoccer-referral'); ?>" style="margin-left: 8px;" />
+                        </p>
                         <button id="view-points-ledger" class="button button-secondary"><?php esc_html_e('View Ledger', 'intersoccer-referral'); ?></button>
                         <div id="points-ledger-container" style="display: none; margin-top: 15px;">
+                            <style>.points-ledger-source-backfill { background: #d63638; color: #fff; padding: 2px 6px; border-radius: 3px; font-size: 11px; } .points-ledger-source { color: #50575e; font-size: 12px; }</style>
                             <div id="points-ledger-content">
                                 <p><?php esc_html_e('Loading ledger...', 'intersoccer-referral'); ?></p>
                             </div>
@@ -1653,7 +1673,7 @@ class InterSoccer_Admin_Settings {
                                                accept=".csv"
                                                required>
                                         <p class="description">
-                                            <?php esc_html_e('Select a CSV file containing coach information. Maximum file size: 10MB.', 'intersoccer-referral'); ?>
+                                            <?php esc_html_e('Select a CSV file containing coach information. Maximum file size: 10MB. Optional column: referral_code (used as-is when provided).', 'intersoccer-referral'); ?>
                                         </p>
                                     </td>
                                 </tr>
@@ -2088,6 +2108,7 @@ class InterSoccer_Admin_Settings {
             $('#view-points-ledger').on('click', function() {
                 const $container = $('#points-ledger-container');
                 const $content = $('#points-ledger-content');
+                const customerSearch = $('#points-ledger-customer-search').val().trim();
 
                 if ($container.is(':visible')) {
                     $container.hide();
@@ -2097,14 +2118,19 @@ class InterSoccer_Admin_Settings {
                 $container.show();
                 $content.html('<p>Loading points ledger...</p>');
 
+                const ajaxData = {
+                    action: 'get_points_ledger',
+                    nonce: intersoccer_admin.nonce,
+                    limit: customerSearch ? 100 : 20
+                };
+                if (customerSearch) {
+                    ajaxData.customer_search = customerSearch;
+                }
+
                 $.ajax({
                     url: intersoccer_admin.ajax_url,
                     type: 'POST',
-                    data: {
-                        action: 'get_points_ledger',
-                        nonce: intersoccer_admin.nonce,
-                        limit: 20
-                    },
+                    data: ajaxData,
                     success: function(response) {
                         $content.html(response.data.html);
                     },
@@ -2998,7 +3024,12 @@ class InterSoccer_Admin_Settings {
             'bio' => 'bio',
             'biography' => 'bio',
             'description' => 'bio',
-            'about' => 'bio'
+            'about' => 'bio',
+
+            // Referral code variations (optional)
+            'referral_code' => 'referral_code',
+            'coach_referral_code' => 'referral_code',
+            'code' => 'referral_code',
         ];
 
         // Map the normalized headers to standard field names
@@ -3067,7 +3098,8 @@ class InterSoccer_Admin_Settings {
                 $coach_info = [
                     'first_name' => $coach_data['first_name'],
                     'last_name' => $coach_data['last_name'],
-                    'email' => $coach_data['email']
+                    'email' => $coach_data['email'],
+                    'referral_code' => $result['referral_code'] ?? '',
                 ];
 
                 if ($result['action'] === 'created') {
@@ -3159,14 +3191,202 @@ class InterSoccer_Admin_Settings {
             intersoccer_referral_log('InterSoccer: Coach role not found during import');
         }
 
-        // Generate referral code for coach if not exists
-        $existing_code = get_user_meta($user_id, 'referral_code', true);
-        if (empty($existing_code)) {
-            $referral_code = 'COACH' . $user_id . strtoupper(str_replace('_', '', wp_generate_password(6, false)));
-            update_user_meta($user_id, 'referral_code', $referral_code);
+        // Save/import referral code when provided; otherwise preserve existing and only generate when missing.
+        $provided_code = $this->normalize_coach_referral_code($coach_data['referral_code'] ?? '');
+        if ($provided_code !== '') {
+            $conflict_user_id = $this->find_user_id_by_coach_referral_code($provided_code, $user_id);
+            if ($conflict_user_id) {
+                throw new Exception(sprintf(
+                    'Referral code "%s" is already assigned to another coach (user ID %d)',
+                    $provided_code,
+                    $conflict_user_id
+                ));
+            }
+            update_user_meta($user_id, 'referral_code', $provided_code);
+        } else {
+            $existing_code = $this->normalize_coach_referral_code(get_user_meta($user_id, 'referral_code', true));
+            if (empty($existing_code)) {
+                $generated_code = $this->generate_unique_coach_referral_code($user_id);
+                update_user_meta($user_id, 'referral_code', $generated_code);
+            }
         }
 
-        return ['action' => $action, 'user_id' => $user_id];
+        $effective_code = $this->normalize_coach_referral_code(get_user_meta($user_id, 'referral_code', true));
+        return ['action' => $action, 'user_id' => $user_id, 'referral_code' => $effective_code];
+    }
+
+    /**
+     * Normalize coach referral code while preserving sequential formats (e.g. COACH000123).
+     *
+     * @param string $code
+     * @return string
+     */
+    private function normalize_coach_referral_code($code) {
+        $normalized = strtoupper(trim((string) $code));
+        $normalized = preg_replace('/[^A-Z0-9_-]/', '', $normalized);
+        return (string) $normalized;
+    }
+
+    /**
+     * Find an existing user by coach referral code.
+     *
+     * @param string $code
+     * @param int    $exclude_user_id
+     * @return int
+     */
+    private function find_user_id_by_coach_referral_code($code, $exclude_user_id = 0) {
+        $normalized = $this->normalize_coach_referral_code($code);
+        if ($normalized === '') {
+            return 0;
+        }
+
+        $users = get_users([
+            'meta_key' => 'referral_code',
+            'meta_value' => $normalized,
+            'fields' => ['ID'],
+            'number' => 2,
+        ]);
+
+        if (empty($users)) {
+            return 0;
+        }
+
+        foreach ($users as $user) {
+            if ((int) $user->ID !== (int) $exclude_user_id) {
+                return (int) $user->ID;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Generate a coach referral code that does not collide with existing ones.
+     *
+     * @param int $user_id
+     * @return string
+     */
+    private function generate_unique_coach_referral_code($user_id) {
+        $attempts = 0;
+        do {
+            $attempts++;
+            $candidate = 'COACH' . $user_id . strtoupper(str_replace('_', '', wp_generate_password(6, false)));
+            $collision_user_id = $this->find_user_id_by_coach_referral_code($candidate, $user_id);
+        } while ($collision_user_id && $attempts < 10);
+
+        if (!empty($collision_user_id)) {
+            throw new Exception('Could not generate unique coach referral code');
+        }
+
+        return $candidate;
+    }
+
+    /**
+     * Render coach referral code field on user profile for coach accounts.
+     *
+     * @param WP_User $user
+     * @return void
+     */
+    public function render_coach_referral_code_profile_field($user) {
+        if (!current_user_can('manage_options') || !$user instanceof WP_User || !in_array('coach', (array) $user->roles, true)) {
+            return;
+        }
+
+        $current_code = $this->normalize_coach_referral_code(get_user_meta($user->ID, 'referral_code', true));
+        ?>
+        <h2><?php esc_html_e('Coach Referral Settings', 'intersoccer-referral'); ?></h2>
+        <table class="form-table" role="presentation">
+            <tr>
+                <th><label for="intersoccer_coach_referral_code"><?php esc_html_e('Referral Code', 'intersoccer-referral'); ?></label></th>
+                <td>
+                    <input
+                        type="text"
+                        id="intersoccer_coach_referral_code"
+                        name="intersoccer_coach_referral_code"
+                        value="<?php echo esc_attr($current_code); ?>"
+                        class="regular-text"
+                    />
+                    <p class="description">
+                        <?php esc_html_e('Optional. Leave blank to auto-generate on import/usage. Codes must be unique.', 'intersoccer-referral'); ?>
+                    </p>
+                </td>
+            </tr>
+        </table>
+        <?php
+    }
+
+    /**
+     * Persist coach referral code from profile edit.
+     *
+     * @param int $user_id
+     * @return void
+     */
+    public function save_coach_referral_code_profile_field($user_id) {
+        if (!current_user_can('manage_options')) {
+            return;
+        }
+
+        $user = get_user_by('ID', $user_id);
+        if (!$user || !in_array('coach', (array) $user->roles, true)) {
+            return;
+        }
+
+        if (!array_key_exists('intersoccer_coach_referral_code', $_POST)) {
+            return;
+        }
+
+        $raw_code = wp_unslash($_POST['intersoccer_coach_referral_code']);
+        $normalized = $this->normalize_coach_referral_code($raw_code);
+
+        if ($normalized !== '') {
+            $conflict_user_id = $this->find_user_id_by_coach_referral_code($normalized, $user_id);
+            if ($conflict_user_id) {
+                $url = add_query_arg(
+                    [
+                        'user_id' => (int) $user_id,
+                        'intersoccer_referral_error' => 'duplicate_code',
+                        'intersoccer_referral_code' => rawurlencode($normalized),
+                    ],
+                    admin_url('user-edit.php')
+                );
+                wp_safe_redirect($url);
+                exit;
+            }
+        }
+
+        update_user_meta($user_id, 'referral_code', $normalized);
+    }
+
+    /**
+     * Show coach referral code save errors on user-edit.php.
+     *
+     * @return void
+     */
+    public function render_coach_referral_code_admin_notice() {
+        if (!is_admin() || empty($_GET['intersoccer_referral_error'])) {
+            return;
+        }
+
+        $error = sanitize_text_field(wp_unslash($_GET['intersoccer_referral_error']));
+        if ($error !== 'duplicate_code') {
+            return;
+        }
+
+        $code = isset($_GET['intersoccer_referral_code']) ? sanitize_text_field(wp_unslash($_GET['intersoccer_referral_code'])) : '';
+        ?>
+        <div class="notice notice-error is-dismissible">
+            <p>
+                <?php
+                echo esc_html(
+                    sprintf(
+                        __('Referral code "%s" is already in use by another user. Please choose a unique code.', 'intersoccer-referral'),
+                        $code
+                    )
+                );
+                ?>
+            </p>
+        </div>
+        <?php
     }
 
     /**
@@ -3373,7 +3593,9 @@ class InterSoccer_Admin_Settings {
     }
 
     /**
-     * Get points ledger via AJAX
+     * Get points ledger via AJAX.
+     * Optional customer_id or customer_search (email/ID) to show one customer's history.
+     * Table includes Order (link + date) and Source (Backfill badge) for troubleshooting.
      */
     public function get_points_ledger_ajax() {
         check_ajax_referer('intersoccer_admin_nonce', 'nonce');
@@ -3383,59 +3605,132 @@ class InterSoccer_Admin_Settings {
 
         global $wpdb;
         $points_log_table = $wpdb->prefix . 'intersoccer_points_log';
-        $limit = intval($_POST['limit'] ?? 20);
 
-        $transactions = $wpdb->get_results($wpdb->prepare(
-            "SELECT pl.*, u.display_name, u.user_email
-             FROM {$points_log_table} pl
-             LEFT JOIN {$wpdb->users} u ON pl.customer_id = u.ID
-             ORDER BY pl.created_at DESC, pl.id DESC
-             LIMIT %d",
-            $limit
-        ));
+        $customer_id = isset($_POST['customer_id']) ? absint($_POST['customer_id']) : 0;
+        $customer_search = isset($_POST['customer_search']) ? sanitize_text_field(wp_unslash($_POST['customer_search'])) : '';
 
-        if (empty($transactions)) {
-            $html = '<p>No points transactions found.</p>';
-        } else {
-            $html = '<table class="wp-list-table widefat fixed striped">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Customer</th>
-                        <th>Type</th>
-                        <th>Amount</th>
-                        <th>Balance</th>
-                        <th>Description</th>
-                    </tr>
-                </thead>
-                <tbody>';
-
-            foreach ($transactions as $transaction) {
-                $amount_class = $transaction->points_amount >= 0 ? 'positive' : 'negative';
-                $html .= sprintf(
-                    '<tr>
-                        <td>%s</td>
-                        <td>%s<br><small>%s</small></td>
-                        <td>%s</td>
-                        <td class="%s">%s</td>
-                        <td>%.2f</td>
-                        <td>%s</td>
-                    </tr>',
-                    date('Y-m-d H:i', strtotime($transaction->created_at)),
-                    esc_html($transaction->display_name ?: 'Unknown'),
-                    esc_html($transaction->user_email ?: $transaction->customer_id),
-                    esc_html($transaction->transaction_type),
-                    $amount_class,
-                    ($transaction->points_amount >= 0 ? '+' : '') . number_format($transaction->points_amount, 0),
-                    number_format(intval($transaction->points_balance), 0),
-                    esc_html($transaction->description)
-                );
+        if (!$customer_id && $customer_search !== '') {
+            if (is_numeric($customer_search)) {
+                $customer_id = absint($customer_search);
+                $u = get_user_by('id', $customer_id);
+                if (!$u) {
+                    $customer_id = 0;
+                }
+            } else {
+                $u = get_user_by('email', $customer_search);
+                if ($u) {
+                    $customer_id = $u->ID;
+                } else {
+                    $u = get_user_by('login', $customer_search);
+                    if ($u) {
+                        $customer_id = $u->ID;
+                    }
+                }
             }
-
-            $html .= '</tbody></table>';
         }
 
-        wp_send_json_success(['html' => $html]);
+        $limit = $customer_id ? min(200, max(20, intval($_POST['limit'] ?? 100))) : intval($_POST['limit'] ?? 20);
+        $by_customer = (bool) $customer_id;
+
+        $sql = "SELECT pl.*, u.display_name, u.user_email
+                FROM {$points_log_table} pl
+                LEFT JOIN {$wpdb->users} u ON pl.customer_id = u.ID";
+        $where = [];
+        $prepare_args = [];
+
+        if ($by_customer) {
+            $where[] = 'pl.customer_id = %d';
+            $prepare_args[] = $customer_id;
+        }
+        $sql .= $where ? ' WHERE ' . implode(' AND ', $where) : '';
+        $sql .= ' ORDER BY pl.created_at DESC, pl.id DESC LIMIT %d';
+        $prepare_args[] = $limit;
+
+        $transactions = $wpdb->get_results($wpdb->prepare($sql, $prepare_args));
+
+        $customer_label = '';
+        if ($by_customer && !empty($transactions)) {
+            $t = $transactions[0];
+            $customer_label = $t->display_name ? $t->display_name : ('#' . $t->customer_id);
+            if ($t->user_email) {
+                $customer_label .= ' (' . $t->user_email . ')';
+            }
+        }
+
+        if (empty($transactions)) {
+            $html = $by_customer
+                ? '<p>' . esc_html__('No points transactions found for this customer.', 'intersoccer-referral') . '</p>'
+                : '<p>' . esc_html__('No points transactions found.', 'intersoccer-referral') . '</p>';
+            wp_send_json_success(['html' => $html, 'customer_label' => $customer_label]);
+            return;
+        }
+
+        $html = '';
+        if ($customer_label) {
+            $html .= '<p class="points-ledger-customer-header"><strong>' . esc_html__('Point history for:', 'intersoccer-referral') . '</strong> ' . esc_html($customer_label) . '</p>';
+        }
+        $html .= '<table class="wp-list-table widefat fixed striped">
+            <thead>
+                <tr>
+                    <th>' . esc_html__('Date', 'intersoccer-referral') . '</th>
+                    <th>' . esc_html__('Customer', 'intersoccer-referral') . '</th>
+                    <th>' . esc_html__('Type', 'intersoccer-referral') . '</th>
+                    <th>' . esc_html__('Amount', 'intersoccer-referral') . '</th>
+                    <th>' . esc_html__('Balance', 'intersoccer-referral') . '</th>
+                    <th>' . esc_html__('Order', 'intersoccer-referral') . '</th>
+                    <th>' . esc_html__('Source', 'intersoccer-referral') . '</th>
+                    <th>' . esc_html__('Description', 'intersoccer-referral') . '</th>
+                </tr>
+            </thead>
+            <tbody>';
+
+        foreach ($transactions as $transaction) {
+            $amount_class = $transaction->points_amount >= 0 ? 'positive' : 'negative';
+
+            $order_cell = '—';
+            $order_id = isset($transaction->order_id) ? absint($transaction->order_id) : 0;
+            if ($order_id) {
+                $order = wc_get_order($order_id);
+                if ($order && (!is_callable([$order, 'is_type']) || !$order->is_type('refund'))) {
+                    $order_date = $order->get_date_created();
+                    $order_date_str = $order_date ? $order_date->format('Y-m-d') : '';
+                    $edit_url = method_exists($order, 'get_edit_order_url') ? $order->get_edit_order_url() : admin_url('post.php?post=' . $order_id . '&action=edit');
+                    $order_cell = '<a href="' . esc_url($edit_url) . '" target="_blank">#' . esc_html((string) $order_id) . '</a>';
+                    if ($order_date_str) {
+                        $order_cell .= '<br><small>' . esc_html($order_date_str) . '</small>';
+                    }
+                } else {
+                    $order_cell = '#' . $order_id;
+                }
+            }
+
+            $meta = [];
+            if (!empty($transaction->metadata)) {
+                $decoded = json_decode($transaction->metadata, true);
+                if (is_array($decoded)) {
+                    $meta = $decoded;
+                }
+            }
+            $is_backfill = !empty($meta['backfill']);
+            $source_cell = $is_backfill
+                ? '<span class="points-ledger-source points-ledger-source-backfill">' . esc_html__('Backfill', 'intersoccer-referral') . '</span>'
+                : '<span class="points-ledger-source">' . esc_html__('Live', 'intersoccer-referral') . '</span>';
+
+            $html .= '<tr>
+                <td>' . esc_html(date_i18n('Y-m-d H:i', strtotime($transaction->created_at))) . '</td>
+                <td>' . esc_html($transaction->display_name ?: 'Unknown') . '<br><small>' . esc_html($transaction->user_email ?: (string) $transaction->customer_id) . '</small></td>
+                <td>' . esc_html($transaction->transaction_type) . '</td>
+                <td class="' . esc_attr($amount_class) . '">' . ($transaction->points_amount >= 0 ? '+' : '') . esc_html(number_format($transaction->points_amount, 0)) . '</td>
+                <td>' . esc_html(number_format(intval($transaction->points_balance), 0)) . '</td>
+                <td>' . $order_cell . '</td>
+                <td>' . $source_cell . '</td>
+                <td>' . esc_html($transaction->description) . '</td>
+            </tr>';
+        }
+
+        $html .= '</tbody></table>';
+
+        wp_send_json_success(['html' => $html, 'customer_label' => $customer_label]);
     }
 
     /**
@@ -3496,6 +3791,14 @@ class InterSoccer_Admin_Settings {
             'type' => 'boolean',
             'default' => true,
             'sanitize_callback' => 'boolval'
+        ]);
+
+        register_setting('intersoccer_settings', 'intersoccer_enable_email_notifications', [
+            'type' => 'boolean',
+            'default' => true,
+            'sanitize_callback' => function($value) {
+                return (int) (!empty($value));
+            }
         ]);
 
         // Commission bonus controls (loyalty, retention, network effect, seasonal, weekend)
@@ -3781,13 +4084,6 @@ class InterSoccer_Admin_Settings {
         $tiers_json = sanitize_text_field($_POST['tiers']);
         $all_tiers = json_decode(stripslashes($tiers_json), true);
 
-        // #region agent log
-        $log_path = '/home/jeremy-lee/projects/underdog/intersoccer/players-and-events/.cursor/debug-ddc888.log';
-        $log_entry_save = json_encode(['sessionId'=>'ddc888','runId'=>'run1','hypothesisId'=>'H-A/B','location'=>'class-admin-settings.php:3082','message'=>'save_commission_tiers_ajax entry','data'=>['raw_post_length'=>strlen($_POST['tiers'] ?? ''),'sanitized_length'=>strlen($tiers_json),'json_decode_is_array'=>is_array($all_tiers),'json_decode_keys'=>is_array($all_tiers)?array_keys($all_tiers):[]],'timestamp'=>round(microtime(true)*1000)]);
-        file_put_contents($log_path, $log_entry_save . "\n", FILE_APPEND);
-        error_log('[ddc888] save_commission_tiers_ajax | raw_len=' . strlen($_POST['tiers'] ?? '') . ' sanitized_len=' . strlen($tiers_json) . ' is_array=' . (is_array($all_tiers) ? 'yes' : 'no') . ' keys=' . (is_array($all_tiers) ? implode(',', array_keys($all_tiers)) : ''));
-        // #endregion
-
         if (!is_array($all_tiers) || empty($all_tiers)) {
             wp_send_json_error(['message' => 'Invalid tiers data']);
         }
@@ -3828,11 +4124,6 @@ class InterSoccer_Admin_Settings {
             $option_name = 'intersoccer_commission_tiers_' . $role;
             update_option($option_name, $sanitized_tiers);
             $total_tiers += count($sanitized_tiers);
-            // #region agent log
-            $log_path_save = '/home/jeremy-lee/projects/underdog/intersoccer/players-and-events/.cursor/debug-ddc888.log';
-            $log_entry_saved = json_encode(['sessionId'=>'ddc888','runId'=>'run1','hypothesisId'=>'H-A','location'=>'class-admin-settings.php:3122','message'=>'option_saved','data'=>['option'=>$option_name,'tier_count'=>count($sanitized_tiers),'tiers'=>$sanitized_tiers],'timestamp'=>round(microtime(true)*1000)]);
-            file_put_contents($log_path_save, $log_entry_saved . "\n", FILE_APPEND);
-            // #endregion
 
             $this->log_audit('commission_tiers_updated', sprintf(
                 'Commission tiers updated for %s: %d tiers configured',

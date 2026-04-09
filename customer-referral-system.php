@@ -1438,7 +1438,7 @@ add_action('intersoccer_daily_cleanup', function() {
 
 // Weekly reports
 add_action('intersoccer_weekly_reports', function() {
-    if (!get_option('intersoccer_enable_email_notifications')) {
+    if (!get_option('intersoccer_enable_email_notifications', 1)) {
         return;
     }
     

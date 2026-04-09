@@ -98,12 +98,6 @@ class InterSoccer_Commission_Manager {
             ['min_customers' => 11, 'max_customers' => 24, 'rate' => 15],
             ['min_customers' => 25, 'max_customers' => 999999, 'rate' => 20],
         ]);
-        // #region agent log
-        $__log_path_cm = '/home/jeremy-lee/projects/underdog/intersoccer/players-and-events/.cursor/debug-ddc888.log';
-        $__log_raw = get_option($option_name, '__NOT_SET__');
-        file_put_contents($__log_path_cm, json_encode(['sessionId'=>'ddc888','runId'=>'run1','hypothesisId'=>'H-C/D','location'=>'class-commission-manager.php:96','message'=>'get_commission_rate_for_customer_count','data'=>['role'=>$role,'customer_count'=>$customer_count,'option_name'=>$option_name,'option_is_false'=>(get_option($option_name)===false),'tiers_count'=>count($tiers),'first_tier'=>$tiers[0]??null],'timestamp'=>round(microtime(true)*1000)])."\n", FILE_APPEND);
-        error_log('[ddc888] get_commission_rate_for_customer_count | role=' . $role . ' customer_count=' . $customer_count . ' option=' . $option_name . ' tiers_count=' . count($tiers) . ' first_tier=' . json_encode($tiers[0] ?? null));
-        // #endregion
 
         // Find the first matching tier
         foreach ($tiers as $tier) {
@@ -232,10 +226,6 @@ class InterSoccer_Commission_Manager {
             "SELECT * FROM $referrals_table WHERE order_id = %d",
             $order_id
         ));
-
-        // #region agent log
-        error_log('[ddc888][H-D] process_referral_commissions | order=' . $order_id . ' referral_found=' . ($referral ? 'yes coach_id=' . $referral->coach_id : 'NO'));
-        // #endregion
 
         if ($referral) {
             $commission_data = self::calculate_total_commission(
@@ -664,20 +654,6 @@ class InterSoccer_Commission_Manager {
             $weekend_bonus,
             2
         );
-
-        // #region agent log
-        error_log(
-            '[ddc888] calculate_total_commission | order=' .
-            (is_object($order) && method_exists($order, 'get_id') ? $order->get_id() : '') .
-            ' base=' . round($base_commission, 2) .
-            ' loyalty=' . round($loyalty_bonus, 2) .
-            ' retention=' . round($retention_bonus, 2) .
-            ' network=' . round($network_bonus, 2) .
-            ' seasonal=' . round($seasonal_bonus, 2) .
-            ' weekend=' . round($weekend_bonus, 2) .
-            ' total=' . $total_amount
-        );
-        // #endregion
 
         return [
             'base_commission'  => round($base_commission, 2),

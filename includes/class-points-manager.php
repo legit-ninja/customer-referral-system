@@ -119,8 +119,8 @@ class InterSoccer_Points_Manager {
     }
 
     /**
-     * Allocate points for an order during backfill (no go-live date check).
-     * Used when backfilling historical orders from the Tools > Backfill tab.
+     * Allocate points for an order during backfill.
+     * Skips orders before the configured go-live date. Used from Tools > Backfill tab.
      *
      * @param int $order_id WooCommerce order ID
      * @return int Points allocated (0 if skipped or zero total)
@@ -136,6 +136,19 @@ class InterSoccer_Points_Manager {
         }
         if (!method_exists($order, 'get_customer_id')) {
             return 0;
+        }
+
+        // Enforce go-live: do not award points for orders before the configured go-live date.
+        $go_live = get_option('intersoccer_points_golive_date', '');
+        if (!empty($go_live) && method_exists($order, 'get_date_created')) {
+            $order_date = $order->get_date_created();
+            if ($order_date) {
+                $order_date_str = $order_date->format('Y-m-d');
+                if ($order_date_str < $go_live) {
+                    intersoccer_referral_log("InterSoccer: Backfill skipped order #{$order_id}: order date {$order_date_str} is before go-live {$go_live}");
+                    return 0;
+                }
+            }
         }
 
         $customer_id = $order->get_customer_id();

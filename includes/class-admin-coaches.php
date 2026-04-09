@@ -34,7 +34,7 @@ class InterSoccer_Admin_Coaches {
                 <div style="background: white; padding: 30px; border-radius: 8px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto;">
                     <h2 style="margin-top: 0;"><?php esc_html_e('Import Coaches from CSV', 'intersoccer-referral'); ?></h2>
                     <p class="description">
-                        <?php esc_html_e('Upload a CSV file containing coach information. Required columns: First Name, Last Name, Email.', 'intersoccer-referral'); ?>
+                        <?php esc_html_e('Upload a CSV file containing coach information. Required columns: First Name, Last Name, Email. Optional: referral_code (used as-is if provided).', 'intersoccer-referral'); ?>
                     </p>
                     
                     <form id="coach-import-form-modal" method="post" enctype="multipart/form-data">
