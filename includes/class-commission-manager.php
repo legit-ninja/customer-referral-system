@@ -841,6 +841,10 @@ class InterSoccer_Commission_Manager {
         $coach = get_user_by('ID', $coach_id);
         if (!$coach) return;
 
+        $referral_code    = InterSoccer_Referral_Handler::get_coach_referral_code($coach_id);
+        $referral_link    = InterSoccer_Referral_Handler::generate_coach_referral_link($coach_id);
+        $referral_summary = self::get_coach_commission_stats($coach_id);
+
         $subject = sprintf(__('New Commission Earned - Order #%d', 'intersoccer-referral'), $order_id);
 
         $message = sprintf(
@@ -860,6 +864,16 @@ You\'ve earned a new commission:
 Your current tier: %s
 Total credits: %.2f CHF
 
+---
+Your Referral Summary (last 30 days):
+Total Referrals: %d
+Total Earnings: %.2f CHF
+Current Tier: %s
+
+Your Referral Code: %s
+Share this link to earn more: %s
+---
+
 Keep up the excellent work!
 
 Best regards,
@@ -873,7 +887,12 @@ The InterSoccer Team', 'intersoccer-referral'),
             $commission_data['weekend_bonus'],
             $commission_data['total_amount'],
             self::get_coach_tier($coach_id),
-            get_user_meta($coach_id, 'intersoccer_credits', true) ?: 0
+            get_user_meta($coach_id, 'intersoccer_credits', true) ?: 0,
+            $referral_summary['total_referrals'],
+            $referral_summary['total_earnings'],
+            $referral_summary['tier'],
+            $referral_code,
+            $referral_link
         );
 
         wp_mail($coach->user_email, $subject, $message);
@@ -890,6 +909,10 @@ The InterSoccer Team', 'intersoccer-referral'),
         $coach = get_user_by('ID', $coach_id);
         if (!$coach) return;
 
+        $referral_code    = InterSoccer_Referral_Handler::get_coach_referral_code($coach_id);
+        $referral_link    = InterSoccer_Referral_Handler::generate_coach_referral_link($coach_id);
+        $referral_summary = self::get_coach_commission_stats($coach_id);
+
         $subject = sprintf(__('Partnership Commission Earned - Order #%d', 'intersoccer-referral'), $order_id);
 
         $type_label = $type === 'partnership_stacked' ? 'Partnership + Referral Bonus' : 'Partnership';
@@ -897,26 +920,41 @@ The InterSoccer Team', 'intersoccer-referral'),
         $message = sprintf(
             __('Great news %s!
 
-    Your partner made a purchase and you earned:
+Your partner made a purchase and you earned:
 
-    🤝 %s Commission: %.2f CHF
-    🏆 Tier Bonus: %.2f CHF
-    💳 Total Earned: %.2f CHF
+🤝 %s Commission: %.2f CHF
+🏆 Tier Bonus: %.2f CHF
+💳 Total Earned: %.2f CHF
 
-    Your current tier: %s
-    Total credits: %.2f CHF
+Your current tier: %s
+Total credits: %.2f CHF
 
-    Partnership earnings are growing!
+---
+Your Referral Summary (last 30 days):
+Total Referrals: %d
+Total Earnings: %.2f CHF
+Current Tier: %s
 
-    Best regards,
-    The InterSoccer Team', 'intersoccer-referral'),
+Your Referral Code: %s
+Share this link to earn more: %s
+---
+
+Partnership earnings are growing!
+
+Best regards,
+The InterSoccer Team', 'intersoccer-referral'),
             $coach->display_name,
             $type_label,
             $commission_data['base_commission'],
             $commission_data['tier_bonus'],
             $commission_data['total_amount'],
             self::get_coach_tier($coach_id),
-            get_user_meta($coach_id, 'intersoccer_credits', true) ?: 0
+            get_user_meta($coach_id, 'intersoccer_credits', true) ?: 0,
+            $referral_summary['total_referrals'],
+            $referral_summary['total_earnings'],
+            $referral_summary['tier'],
+            $referral_code,
+            $referral_link
         );
 
         wp_mail($coach->user_email, $subject, $message);
