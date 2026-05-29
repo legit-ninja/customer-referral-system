@@ -15,6 +15,11 @@ class ReferralLinkTrackingTest extends TestCase {
         require_once __DIR__ . '/../../includes/class-commission-manager.php';
     }
 
+    private function coachReferralLink(int $coach_id): string {
+        InterSoccer_Referral_Handler::ensure_coach_referral_code($coach_id);
+        return InterSoccer_Referral_Handler::generate_coach_referral_link($coach_id);
+    }
+
     /**
      * Test complete referral link journey: click -> registration -> purchase
      */
@@ -24,7 +29,7 @@ class ReferralLinkTrackingTest extends TestCase {
 
         // Step 1: Coach generates referral link
         $coach_id = 2;
-        $referral_link = InterSoccer_Referral_Handler::generate_coach_referral_link($coach_id);
+        $referral_link = $this->coachReferralLink($coach_id);
 
         // Verify link contains referral code
         $this->assertStringContains('ref=', $referral_link);
@@ -180,7 +185,7 @@ class ReferralLinkTrackingTest extends TestCase {
 
         // Generate referral link with UTM parameters
         $coach_id = 2;
-        $base_link = InterSoccer_Referral_Handler::generate_coach_referral_link($coach_id);
+        $base_link = $this->coachReferralLink($coach_id);
 
         // Add UTM parameters
         $utm_link = $base_link . '&utm_source=facebook&utm_medium=social&utm_campaign=referral_program';
@@ -265,7 +270,7 @@ class ReferralLinkTrackingTest extends TestCase {
         $customer_id = 1;
 
         // Step 1: Link click
-        $referral_link = InterSoccer_Referral_Handler::generate_coach_referral_link($coach_id);
+        $referral_link = $this->coachReferralLink($coach_id);
         $url_parts = parse_url($referral_link);
         parse_str($url_parts['query'], $query_params);
         $referral_code = $query_params['ref'];

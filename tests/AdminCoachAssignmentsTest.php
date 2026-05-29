@@ -273,7 +273,7 @@ class AdminCoachAssignmentsTest extends TestCase {
         $coach_id = 999;
         $assignments = [
             ['coach_id' => 123],
-            ['coach_id' => 456'],
+            ['coach_id' => 456],
         ];
         
         $coach_assignments = array_filter($assignments, fn($a) => $a['coach_id'] === $coach_id);

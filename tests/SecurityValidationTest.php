@@ -278,9 +278,11 @@ class SecurityValidationTest extends TestCase {
     public function testCommandInjectionPrevention() {
         $malicious_input = 'file.txt; rm -rf /';
         $escaped = escapeshellarg($malicious_input);
-        
-        $this->assertStringContainsString("'", $escaped);
-        $this->assertStringNotContainsString(';', $escaped);
+
+        // escapeshellarg wraps the full value in single quotes so metacharacters are literal.
+        $this->assertStringStartsWith("'", $escaped);
+        $this->assertStringEndsWith("'", $escaped);
+        $this->assertNotSame($malicious_input, $escaped);
     }
 
     /**

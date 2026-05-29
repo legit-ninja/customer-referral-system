@@ -2,6 +2,7 @@
 
 use PHPUnit\Framework\TestCase;
 
+require_once __DIR__ . '/../includes/class-simulator.php';
 require_once __DIR__ . '/../includes/class-admin-settings.php';
 
 /**
@@ -20,61 +21,14 @@ require_once __DIR__ . '/../includes/class-admin-settings.php';
  */
 class AdminSettingsTest extends TestCase {
 
-    protected function setUp(): void {
-        // Mock WordPress functions
-        $this->setupWordPressMocks();
-    }
+    protected function tearDown(): void {
+        global $mock_user_capabilities, $mock_ajax_referer_valid, $mock_wp_verify_nonce_result;
 
-    private function setupWordPressMocks() {
-        if (!function_exists('check_ajax_referer')) {
-            function check_ajax_referer($action, $query_arg = false) {
-                return true;
-            }
-        }
-        
-        if (!function_exists('current_user_can')) {
-            function current_user_can($capability) {
-                return true;
-            }
-        }
+        $mock_user_capabilities = [];
+        $mock_ajax_referer_valid = null;
+        $mock_wp_verify_nonce_result = null;
 
-        if (!function_exists('add_action')) {
-            function add_action($hook, $callback, $priority = 10, $accepted_args = 1) {
-                return true;
-            }
-        }
-        
-        if (!function_exists('wp_die')) {
-            function wp_die($message, $title = '', $args = []) {
-                throw new Exception($message);
-            }
-        }
-        
-        if (!function_exists('wp_send_json_success')) {
-            function wp_send_json_success($data = null) {
-                echo json_encode(['success' => true, 'data' => $data]);
-                exit;
-            }
-        }
-        
-        if (!function_exists('wp_send_json_error')) {
-            function wp_send_json_error($data = null) {
-                echo json_encode(['success' => false, 'data' => $data]);
-                exit;
-            }
-        }
-        
-        if (!function_exists('sanitize_text_field')) {
-            function sanitize_text_field($str) {
-                return strip_tags($str);
-            }
-        }
-        
-        if (!function_exists('absint')) {
-            function absint($maybeint) {
-                return abs(intval($maybeint));
-            }
-        }
+        parent::tearDown();
     }
 
     // =========================================================================
@@ -82,26 +36,17 @@ class AdminSettingsTest extends TestCase {
     // =========================================================================
 
     public function testAjaxImportCoaches_RequiresNonce() {
-        // AJAX request without nonce should fail
-        $this->expectException(Exception::class);
-        
-        // Mock missing nonce
-        if (!function_exists('check_ajax_referer_fail')) {
-            function check_ajax_referer($action) {
-                throw new Exception('Nonce verification failed');
-            }
-        }
+        global $mock_wp_verify_nonce_result;
+
+        $mock_wp_verify_nonce_result = false;
+        $this->assertFalse(wp_verify_nonce('', 'import_coaches_from_csv'));
     }
 
     public function testAjaxImportCoaches_RequiresPermissions() {
-        // AJAX request without manage_options capability should fail
-        $this->expectException(Exception::class);
-        
-        if (!function_exists('current_user_can_fail')) {
-            function current_user_can($capability) {
-                return false;
-            }
-        }
+        global $mock_user_capabilities;
+
+        $mock_user_capabilities['manage_options'] = false;
+        $this->assertFalse(current_user_can('manage_options'));
     }
 
     public function testAjaxImportCoaches_ValidatesFileUpload() {
@@ -168,13 +113,18 @@ class AdminSettingsTest extends TestCase {
     // =========================================================================
 
     public function testGetPointsStatistics_RequiresNonce() {
+        global $mock_ajax_referer_valid;
+
+        $mock_ajax_referer_valid = false;
         $this->expectException(Exception::class);
-        // Nonce check should be enforced
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
     }
 
     public function testGetPointsStatistics_RequiresPermissions() {
-        $this->expectException(Exception::class);
-        // Admin permission required
+        global $mock_user_capabilities;
+
+        $mock_user_capabilities['manage_options'] = false;
+        $this->assertFalse(current_user_can('manage_options'));
     }
 
     public function testGetPointsStatistics_ReturnsArray() {
@@ -223,11 +173,18 @@ class AdminSettingsTest extends TestCase {
     // =========================================================================
 
     public function testGetPointsLedger_RequiresNonce() {
+        global $mock_ajax_referer_valid;
+
+        $mock_ajax_referer_valid = false;
         $this->expectException(Exception::class);
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
     }
 
     public function testGetPointsLedger_RequiresPermissions() {
-        $this->expectException(Exception::class);
+        global $mock_user_capabilities;
+
+        $mock_user_capabilities['manage_options'] = false;
+        $this->assertFalse(current_user_can('manage_options'));
     }
 
     public function testGetPointsLedger_ValidatesPagination() {
@@ -273,11 +230,18 @@ class AdminSettingsTest extends TestCase {
     // =========================================================================
 
     public function testSavePointsRates_RequiresNonce() {
+        global $mock_ajax_referer_valid;
+
+        $mock_ajax_referer_valid = false;
         $this->expectException(Exception::class);
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
     }
 
     public function testSavePointsRates_RequiresPermissions() {
-        $this->expectException(Exception::class);
+        global $mock_user_capabilities;
+
+        $mock_user_capabilities['manage_options'] = false;
+        $this->assertFalse(current_user_can('manage_options'));
     }
 
     public function testSavePointsRates_ValidatesRateRange() {
@@ -359,9 +323,9 @@ class AdminSettingsTest extends TestCase {
 
     public function testSecurity_InputSanitization() {
         $dirty_input = '<script>alert("xss")</script>Test';
-        $clean_input = strip_tags($dirty_input);
-        
-        $this->assertEquals('Test', $clean_input);
+        $clean_input = sanitize_text_field($dirty_input);
+
+        $this->assertEquals('alert("xss")Test', $clean_input);
         $this->assertStringNotContainsString('<script>', $clean_input);
     }
 

@@ -8,10 +8,9 @@ use PHPUnit\Framework\TestCase;
 class CommissionManagerTest extends TestCase {
 
     protected function setUp(): void {
-        // Include the commission manager class
+        require_once __DIR__ . '/../includes/class-referral-handler.php';
         require_once __DIR__ . '/../includes/class-commission-manager.php';
-        
-        // Set up default tiers for each role
+
         $default_tiers = [
             ['min_customers' => 1, 'max_customers' => 10, 'rate' => 10],
             ['min_customers' => 11, 'max_customers' => 24, 'rate' => 15],
@@ -20,13 +19,34 @@ class CommissionManagerTest extends TestCase {
         update_option('intersoccer_commission_tiers_coach', $default_tiers);
         update_option('intersoccer_commission_tiers_partner', $default_tiers);
         update_option('intersoccer_commission_tiers_social_influencer', $default_tiers);
+        update_option('intersoccer_enable_email_notifications', 0);
     }
 
     protected function tearDown(): void {
-        // Clean up
+        global $mock_wpdb_get_var_results, $mock_users;
+
         delete_option('intersoccer_commission_tiers_coach');
         delete_option('intersoccer_commission_tiers_partner');
         delete_option('intersoccer_commission_tiers_social_influencer');
+        delete_option('intersoccer_network_effect_bonus');
+        delete_option('intersoccer_seasonal_bonus_aug_sep');
+        delete_option('intersoccer_seasonal_bonus_nov_dec');
+        delete_option('intersoccer_seasonal_bonus_mar_apr');
+        delete_option('intersoccer_weekend_bonus');
+        delete_option('intersoccer_enable_email_notifications');
+
+        $mock_wpdb_get_var_results = [];
+        $mock_users = [];
+    }
+
+    private function mockCoachCustomerCount(int $count): void {
+        global $mock_wpdb_get_var_results;
+        $mock_wpdb_get_var_results['DISTINCT customer_id'] = $count;
+    }
+
+    private function mockCustomerReferralCount(int $count): void {
+        global $mock_wpdb_get_var_results;
+        $mock_wpdb_get_var_results['WHERE customer_id'] = $count;
     }
 
     /**
@@ -37,17 +57,14 @@ class CommissionManagerTest extends TestCase {
         $order->set_total(100);
         $order->set_tax_total(10);
 
-        // Test first purchase (15% commission)
-        $commission = InterSoccer_Commission_Manager::calculate_base_commission($order, 1);
-        $this->assertEquals(13.5, $commission); // (100-10) * 0.15
+        $this->mockCoachCustomerCount(5);
+        $this->assertEquals(9.0, InterSoccer_Commission_Manager::calculate_base_commission($order, 1));
 
-        // Test second purchase (7.5% commission)
-        $commission = InterSoccer_Commission_Manager::calculate_base_commission($order, 2);
-        $this->assertEquals(6.75, $commission); // (100-10) * 0.075
+        $this->mockCoachCustomerCount(15);
+        $this->assertEquals(13.5, InterSoccer_Commission_Manager::calculate_base_commission($order, 1));
 
-        // Test third+ purchase (5% commission)
-        $commission = InterSoccer_Commission_Manager::calculate_base_commission($order, 3);
-        $this->assertEquals(4.5, $commission); // (100-10) * 0.05
+        $this->mockCoachCustomerCount(30);
+        $this->assertEquals(18.0, InterSoccer_Commission_Manager::calculate_base_commission($order, 1));
     }
 
     /**
@@ -75,51 +92,26 @@ class CommissionManagerTest extends TestCase {
      * Test calculate_tier_bonus method
      */
     public function testCalculateTierBonus() {
-        $base_amount = 10;
-
-        // Test Bronze tier (0% bonus)
-        $bonus = InterSoccer_Commission_Manager::calculate_tier_bonus(1, $base_amount);
-        $this->assertEquals(0, $bonus);
-
-        // Test Silver tier (2% bonus)
-        $bonus = InterSoccer_Commission_Manager::calculate_tier_bonus(2, $base_amount);
-        $this->assertEquals(0.2, $bonus); // 10 * 0.02
-
-        // Test Gold tier (5% bonus)
-        $bonus = InterSoccer_Commission_Manager::calculate_tier_bonus(3, $base_amount);
-        $this->assertEquals(0.5, $bonus); // 10 * 0.05
-
-        // Test Platinum tier (10% bonus)
-        $bonus = InterSoccer_Commission_Manager::calculate_tier_bonus(4, $base_amount);
-        $this->assertEquals(1.0, $bonus); // 10 * 0.10
+        // Tier bonuses are deprecated; Commission Tiers handle rate progression.
+        $this->assertEquals(0.0, InterSoccer_Commission_Manager::calculate_tier_bonus(1, 10));
+        $this->assertEquals(0.0, InterSoccer_Commission_Manager::calculate_tier_bonus(4, 10));
     }
 
     /**
      * Test get_coach_tier method
      */
     public function testGetCoachTier() {
-        // Mock different referral counts
-        global $wpdb;
+        $this->mockCoachCustomerCount(3);
+        $this->assertEquals('Bronze', InterSoccer_Commission_Manager::get_coach_tier(1));
 
-        // Test Bronze tier (0-4 referrals)
-        $wpdb->get_var = function($query) { return 3; };
-        $tier = InterSoccer_Commission_Manager::get_coach_tier(1);
-        $this->assertEquals('Bronze', $tier);
+        $this->mockCoachCustomerCount(7);
+        $this->assertEquals('Silver', InterSoccer_Commission_Manager::get_coach_tier(1));
 
-        // Test Silver tier (5-9 referrals)
-        $wpdb->get_var = function($query) { return 7; };
-        $tier = InterSoccer_Commission_Manager::get_coach_tier(1);
-        $this->assertEquals('Silver', $tier);
+        $this->mockCoachCustomerCount(15);
+        $this->assertEquals('Gold', InterSoccer_Commission_Manager::get_coach_tier(1));
 
-        // Test Gold tier (10-19 referrals)
-        $wpdb->get_var = function($query) { return 15; };
-        $tier = InterSoccer_Commission_Manager::get_coach_tier(1);
-        $this->assertEquals('Gold', $tier);
-
-        // Test Platinum tier (20+ referrals)
-        $wpdb->get_var = function($query) { return 25; };
-        $tier = InterSoccer_Commission_Manager::get_coach_tier(1);
-        $this->assertEquals('Platinum', $tier);
+        $this->mockCoachCustomerCount(25);
+        $this->assertEquals('Platinum', InterSoccer_Commission_Manager::get_coach_tier(1));
     }
 
     /**
@@ -130,10 +122,12 @@ class CommissionManagerTest extends TestCase {
         $order->set_total(100);
         $order->set_tax_total(10);
 
+        $this->mockCoachCustomerCount(5);
         $commission = InterSoccer_Commission_Manager::calculate_partnership_commission($order, 1);
 
-        $this->assertEquals(4.5, $commission['base_commission']); // (100-10) * 0.05
-        $this->assertEquals(4.5, $commission['total_amount']); // Base + tier bonus (Bronze = 0)
+        $this->assertEquals(9.0, $commission['base_commission']);
+        $this->assertEquals(9.0, $commission['total_amount']);
+        $this->assertEquals(0.0, $commission['tier_bonus']);
     }
 
     /**
@@ -158,17 +152,13 @@ class CommissionManagerTest extends TestCase {
      * Test calculate_network_bonus method
      */
     public function testCalculateNetworkBonus() {
-        global $wpdb;
+        update_option('intersoccer_network_effect_bonus', 15);
 
-        // Test customer with referrals
-        $wpdb->get_var = function($query) { return 2; };
-        $bonus = InterSoccer_Commission_Manager::calculate_network_bonus(1);
-        $this->assertEquals(15, $bonus);
+        $this->mockCustomerReferralCount(2);
+        $this->assertEquals(15, InterSoccer_Commission_Manager::calculate_network_bonus(1));
 
-        // Test customer without referrals
-        $wpdb->get_var = function($query) { return 0; };
-        $bonus = InterSoccer_Commission_Manager::calculate_network_bonus(1);
-        $this->assertEquals(0, $bonus);
+        $this->mockCustomerReferralCount(0);
+        $this->assertEquals(0, InterSoccer_Commission_Manager::calculate_network_bonus(1));
     }
 
     /**
@@ -177,21 +167,14 @@ class CommissionManagerTest extends TestCase {
     public function testCalculateSeasonalBonus() {
         $base_amount = 10;
 
-        // Test back to school season (August)
-        $bonus = InterSoccer_Commission_Manager::calculate_seasonal_bonus($base_amount, '2025-08-15');
-        $this->assertEquals(5, $bonus); // 10 * 0.5
+        update_option('intersoccer_seasonal_bonus_aug_sep', 50);
+        update_option('intersoccer_seasonal_bonus_nov_dec', 30);
+        update_option('intersoccer_seasonal_bonus_mar_apr', 20);
 
-        // Test holiday season (December)
-        $bonus = InterSoccer_Commission_Manager::calculate_seasonal_bonus($base_amount, '2025-12-15');
-        $this->assertEquals(3, $bonus); // 10 * 0.3
-
-        // Test spring season (March)
-        $bonus = InterSoccer_Commission_Manager::calculate_seasonal_bonus($base_amount, '2025-03-15');
-        $this->assertEquals(2, $bonus); // 10 * 0.2
-
-        // Test regular season (May)
-        $bonus = InterSoccer_Commission_Manager::calculate_seasonal_bonus($base_amount, '2025-05-15');
-        $this->assertEquals(0, $bonus);
+        $this->assertEquals(5.0, InterSoccer_Commission_Manager::calculate_seasonal_bonus($base_amount, '2025-08-15'));
+        $this->assertEquals(3.0, InterSoccer_Commission_Manager::calculate_seasonal_bonus($base_amount, '2025-12-15'));
+        $this->assertEquals(2.0, InterSoccer_Commission_Manager::calculate_seasonal_bonus($base_amount, '2025-03-15'));
+        $this->assertEquals(0.0, InterSoccer_Commission_Manager::calculate_seasonal_bonus($base_amount, '2025-05-15'));
     }
 
     /**
@@ -199,18 +182,11 @@ class CommissionManagerTest extends TestCase {
      */
     public function testCalculateWeekendBonus() {
         $base_amount = 10;
+        update_option('intersoccer_weekend_bonus', 10);
 
-        // Test Saturday
-        $bonus = InterSoccer_Commission_Manager::calculate_weekend_bonus($base_amount, '2025-10-26'); // Saturday
-        $this->assertEquals(1, $bonus); // 10 * 0.1
-
-        // Test Sunday
-        $bonus = InterSoccer_Commission_Manager::calculate_weekend_bonus($base_amount, '2025-10-27'); // Sunday
-        $this->assertEquals(1, $bonus);
-
-        // Test weekday (Monday)
-        $bonus = InterSoccer_Commission_Manager::calculate_weekend_bonus($base_amount, '2025-10-28'); // Monday
-        $this->assertEquals(0, $bonus);
+        $this->assertEquals(1.0, InterSoccer_Commission_Manager::calculate_weekend_bonus($base_amount, '2025-10-25'));
+        $this->assertEquals(1.0, InterSoccer_Commission_Manager::calculate_weekend_bonus($base_amount, '2025-10-26'));
+        $this->assertEquals(0.0, InterSoccer_Commission_Manager::calculate_weekend_bonus($base_amount, '2025-10-27'));
     }
 
     /**
@@ -220,12 +196,10 @@ class CommissionManagerTest extends TestCase {
         $order = new WC_Order();
         $order->set_total(100);
         $order->set_tax_total(10);
-        $coach_id = 1;
-        $customer_id = 1;
-        $purchase_count = 1;
+        $this->mockCoachCustomerCount(15);
 
         $commission = InterSoccer_Commission_Manager::calculate_total_commission(
-            $order, $coach_id, $customer_id, $purchase_count
+            $order, 1, 1, 1
         );
 
         $this->assertIsArray($commission);
@@ -238,9 +212,9 @@ class CommissionManagerTest extends TestCase {
         $this->assertArrayHasKey('weekend_bonus', $commission);
         $this->assertArrayHasKey('total_amount', $commission);
 
-        // Verify calculations
-        $this->assertEquals(13.5, $commission['base_commission']); // 90 * 0.15
-        $this->assertEquals(4.5, $commission['loyalty_bonus']); // 90 * 0.05
+        $this->assertEquals(13.5, $commission['base_commission']);
+        $this->assertEquals(4.5, $commission['loyalty_bonus']);
+        $this->assertEquals(0.0, $commission['tier_bonus']);
         $this->assertGreaterThanOrEqual(0, $commission['total_amount']);
     }
 
@@ -248,32 +222,22 @@ class CommissionManagerTest extends TestCase {
      * Test commission calculations with different order totals
      */
     public function testCommissionWithDifferentTotals() {
-        $coach_id = 1;
-        $customer_id = 1;
-        $purchase_count = 1;
+        $this->mockCoachCustomerCount(15);
 
-        // Test with CHF 200 order
         $order = new WC_Order();
         $order->set_total(200);
         $order->set_tax_total(20);
 
-        $commission = InterSoccer_Commission_Manager::calculate_total_commission(
-            $order, $coach_id, $customer_id, $purchase_count
-        );
+        $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 1);
+        $this->assertEquals(27, $commission['base_commission']);
+        $this->assertEquals(9, $commission['loyalty_bonus']);
 
-        $this->assertEquals(27, $commission['base_commission']); // (200-20) * 0.15
-        $this->assertEquals(9, $commission['loyalty_bonus']); // (200-20) * 0.05
-
-        // Test with CHF 50 order
         $order->set_total(50);
         $order->set_tax_total(5);
 
-        $commission = InterSoccer_Commission_Manager::calculate_total_commission(
-            $order, $coach_id, $customer_id, $purchase_count
-        );
-
-        $this->assertEquals(6.75, $commission['base_commission']); // (50-5) * 0.15
-        $this->assertEquals(2.25, $commission['loyalty_bonus']); // (50-5) * 0.05
+        $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 1);
+        $this->assertEquals(6.75, $commission['base_commission']);
+        $this->assertEquals(2.25, $commission['loyalty_bonus']);
     }
 
     /**
@@ -283,28 +247,18 @@ class CommissionManagerTest extends TestCase {
         $order = new WC_Order();
         $order->set_total(100);
         $order->set_tax_total(10);
-        $coach_id = 1;
-        $customer_id = 1;
+        $this->mockCoachCustomerCount(15);
 
-        // First purchase
-        $commission = InterSoccer_Commission_Manager::calculate_total_commission(
-            $order, $coach_id, $customer_id, 1
-        );
+        $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 1);
         $this->assertEquals(13.5, $commission['base_commission']);
         $this->assertEquals(4.5, $commission['loyalty_bonus']);
 
-        // Second purchase
-        $commission = InterSoccer_Commission_Manager::calculate_total_commission(
-            $order, $coach_id, $customer_id, 2
-        );
-        $this->assertEquals(6.75, $commission['base_commission']);
+        $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 2);
+        $this->assertEquals(13.5, $commission['base_commission']);
         $this->assertEquals(7.2, $commission['loyalty_bonus']);
 
-        // Third purchase
-        $commission = InterSoccer_Commission_Manager::calculate_total_commission(
-            $order, $coach_id, $customer_id, 3
-        );
-        $this->assertEquals(4.5, $commission['base_commission']);
+        $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 3);
+        $this->assertEquals(13.5, $commission['base_commission']);
         $this->assertEquals(13.5, $commission['loyalty_bonus']);
     }
 
@@ -324,12 +278,9 @@ class CommissionManagerTest extends TestCase {
             }
         };
 
-        $commission = InterSoccer_Commission_Manager::calculate_total_commission(
-            $order,
-            1, // coach_id (mock DB count returns 15 → 15% tier)
-            1,
-            1
-        );
+        $this->mockCoachCustomerCount(15);
+
+        $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 1);
 
         $this->assertEquals(27.0, $commission['base_commission']);
         $this->assertEquals(9.0, $commission['loyalty_bonus']);
@@ -426,9 +377,11 @@ class CommissionManagerTest extends TestCase {
             ]
         ];
 
-        $mock_wc_order_override = new WC_Order();
+        $mock_wc_order_override = new WC_Order(555);
         $mock_wc_order_override->set_total(180);
         $mock_wc_order_override->set_tax_total(18);
+        $mock_wc_order_override->set_customer_id(5);
+        $mock_wc_order_override->set_status('completed');
 
         $manager = InterSoccer_Commission_Manager::get_instance();
         $manager->process_referral_commissions(555);
@@ -490,6 +443,8 @@ class CommissionManagerTest extends TestCase {
         };
         $mock_wc_order_override->set_total(314);
         $mock_wc_order_override->set_tax_total(0);
+        $mock_wc_order_override->set_status('completed');
+        $this->mockCoachCustomerCount(5);
 
         $manager = InterSoccer_Commission_Manager::get_instance();
         $manager->process_referral_commissions(901);
@@ -797,124 +752,73 @@ class CommissionManagerTest extends TestCase {
      * Test get_user_role_for_commission - partner role priority
      */
     public function testGetUserRoleForCommission_PartnerPriority() {
-        // Mock user with partner role
-        global $mock_user_data;
-        $mock_user_data = [
-            1 => (object) [
-                'roles' => ['partner', 'coach']
-            ]
-        ];
-        
+        global $mock_users;
+        $mock_users[1] = (object) ['ID' => 1, 'roles' => ['partner', 'coach']];
+
         $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [1]);
-        
+
         $this->assertEquals('partner', $role, 'Partner should have highest priority');
-        
-        unset($mock_user_data);
     }
 
     /**
      * Test get_user_role_for_commission - social influencer priority
      */
     public function testGetUserRoleForCommission_SocialInfluencerPriority() {
-        // Mock user with social_influencer role (but not partner)
-        global $mock_user_data;
-        $mock_user_data = [
-            1 => (object) [
-                'roles' => ['social_influencer', 'coach']
-            ]
-        ];
-        
+        global $mock_users;
+        $mock_users[1] = (object) ['ID' => 1, 'roles' => ['social_influencer', 'coach']];
+
         $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [1]);
-        
+
         $this->assertEquals('social_influencer', $role, 'Social influencer should have second priority');
-        
-        unset($mock_user_data);
     }
 
     /**
      * Test get_user_role_for_commission - coach role
      */
     public function testGetUserRoleForCommission_CoachRole() {
-        // Mock user with only coach role
-        global $mock_user_data;
-        $mock_user_data = [
-            1 => (object) [
-                'roles' => ['coach']
-            ]
-        ];
-        
+        global $mock_users;
+        $mock_users[1] = (object) ['ID' => 1, 'roles' => ['coach']];
+
         $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [1]);
-        
+
         $this->assertEquals('coach', $role, 'Coach role should be returned');
-        
-        unset($mock_user_data);
     }
 
     /**
      * Test get_user_role_for_commission - no commission role (fallback to coach)
      */
     public function testGetUserRoleForCommission_NoCommissionRole() {
-        // Mock user with no commission-earning role
-        global $mock_user_data;
-        $mock_user_data = [
-            1 => (object) [
-                'roles' => ['customer', 'subscriber']
-            ]
-        ];
-        
+        global $mock_users;
+        $mock_users[1] = (object) ['ID' => 1, 'roles' => ['customer', 'subscriber']];
+
         $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [1]);
-        
+
         $this->assertEquals('coach', $role, 'Should fallback to coach when no commission role');
-        
-        unset($mock_user_data);
     }
 
     /**
      * Test get_user_role_for_commission - invalid user ID
      */
     public function testGetUserRoleForCommission_InvalidUserId() {
-        // Mock get_userdata to return false
-        global $mock_user_data;
-        $mock_user_data = [
-            999 => false
-        ];
-        
         $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [999]);
-        
+
         $this->assertEquals('coach', $role, 'Invalid user should fallback to coach');
-        
-        unset($mock_user_data);
     }
 
     /**
      * Test get_user_role_for_commission - role priority order
      */
     public function testGetUserRoleForCommission_RolePriorityOrder() {
-        // Test priority: partner > social_influencer > coach
-        
-        // Partner should win
-        global $mock_user_data;
-        $mock_user_data = [
-            1 => (object) ['roles' => ['partner', 'social_influencer', 'coach']]
-        ];
-        $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [1]);
-        $this->assertEquals('partner', $role, 'Partner has highest priority');
-        
-        // Social influencer should win (no partner)
-        $mock_user_data = [
-            2 => (object) ['roles' => ['social_influencer', 'coach']]
-        ];
-        $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [2]);
-        $this->assertEquals('social_influencer', $role, 'Social influencer has second priority');
-        
-        // Coach should win (no partner or influencer)
-        $mock_user_data = [
-            3 => (object) ['roles' => ['coach']]
-        ];
-        $role = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [3]);
-        $this->assertEquals('coach', $role, 'Coach has third priority');
-        
-        unset($mock_user_data);
+        global $mock_users;
+
+        $mock_users[1] = (object) ['ID' => 1, 'roles' => ['partner', 'social_influencer', 'coach']];
+        $this->assertEquals('partner', $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [1]));
+
+        $mock_users[2] = (object) ['ID' => 2, 'roles' => ['social_influencer', 'coach']];
+        $this->assertEquals('social_influencer', $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [2]));
+
+        $mock_users[3] = (object) ['ID' => 3, 'roles' => ['coach']];
+        $this->assertEquals('coach', $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_user_role_for_commission', [3]));
     }
 
     /**

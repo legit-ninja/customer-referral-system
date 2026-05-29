@@ -413,7 +413,10 @@ class UserRolesEnhancementTest extends TestCase {
         
         foreach ($content_caps as $cap) {
             $this->assertIsString($cap);
-            $this->assertStringContainsString('create', $cap);
+            $this->assertTrue(
+                str_contains($cap, 'create') || str_contains($cap, 'upload'),
+                "Capability {$cap} should relate to content creation"
+            );
         }
     }
 

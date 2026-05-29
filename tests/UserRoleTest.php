@@ -8,8 +8,51 @@ use PHPUnit\Framework\TestCase;
 class UserRoleTest extends TestCase {
 
     protected function setUp(): void {
-        // Include the main plugin file for role definitions
-        require_once __DIR__ . '/../customer-referral-system.php';
+        $this->ensureCommissionRolesRegistered();
+    }
+
+    private function ensureCommissionRolesRegistered(): void {
+        $role_caps = [
+            'coach' => [
+                'read' => true,
+                'view_referral_dashboard' => true,
+                'manage_referrals' => true,
+                'view_coach_reports' => true,
+            ],
+            'content_creator' => [
+                'read' => true,
+                'view_referral_dashboard' => true,
+                'create_content' => true,
+                'edit_own_content' => true,
+                'manage_content_referrals' => true,
+            ],
+            'partner' => [
+                'read' => true,
+                'view_referral_dashboard' => true,
+                'manage_partnerships' => true,
+                'view_partner_reports' => true,
+                'manage_partner_referrals' => true,
+            ],
+        ];
+
+        foreach ($role_caps as $role_name => $capabilities) {
+            $role = get_role($role_name);
+            if (!$role) {
+                add_role($role_name, ucwords(str_replace('_', ' ', $role_name)), $capabilities);
+                continue;
+            }
+
+            foreach ($capabilities as $capability => $granted) {
+                $role->add_cap($capability, $granted);
+            }
+        }
+
+        $admin_role = get_role('administrator');
+        if ($admin_role) {
+            foreach (['view_referral_dashboard', 'manage_referrals', 'view_coach_reports', 'manage_coach_system'] as $capability) {
+                $admin_role->add_cap($capability, true);
+            }
+        }
     }
 
     /**

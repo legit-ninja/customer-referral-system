@@ -15,6 +15,11 @@ class MultiTouchAttributionTest extends TestCase {
         require_once __DIR__ . '/../../includes/class-commission-manager.php';
     }
 
+    private function coachReferralLink(int $coach_id): string {
+        InterSoccer_Referral_Handler::ensure_coach_referral_code($coach_id);
+        return $this->coachReferralLink($coach_id);
+    }
+
     /**
      * Test customer journey with multiple referral sources
      */
@@ -26,7 +31,7 @@ class MultiTouchAttributionTest extends TestCase {
 
         // Touchpoint 1: Coach A referral link (first touch)
         $coach_a_id = 2;
-        $coach_a_link = InterSoccer_Referral_Handler::generate_coach_referral_link($coach_a_id);
+        $coach_a_link = $this->coachReferralLink($coach_a_id);
         $this->simulateLinkClick($coach_a_link, 'session_1');
 
         // Touchpoint 2: Customer B referral link (second touch)
@@ -36,7 +41,7 @@ class MultiTouchAttributionTest extends TestCase {
 
         // Touchpoint 3: Coach C referral link (third touch - last touch)
         $coach_c_id = 4;
-        $coach_c_link = InterSoccer_Referral_Handler::generate_coach_referral_link($coach_c_id);
+        $coach_c_link = $this->coachReferralLink($coach_c_id);
         $this->simulateLinkClick($coach_c_link, 'session_3');
 
         // Customer makes purchase
@@ -75,7 +80,7 @@ class MultiTouchAttributionTest extends TestCase {
 
         foreach ($scenarios as $scenario) {
             if ($scenario['type'] === 'coach') {
-                $link = InterSoccer_Referral_Handler::generate_coach_referral_link($scenario['id']);
+                $link = $this->coachReferralLink($scenario['id']);
             } else {
                 $link = InterSoccer_Referral_Handler::generate_customer_referral_link($scenario['id']);
             }
@@ -156,7 +161,7 @@ class MultiTouchAttributionTest extends TestCase {
         $coach_id = 2;
 
         // Initial referral click
-        $referral_link = InterSoccer_Referral_Handler::generate_coach_referral_link($coach_id);
+        $referral_link = $this->coachReferralLink($coach_id);
         $this->simulateLinkClick($referral_link, 'abandoned_cart_test');
 
         // Customer abandons cart, returns later
@@ -191,17 +196,17 @@ class MultiTouchAttributionTest extends TestCase {
 
         // Channel 1: Organic referral link
         $coach_1_id = 2;
-        $organic_link = InterSoccer_Referral_Handler::generate_coach_referral_link($coach_1_id) . '&utm_source=organic';
+        $organic_link = $this->coachReferralLink($coach_1_id) . '&utm_source=organic';
         $this->simulateLinkClick($organic_link, 'channel_1');
 
         // Channel 2: Social media referral link
         $coach_2_id = 3;
-        $social_link = InterSoccer_Referral_Handler::generate_coach_referral_link($coach_2_id) . '&utm_source=facebook&utm_medium=social';
+        $social_link = $this->coachReferralLink($coach_2_id) . '&utm_source=facebook&utm_medium=social';
         $this->simulateLinkClick($social_link, 'channel_2');
 
         // Channel 3: Email referral link
         $coach_3_id = 4;
-        $email_link = InterSoccer_Referral_Handler::generate_coach_referral_link($coach_3_id) . '&utm_source=email&utm_campaign=newsletter';
+        $email_link = $this->coachReferralLink($coach_3_id) . '&utm_source=email&utm_campaign=newsletter';
         $this->simulateLinkClick($email_link, 'channel_3');
 
         // Customer converts
@@ -263,8 +268,8 @@ class MultiTouchAttributionTest extends TestCase {
         $coach_b_id = 3;
 
         // Both coaches send referral links
-        $link_a = InterSoccer_Referral_Handler::generate_coach_referral_link($coach_a_id);
-        $link_b = InterSoccer_Referral_Handler::generate_coach_referral_link($coach_b_id);
+        $link_a = $this->coachReferralLink($coach_a_id);
+        $link_b = $this->coachReferralLink($coach_b_id);
 
         // Customer clicks both (last one wins)
         $this->simulateLinkClick($link_a, 'conflict_1');
@@ -290,7 +295,7 @@ class MultiTouchAttributionTest extends TestCase {
         $coach_id = 2;
 
         // Set up referral
-        $referral_link = InterSoccer_Referral_Handler::generate_coach_referral_link($coach_id);
+        $referral_link = $this->coachReferralLink($coach_id);
         $this->simulateLinkClick($referral_link, 'integrity_test');
 
         // Process multiple orders

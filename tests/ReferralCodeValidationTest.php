@@ -80,19 +80,29 @@ class ReferralCodeValidationTest extends TestCase {
     }
 
     /**
-     * Test retrieval of coach referral code generates when missing
+     * Test coach referral code is not generated until explicitly requested.
      */
-    public function testGetCoachReferralCodeGeneratesWhenMissing() {
+    public function testGetCoachReferralCodeDoesNotLazyGenerate() {
         $coach_id = 321;
 
         update_user_meta($coach_id, 'referral_code', '');
 
-        $generated_code = InterSoccer_Referral_Handler::get_coach_referral_code($coach_id);
+        $this->assertSame('', InterSoccer_Referral_Handler::get_coach_referral_code($coach_id));
+    }
 
-        $this->assertNotEmpty($generated_code, 'Referral code should be generated when missing.');
+    /**
+     * Test explicit ensure generates and persists a coach referral code.
+     */
+    public function testEnsureCoachReferralCodeGeneratesWhenMissing() {
+        $coach_id = 322;
+
+        update_user_meta($coach_id, 'referral_code', '');
+
+        $generated_code = InterSoccer_Referral_Handler::ensure_coach_referral_code($coach_id);
+
+        $this->assertNotEmpty($generated_code, 'Referral code should be generated when ensure is called.');
         $this->assertStringStartsWith('COACH' . $coach_id, strtoupper($generated_code));
 
-        // Subsequent calls should return the same code
         $second_call_code = InterSoccer_Referral_Handler::get_coach_referral_code($coach_id);
         $this->assertEquals($generated_code, $second_call_code);
     }

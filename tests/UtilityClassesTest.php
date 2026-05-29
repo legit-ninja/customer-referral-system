@@ -77,6 +77,15 @@ class UtilityClassesTest extends TestCase {
         }
     }
 
+    protected function tearDown(): void {
+        $reflection = new ReflectionClass('InterSoccer_Import_Logger');
+        $property = $reflection->getProperty('log_file');
+        $property->setAccessible(true);
+        $property->setValue(null);
+
+        parent::tearDown();
+    }
+
     // =========================================================================
     // BATCH PARAM VALIDATION TESTS (12 tests)
     // =========================================================================
@@ -651,79 +660,39 @@ class UtilityClassesTest extends TestCase {
     // =========================================================================
 
     public function testDatabaseOptimizer_CreateIndexes_NoException() {
-        // Mock global $wpdb
-        global $wpdb;
-        $wpdb = $this->createMock(stdClass::class);
-        $wpdb->usermeta = 'wp_usermeta';
-        $wpdb->posts = 'wp_posts';
-        $wpdb->method('query')->willReturn(true);
-        
-        // Should not throw exception
         InterSoccer_Database_Optimizer::create_indexes();
         $this->assertTrue(true, 'create_indexes should complete without error');
     }
 
     public function testDatabaseOptimizer_AnalyzeQueryPerformance_ReturnsArray() {
-        // Mock global $wpdb
-        global $wpdb;
-        $wpdb = $this->createMock(stdClass::class);
-        $wpdb->usermeta = 'wp_usermeta';
-        $wpdb->posts = 'wp_posts';
-        $wpdb->method('get_results')->willReturn([]);
-        
         $performance = InterSoccer_Database_Optimizer::analyze_query_performance();
         $this->assertIsArray($performance);
     }
 
     public function testDatabaseOptimizer_AnalyzeQueryPerformance_HasCustomerQueryTime() {
-        global $wpdb;
-        $wpdb = $this->createMock(stdClass::class);
-        $wpdb->usermeta = 'wp_usermeta';
-        $wpdb->posts = 'wp_posts';
-        $wpdb->method('get_results')->willReturn([]);
-        
         $performance = InterSoccer_Database_Optimizer::analyze_query_performance();
         $this->assertArrayHasKey('customer_query_time', $performance);
         $this->assertStringContainsString('ms', $performance['customer_query_time']);
     }
 
     public function testDatabaseOptimizer_AnalyzeQueryPerformance_HasOrderQueryTime() {
-        global $wpdb;
-        $wpdb = $this->createMock(stdClass::class);
-        $wpdb->usermeta = 'wp_usermeta';
-        $wpdb->posts = 'wp_posts';
-        $wpdb->method('get_results')->willReturn([]);
-        
         $performance = InterSoccer_Database_Optimizer::analyze_query_performance();
         $this->assertArrayHasKey('order_query_time', $performance);
         $this->assertStringContainsString('ms', $performance['order_query_time']);
     }
 
     public function testDatabaseOptimizer_AnalyzeQueryPerformance_HasPerformanceRating() {
-        global $wpdb;
-        $wpdb = $this->createMock(stdClass::class);
-        $wpdb->usermeta = 'wp_usermeta';
-        $wpdb->posts = 'wp_posts';
-        $wpdb->method('get_results')->willReturn([]);
-        
         $performance = InterSoccer_Database_Optimizer::analyze_query_performance();
         $this->assertArrayHasKey('performance_rating', $performance);
         $this->assertContains($performance['performance_rating'], ['Good', 'Moderate', 'Poor', 'Bad']);
     }
 
     public function testDatabaseOptimizer_AnalyzeQueryPerformance_TimingIsNumeric() {
-        global $wpdb;
-        $wpdb = $this->createMock(stdClass::class);
-        $wpdb->usermeta = 'wp_usermeta';
-        $wpdb->posts = 'wp_posts';
-        $wpdb->method('get_results')->willReturn([]);
-        
         $performance = InterSoccer_Database_Optimizer::analyze_query_performance();
-        
-        // Extract numeric value from "X.XXms" format
+
         $customer_time = floatval($performance['customer_query_time']);
         $order_time = floatval($performance['order_query_time']);
-        
+
         $this->assertIsNumeric($customer_time);
         $this->assertIsNumeric($order_time);
         $this->assertGreaterThanOrEqual(0, $customer_time);
@@ -731,17 +700,13 @@ class UtilityClassesTest extends TestCase {
     }
 
     public function testDatabaseOptimizer_CreateIndexes_CallsQueryMethod() {
-        global $wpdb;
-        $wpdb = $this->createMock(stdClass::class);
-        $wpdb->usermeta = 'wp_usermeta';
-        $wpdb->posts = 'wp_posts';
-        
-        // Expect query to be called (at least once for index creation)
-        $wpdb->expects($this->atLeastOnce())
-            ->method('query')
-            ->willReturn(true);
-        
+        global $wpdb, $mock_wpdb_last_query;
+
+        $mock_wpdb_last_query = null;
         InterSoccer_Database_Optimizer::create_indexes();
+
+        $this->assertIsString($mock_wpdb_last_query);
+        $this->assertStringContainsString('CREATE INDEX', $mock_wpdb_last_query);
     }
 }
 

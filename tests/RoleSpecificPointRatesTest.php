@@ -411,7 +411,8 @@ class RoleSpecificPointRatesTest extends TestCase {
         
         $this->assertStringContainsString('CHF spent', $help_text);
         $this->assertStringContainsString('1 point earned', $help_text);
-        $this->assertStringContainsString('example', strtolower($help_text));
+        $this->assertStringContainsString('e.g.', $help_text);
+        $this->assertStringContainsString('10', $help_text);
     }
 
     /**

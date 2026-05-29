@@ -1099,7 +1099,7 @@ The InterSoccer Team', 'intersoccer-referral'),
         global $wpdb;
         $credits_table = $wpdb->prefix . 'intersoccer_referral_credits';
 
-        if (isset($wpdb->delete) && is_callable($wpdb->delete)) {
+        if (method_exists($wpdb, 'delete')) {
             $wpdb->delete($credits_table, ['referral_id' => $referral_id]);
         }
 

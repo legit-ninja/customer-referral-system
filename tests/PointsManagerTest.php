@@ -13,6 +13,7 @@ class PointsManagerTest extends TestCase {
         update_option('intersoccer_points_allocation_mode', 'ratio');
         update_option('intersoccer_points_percentage_rate', 0);
         update_option('intersoccer_points_allocation_method', 'instant');
+        $this->resetPointsTestState();
     }
 
     protected function tearDown(): void {
@@ -20,7 +21,30 @@ class PointsManagerTest extends TestCase {
         update_option('intersoccer_points_percentage_rate', 0);
         update_option('intersoccer_points_allocation_method', 'instant');
         delete_transient('intersoccer_queued_points_orders');
+        $this->resetPointsTestState();
         parent::tearDown();
+    }
+
+    private function resetPointsTestState(): void {
+        global $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_customer_spent, $mock_session;
+
+        $mock_points_balances = [];
+        $mock_order_points_allocated = [];
+        $mock_points_log_rows = [];
+        $mock_wc_orders_by_id = [];
+        $mock_wc_get_orders = null;
+        $mock_user_roles = [];
+        $mock_customer_spent = [];
+        $mock_session = [];
+    }
+
+    private function registerWcOrder(WC_Order $order, int $order_id = 123): WC_Order {
+        global $mock_wc_orders_by_id;
+
+        $order->set_id($order_id);
+        $mock_wc_orders_by_id[$order_id] = $order;
+
+        return $order;
     }
 
     /**
@@ -150,8 +174,7 @@ class PointsManagerTest extends TestCase {
     public function testAllocatePointsForOrder() {
         $points_manager = new InterSoccer_Points_Manager();
 
-        // Mock order
-        $order = new WC_Order();
+        $order = $this->registerWcOrder(new WC_Order(), 123);
         $order->set_total(100); // 100 CHF order
 
         // Test points allocation
@@ -168,8 +191,7 @@ class PointsManagerTest extends TestCase {
     public function testDeductPointsForRefund() {
         $points_manager = new InterSoccer_Points_Manager();
 
-        // First allocate points
-        $order = new WC_Order();
+        $order = $this->registerWcOrder(new WC_Order(), 123);
         $order->set_total(50); // 50 CHF = 5 points
         $points_manager->allocate_points_for_order(123);
 
@@ -255,22 +277,15 @@ class PointsManagerTest extends TestCase {
     public function testCanRedeemPoints() {
         $points_manager = new InterSoccer_Points_Manager();
 
-        // Add points to user
         $points_manager->add_points_transaction(1, 'test', 50, null, 'Test points');
 
-        // Mock customer total spent
-        global $mock_customer_spent;
-        $mock_customer_spent = [1 => 1000]; // 1000 CHF spent
-
-        // Test valid redemption (50 points = 50 CHF, max allowed = min(100, 1000/10) = 100)
         $can_redeem = $points_manager->can_redeem_points(1, 50);
         $this->assertTrue($can_redeem);
 
-        // Test invalid redemption (150 points = 150 CHF > 100 CHF limit)
+        // Exceeds available balance
         $can_redeem = $points_manager->can_redeem_points(1, 150);
         $this->assertFalse($can_redeem);
 
-        // Test insufficient balance
         $can_redeem = $points_manager->can_redeem_points(1, 100);
         $this->assertFalse($can_redeem);
     }
@@ -281,15 +296,13 @@ class PointsManagerTest extends TestCase {
     public function testGetMaxRedeemablePoints() {
         $points_manager = new InterSoccer_Points_Manager();
 
-        // Mock customer with 2000 CHF spent (max discount = 100 CHF = 100 points)
-        global $mock_customer_spent;
-        $mock_customer_spent = [1 => 2000];
-
-        // Add 150 points to balance
         $points_manager->add_points_transaction(1, 'test', 150, null, 'Test points');
 
         $max_redeemable = $points_manager->get_max_redeemable_points(1);
-        $this->assertEquals(100, $max_redeemable); // Limited by spending, not balance
+        $this->assertEquals(150, $max_redeemable);
+
+        $max_redeemable_for_cart = $points_manager->get_max_redeemable_points(1, 100.0);
+        $this->assertEquals(100, $max_redeemable_for_cart);
     }
 
     /**
@@ -298,21 +311,21 @@ class PointsManagerTest extends TestCase {
     public function testGetRedemptionSummary() {
         $points_manager = new InterSoccer_Points_Manager();
 
-        // Mock customer with 500 CHF spent (max discount = 50 CHF = 50 points)
         global $mock_customer_spent;
         $mock_customer_spent = [1 => 500];
 
-        // Add 30 points to balance
         $points_manager->add_points_transaction(1, 'test', 30, null, 'Test points');
 
         $summary = $points_manager->get_redemption_summary(1);
 
         $this->assertEquals(500, $summary['total_spent']);
-        $this->assertEquals(50, $summary['max_discount']);
-        $this->assertEquals(50, $summary['max_points']);
         $this->assertEquals(30, $summary['current_balance']);
-        $this->assertEquals(30, $summary['available_points']); // Limited by balance
+        $this->assertEquals(30, $summary['available_points']);
         $this->assertEquals(30, $summary['available_discount']);
+
+        $summary_with_cart = $points_manager->get_redemption_summary(1, 20.0);
+        $this->assertEquals(20, $summary_with_cart['available_points']);
+        $this->assertTrue($summary_with_cart['can_fully_cover']);
     }
 
     /**
@@ -321,17 +334,14 @@ class PointsManagerTest extends TestCase {
     public function testProcessPointsRedemption() {
         $points_manager = new InterSoccer_Points_Manager();
 
-        // Add points to user
         $points_manager->add_points_transaction(1, 'test', 20, null, 'Test points');
 
-        // Mock order and session
-        $order = new WC_Order();
+        $order = $this->registerWcOrder(new WC_Order(), 123);
         $order->set_total(100);
 
         global $mock_session;
         $mock_session = ['intersoccer_points_to_redeem' => 10];
 
-        // Process redemption
         $points_manager->process_points_redemption($order, []);
 
         // Verify points were deducted
@@ -349,8 +359,7 @@ class PointsManagerTest extends TestCase {
     public function testRefundPointsOnCancellation() {
         $points_manager = new InterSoccer_Points_Manager();
 
-        // First redeem some points
-        $order = new WC_Order();
+        $order = $this->registerWcOrder(new WC_Order(), 123);
         $order->set_total(100);
 
         global $mock_session;
@@ -359,7 +368,6 @@ class PointsManagerTest extends TestCase {
         $points_manager->add_points_transaction(1, 'test', 20, null, 'Test points');
         $points_manager->process_points_redemption($order, []);
 
-        // Then cancel the order
         $points_manager->refund_points_on_cancellation(123);
 
         // Verify points were refunded
@@ -507,17 +515,6 @@ class PointsManagerTest extends TestCase {
     }
 
     /**
-     * Test get_points_balance
-     */
-    public function testGetPointsBalance() {
-        $user_id = 123;
-        $balance = 150;
-        
-        $this->assertIsInt($balance);
-        $this->assertGreaterThanOrEqual(0, $balance);
-    }
-
-    /**
      * Test update_user_points_balance
      */
     public function testUpdateUserPointsBalance() {
@@ -544,21 +541,6 @@ class PointsManagerTest extends TestCase {
         $this->assertArrayHasKey('user_id', $transaction);
         $this->assertArrayHasKey('points', $transaction);
         $this->assertArrayHasKey('type', $transaction);
-    }
-
-    /**
-     * Test get_redemption_summary
-     */
-    public function testGetRedemptionSummary() {
-        $summary = [
-            'available_points' => 150,
-            'max_redeemable' => 100,
-            'discount_value' => 100,
-            'can_fully_cover' => false
-        ];
-        
-        $this->assertArrayHasKey('available_points', $summary);
-        $this->assertArrayHasKey('can_fully_cover', $summary);
     }
 
     /**
@@ -719,7 +701,7 @@ class PointsManagerTest extends TestCase {
         $edge_amounts = [0, 1, 9, 10, 99, 100, 9999];
         
         foreach ($edge_amounts as $amount) {
-            $points = floor($amount / 10);
+            $points = (int) floor($amount / 10);
             $this->assertIsInt($points);
             $this->assertGreaterThanOrEqual(0, $points);
         }
