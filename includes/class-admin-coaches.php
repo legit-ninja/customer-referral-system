@@ -34,7 +34,13 @@ class InterSoccer_Admin_Coaches {
                 <div style="background: white; padding: 30px; border-radius: 8px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto;">
                     <h2 style="margin-top: 0;"><?php esc_html_e('Import Coaches from CSV', 'intersoccer-referral'); ?></h2>
                     <p class="description">
-                        <?php esc_html_e('Upload a CSV file containing coach information. Required columns: First Name, Last Name, Email. Optional: referral_code (used as-is if provided).', 'intersoccer-referral'); ?>
+                        <?php esc_html_e('Upload a CSV file containing coach information. Required columns: First Name, Last Name, Email. Optional: referral_code (imported as-is if provided). Enable “Generate missing codes” only when you want the system to create codes for rows without one.', 'intersoccer-referral'); ?>
+                    </p>
+                    <p>
+                        <a href="<?php echo esc_url(InterSoccer_Admin_Settings::get_coach_csv_sample_download_url()); ?>" class="button button-secondary">
+                            <span class="dashicons dashicons-download" style="vertical-align: text-top;"></span>
+                            <?php esc_html_e('Download sample CSV', 'intersoccer-referral'); ?>
+                        </a>
                     </p>
                     
                     <form id="coach-import-form-modal" method="post" enctype="multipart/form-data">
@@ -68,6 +74,20 @@ class InterSoccer_Admin_Coaches {
                                                    name="update_existing" 
                                                    value="1">
                                             <?php esc_html_e('Update existing coaches if they already exist (by email)', 'intersoccer-referral'); ?>
+                                        </label>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">
+                                        <label for="generate_referral_codes_modal"><?php esc_html_e('Generate Missing Codes', 'intersoccer-referral'); ?></label>
+                                    </th>
+                                    <td>
+                                        <label>
+                                            <input type="checkbox"
+                                                   id="generate_referral_codes_modal"
+                                                   name="generate_referral_codes"
+                                                   value="1">
+                                            <?php esc_html_e('Generate referral codes for coaches without a code in the CSV (and without an existing code)', 'intersoccer-referral'); ?>
                                         </label>
                                     </td>
                                 </tr>

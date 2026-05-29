@@ -10,7 +10,7 @@ use PHPUnit\Framework\TestCase;
 class CoachCSVImportTest extends TestCase {
 
     protected function setUp(): void {
-        // Include the admin settings class
+        require_once __DIR__ . '/../includes/class-utils.php';
         require_once __DIR__ . '/../includes/class-admin-settings.php';
     }
 
@@ -136,10 +136,10 @@ class CoachCSVImportTest extends TestCase {
             'First Name' => 'first_name',
             'FIRST NAME' => 'first_name',
             'first name' => 'first_name',
-            'FirstName' => 'firstname', // Note: No space to replace
+            'FirstName' => 'first_name',
             'Email Address' => 'email_address',
-            'E-mail' => 'e-mail',
-            'Phone Number' => 'phone_number'
+            'E-mail' => 'e_mail',
+            'Phone Number' => 'phone_number',
         ];
 
         foreach ($test_cases as $input => $expected) {
@@ -156,7 +156,7 @@ class CoachCSVImportTest extends TestCase {
             ['first_name', 'last_name', 'email'],
             ['FIRST_NAME', 'LAST_NAME', 'EMAIL'],
             ['First_Name', 'Last_Name', 'Email'],
-            ['FiRsT_NaMe', 'LaSt_NaMe', 'EmAiL']
+            ['FIRST name', 'LAST name', 'E-MAIL'],
         ];
 
         foreach ($variations as $header) {
@@ -332,72 +332,17 @@ class CoachCSVImportTest extends TestCase {
     // ============================================================
 
     /**
-     * Helper: Normalize column name
+     * Helper: Normalize column name (shared with production import).
      */
     private function normalizeColumnName($col) {
-        return strtolower(str_replace(' ', '_', trim($col)));
+        return intersoccer_normalize_coach_csv_header($col);
     }
 
     /**
-     * Helper: Get column mapping
+     * Helper: Get column mapping (shared with production import).
      */
     private function getColumnMapping($header) {
-        // Normalize headers
-        $normalized_header = array_map(function($col) {
-            return strtolower(str_replace(' ', '_', trim($col)));
-        }, $header);
-
-        // Column mapping (same as in class-admin-settings.php)
-        $column_mapping = [
-            'first_name' => 'first_name',
-            'firstname' => 'first_name',
-            'given_name' => 'first_name',
-            'forename' => 'first_name',
-            'name' => 'first_name',
-            
-            'last_name' => 'last_name',
-            'lastname' => 'last_name',
-            'surname' => 'last_name',
-            'family_name' => 'last_name',
-            
-            'email' => 'email',
-            'e-mail' => 'email',
-            'email_address' => 'email',
-            'mail' => 'email',
-            
-            'phone' => 'phone',
-            'telephone' => 'phone',
-            'phone_number' => 'phone',
-            'mobile' => 'phone',
-            
-            'specialization' => 'specialization',
-            'specialty' => 'specialization',
-            'focus' => 'specialization',
-            
-            'location' => 'location',
-            'city' => 'location',
-            'region' => 'location',
-            
-            'experience_years' => 'experience_years',
-            'experience' => 'experience_years',
-            'years_experience' => 'experience_years',
-            
-            'bio' => 'bio',
-            'biography' => 'bio',
-            'description' => 'bio',
-            'about' => 'bio'
-        ];
-
-        // Map headers to standard field names
-        $field_map = [];
-        foreach ($normalized_header as $index => $norm_col) {
-            if (isset($column_mapping[$norm_col])) {
-                $standard_name = $column_mapping[$norm_col];
-                $field_map[$standard_name] = $index;
-            }
-        }
-
-        return $field_map;
+        return intersoccer_map_coach_csv_headers($header);
     }
 
     /**

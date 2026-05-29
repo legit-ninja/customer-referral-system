@@ -38,12 +38,7 @@ class InterSoccer_Coach_Admin_Dashboard {
     }
 
     public static function generate_coach_referral_link($coach_id) {
-        $code = get_user_meta($coach_id, 'referral_code', true);
-        if (!$code) {
-            $code = 'coach_' . $coach_id . '_' . wp_generate_password(6, false);
-            update_user_meta($coach_id, 'referral_code', $code);
-        }
-        return home_url('/?ref=' . $code);
+        return InterSoccer_Referral_Handler::generate_coach_referral_link($coach_id);
     }
     
     /**

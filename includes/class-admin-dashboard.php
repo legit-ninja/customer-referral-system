@@ -39,6 +39,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         add_action('admin_init', [$this, 'handle_settings']);
         add_action('admin_post_import_coaches_from_csv', [$this->settings, 'import_coaches_from_csv']);
         add_action('admin_post_nopriv_import_coaches_from_csv', [$this->settings, 'import_coaches_from_csv']);
+        add_action('admin_post_download_coach_csv_sample', [$this->settings, 'download_coach_csv_sample']);
         add_action('wp_ajax_start_points_migration', [$this, 'start_points_migration']);
         add_action('wp_ajax_get_migration_progress', [$this, 'get_migration_progress']);
         add_action('wp_ajax_cancel_points_migration', [$this, 'cancel_points_migration']);

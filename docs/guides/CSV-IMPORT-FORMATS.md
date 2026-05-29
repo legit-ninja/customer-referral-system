@@ -73,6 +73,12 @@
 - `description`, `Description`
 - `about`, `About`
 
+#### Referral Code (ANY of these):
+- `referral_code`, `Referral Code`, `coach_referral_code`
+- `code` (when used as the coach referral column in import)
+
+Imported values are normalized to uppercase letters, numbers, hyphens, and underscores. Leave blank to skip assignment, or enable **Generate Missing Codes** on import.
+
 ---
 
 ## 📁 SAMPLE CSV FILES
@@ -80,15 +86,15 @@
 ### Format 1: Standard (Recommended)
 **File:** `assets/sample-coaches.csv`
 ```csv
-first_name,last_name,email,phone,specialization,location,experience_years,bio
-Thomas,Mueller,thomas.mueller@example.ch,+41 79 123 4567,Youth Training,Zurich,8,Bio text
+first_name,last_name,email,referral_code,phone,specialization,location,experience_years,bio
+Thomas,Mueller,thomas.mueller@example.ch,COACH-TMUELLER,+41 79 123 4567,Youth Training,Zurich,8,Bio text
 ```
 
 ### Format 2: Capitalized with Spaces
 **File:** `assets/sample-coaches-alternative-format.csv`
 ```csv
-First Name,Last Name,Email,Phone,Specialty,City,Experience
-Thomas,Mueller,thomas.mueller@example.ch,+41 79 123 4567,Youth Training,Zurich,8
+First Name,Last Name,Email,Referral Code,Phone,Specialty,City,Experience
+Thomas,Mueller,thomas.mueller@example.ch,COACH-TMUELLER,+41 79 123 4567,Youth Training,Zurich,8
 ```
 
 ### Format 3: Minimal (Only Required)

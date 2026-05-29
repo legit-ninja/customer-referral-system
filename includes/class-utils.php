@@ -304,11 +304,11 @@ class InterSoccer_Import_Logger {
         $timestamp = current_time('Y-m-d H:i:s');
         $context_str = !empty($context) ? ' | Context: ' . json_encode($context) : '';
         $log_entry = "[{$timestamp}] {$level}: {$message}{$context_str}" . PHP_EOL;
-        
-        // Write to file
-        intersoccer_referral_log($log_entry, 3, self::$log_file);
-        
-        // Also log to WordPress error log for critical errors
+
+        if (self::$log_file) {
+            file_put_contents(self::$log_file, $log_entry, FILE_APPEND | LOCK_EX);
+        }
+
         if ($level === 'ERROR') {
             intersoccer_referral_log("InterSoccer Import Error: {$message}");
         }
@@ -344,7 +344,7 @@ class InterSoccer_Import_Logger {
      */
     public static function get_log_file_path() {
         self::init();
-        return file_exists(self::$log_file) ? self::$log_file : null;
+        return self::$log_file;
     }
     
     /**
@@ -545,5 +545,112 @@ if (!function_exists('intersoccer_referral_get_dashboard_i18n')) {
             'leaderboard_you_badge' => __('You', 'intersoccer-referral'),
             'leaderboard_stats_pattern' => __('%1$s referrals • %2$s CHF', 'intersoccer-referral'),
         ];
+    }
+}
+
+if (!function_exists('intersoccer_normalize_coach_csv_header')) {
+    /**
+     * Normalize a single coach CSV header cell for flexible column mapping.
+     */
+    function intersoccer_normalize_coach_csv_header($column) {
+        $column = trim((string) $column);
+        if ($column === '') {
+            return '';
+        }
+
+        $has_separator = preg_match('/[\s_\-]/', $column) === 1;
+        if (!$has_separator) {
+            $column = preg_replace('/(?<=[a-z])(?=[A-Z])/', '_', $column);
+            $column = preg_replace('/(?<=[A-Z])(?=[A-Z][a-z])/', '_', $column);
+        }
+
+        $column = strtolower($column);
+        $column = preg_replace('/[\s\-]+/u', '_', $column);
+        $column = preg_replace('/_+/', '_', $column);
+
+        return trim($column, '_');
+    }
+}
+
+if (!function_exists('intersoccer_get_coach_csv_column_aliases')) {
+    /**
+     * Map normalized header tokens to standard coach import field names.
+     *
+     * @return array<string, string>
+     */
+    function intersoccer_get_coach_csv_column_aliases() {
+        return [
+            'first_name' => 'first_name',
+            'firstname' => 'first_name',
+            'given_name' => 'first_name',
+            'forename' => 'first_name',
+            'name' => 'first_name',
+
+            'last_name' => 'last_name',
+            'lastname' => 'last_name',
+            'surname' => 'last_name',
+            'family_name' => 'last_name',
+
+            'email' => 'email',
+            'e_mail' => 'email',
+            'e-mail' => 'email',
+            'email_address' => 'email',
+            'e_mail_address' => 'email',
+            'mail' => 'email',
+
+            'phone' => 'phone',
+            'telephone' => 'phone',
+            'phone_number' => 'phone',
+            'mobile' => 'phone',
+
+            'specialization' => 'specialization',
+            'specialty' => 'specialization',
+            'focus' => 'specialization',
+
+            'location' => 'location',
+            'city' => 'location',
+            'region' => 'location',
+
+            'experience_years' => 'experience_years',
+            'experience' => 'experience_years',
+            'years_experience' => 'experience_years',
+
+            'bio' => 'bio',
+            'biography' => 'bio',
+            'description' => 'bio',
+            'about' => 'bio',
+
+            'referral_code' => 'referral_code',
+            'coach_referral_code' => 'referral_code',
+            'code' => 'referral_code',
+        ];
+    }
+}
+
+if (!function_exists('intersoccer_map_coach_csv_headers')) {
+    /**
+     * Build standard field => column index map from raw CSV header row.
+     * Duplicate columns keep the first occurrence only.
+     *
+     * @param array<int, string> $header
+     * @return array<string, int>
+     */
+    function intersoccer_map_coach_csv_headers(array $header) {
+        $aliases = intersoccer_get_coach_csv_column_aliases();
+        $field_map = [];
+
+        foreach ($header as $index => $column) {
+            $normalized = intersoccer_normalize_coach_csv_header($column);
+            if ($normalized === '' || !isset($aliases[$normalized])) {
+                continue;
+            }
+
+            $standard_name = $aliases[$normalized];
+            if (!isset($field_map[$standard_name])) {
+                $field_map[$standard_name] = $index;
+            }
+        }
+
+        return $field_map;
     }
 }

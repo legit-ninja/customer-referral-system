@@ -16,6 +16,7 @@ class InterSoccer_Admin_Settings {
         // Store instance for simulator class to use
         self::$instance = $this;
         add_action('admin_post_import_coaches_from_csv', [$this, 'import_coaches_from_csv']);
+        add_action('admin_post_download_coach_csv_sample', [$this, 'download_coach_csv_sample']);
         add_action('wp_ajax_reset_all_customer_credits', [$this, 'reset_all_customer_credits']);
         add_action('wp_ajax_intersoccer_reset_referral_data', [$this, 'ajax_reset_referral_data']);
         add_action('wp_ajax_intersoccer_backfill_points', [$this, 'ajax_backfill_points']);
@@ -1653,7 +1654,11 @@ class InterSoccer_Admin_Settings {
             <div class="intersoccer-settings-section">
                 <h2><?php esc_html_e('Coach CSV Import', 'intersoccer-referral'); ?></h2>
                 <p class="description">
-                    <?php esc_html_e('Import coaches from a CSV file. The CSV should include columns for First Name, Last Name, and Email at minimum.', 'intersoccer-referral'); ?>
+                    <?php esc_html_e('Import coaches from a CSV file. Required columns: First Name, Last Name, and Email. Optional: referral_code (imported as-is when provided; leave blank to use “Generate Missing Codes” or assign later).', 'intersoccer-referral'); ?>
+                    <a href="<?php echo esc_url(self::get_coach_csv_sample_download_url()); ?>" class="button button-secondary" style="margin-left: 8px; vertical-align: middle;">
+                        <span class="dashicons dashicons-download" style="vertical-align: text-top;"></span>
+                        <?php esc_html_e('Download sample CSV', 'intersoccer-referral'); ?>
+                    </a>
                 </p>
                 
                 <div class="coach-import-container" style="background: #fff; padding: 20px; border: 1px solid #ddd; border-radius: 4px; margin-top: 20px;">
@@ -1673,7 +1678,7 @@ class InterSoccer_Admin_Settings {
                                                accept=".csv"
                                                required>
                                         <p class="description">
-                                            <?php esc_html_e('Select a CSV file containing coach information. Maximum file size: 10MB. Optional column: referral_code (used as-is when provided).', 'intersoccer-referral'); ?>
+                                            <?php esc_html_e('Select a CSV file containing coach information. Maximum file size: 10MB. Optional column: referral_code (imported as-is when provided). Codes are not auto-generated unless you enable the option below.', 'intersoccer-referral'); ?>
                                         </p>
                                     </td>
                                 </tr>
@@ -1688,6 +1693,20 @@ class InterSoccer_Admin_Settings {
                                                    name="update_existing" 
                                                    value="1">
                                             <?php esc_html_e('Update existing coaches if they already exist (by email)', 'intersoccer-referral'); ?>
+                                        </label>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th scope="row">
+                                        <label for="generate_referral_codes"><?php esc_html_e('Generate Missing Codes', 'intersoccer-referral'); ?></label>
+                                    </th>
+                                    <td>
+                                        <label>
+                                            <input type="checkbox"
+                                                   id="generate_referral_codes"
+                                                   name="generate_referral_codes"
+                                                   value="1">
+                                            <?php esc_html_e('Generate referral codes for coaches without a code in the CSV (and without an existing code)', 'intersoccer-referral'); ?>
                                         </label>
                                     </td>
                                 </tr>
@@ -2844,6 +2863,49 @@ class InterSoccer_Admin_Settings {
     }
 
     /**
+     * Admin URL to download the coach import sample CSV.
+     */
+    public static function get_coach_csv_sample_download_url() {
+        return wp_nonce_url(
+            admin_url('admin-post.php?action=download_coach_csv_sample'),
+            'download_coach_csv_sample'
+        );
+    }
+
+    /**
+     * Serve the coach import sample CSV for download.
+     */
+    public function download_coach_csv_sample() {
+        if (!current_user_can('manage_options')) {
+            wp_die(esc_html__('You do not have permission to download this file.', 'intersoccer-referral'));
+        }
+
+        if (
+            empty($_GET['_wpnonce'])
+            || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'download_coach_csv_sample')
+        ) {
+            wp_die(esc_html__('Invalid request.', 'intersoccer-referral'));
+        }
+
+        $file = INTERSOCCER_REFERRAL_PATH . 'assets/sample-coaches.csv';
+        if (!is_readable($file)) {
+            wp_die(esc_html__('Sample file not found.', 'intersoccer-referral'));
+        }
+
+        if (function_exists('nocache_headers')) {
+            nocache_headers();
+        }
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="coach-import-sample.csv"');
+        header('Content-Length: ' . (string) filesize($file));
+
+        // phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_readfile -- streaming a bundled asset
+        readfile($file);
+        exit;
+    }
+
+    /**
      * Handle coach CSV import
      */
     public function import_coaches_from_csv() {
@@ -2916,10 +2978,16 @@ class InterSoccer_Admin_Settings {
 
             $file = $_FILES['coaches_csv']['tmp_name'];
             $update_existing = isset($_POST['update_existing']) && $_POST['update_existing'] == '1';
+            $generate_referral_codes = isset($_POST['generate_referral_codes']) && $_POST['generate_referral_codes'] == '1';
 
-            intersoccer_referral_log('InterSoccer: Coach CSV AJAX import started, update_existing: ' . ($update_existing ? 'yes' : 'no'));
+            intersoccer_referral_log(
+                'InterSoccer: Coach CSV AJAX import started, update_existing: '
+                . ($update_existing ? 'yes' : 'no')
+                . ', generate_referral_codes: '
+                . ($generate_referral_codes ? 'yes' : 'no')
+            );
 
-            $results = $this->process_coach_csv_import($file, $update_existing);
+            $results = $this->process_coach_csv_import($file, $update_existing, $generate_referral_codes);
 
             intersoccer_referral_log('Import completed successfully: ' . print_r($results, true));
             wp_send_json_success($results);
@@ -2934,7 +3002,7 @@ class InterSoccer_Admin_Settings {
     /**
      * Process coach CSV import
      */
-    private function process_coach_csv_import($file_path, $update_existing = false) {
+    private function process_coach_csv_import($file_path, $update_existing = false, $generate_referral_codes = false) {
         if (($handle = fopen($file_path, 'r')) === false) {
             throw new Exception('Could not open uploaded file');
         }
@@ -2973,73 +3041,13 @@ class InterSoccer_Admin_Settings {
             throw new Exception('Could not find valid CSV headers. Check that your CSV has a header row with at least 3 columns (First Name, Last Name, Email). Checked ' . $rows_checked . ' rows.');
         }
 
-        // Normalize headers (lowercase, trim, replace spaces with underscores)
-        $normalized_header = array_map(function($col) {
-            return strtolower(str_replace(' ', '_', trim($col)));
-        }, $header);
+        $normalized_header = array_map('intersoccer_normalize_coach_csv_header', $header);
 
         // Log the headers we found
         intersoccer_referral_log('CSV Headers found: ' . implode(', ', $header));
         intersoccer_referral_log('Normalized headers: ' . implode(', ', $normalized_header));
 
-        // Map common column name variations to standard names
-        $column_mapping = [
-            // First name variations
-            'first_name' => 'first_name',
-            'firstname' => 'first_name',
-            'given_name' => 'first_name',
-            'forename' => 'first_name',
-            'name' => 'first_name', // If only one "name" column, use it as first_name
-            
-            // Last name variations
-            'last_name' => 'last_name',
-            'lastname' => 'last_name',
-            'surname' => 'last_name',
-            'family_name' => 'last_name',
-            
-            // Email variations
-            'email' => 'email',
-            'e-mail' => 'email',
-            'email_address' => 'email',
-            'mail' => 'email',
-            
-            // Optional fields
-            'phone' => 'phone',
-            'telephone' => 'phone',
-            'phone_number' => 'phone',
-            'mobile' => 'phone',
-            
-            'specialization' => 'specialization',
-            'specialty' => 'specialization',
-            'focus' => 'specialization',
-            
-            'location' => 'location',
-            'city' => 'location',
-            'region' => 'location',
-            
-            'experience_years' => 'experience_years',
-            'experience' => 'experience_years',
-            'years_experience' => 'experience_years',
-            
-            'bio' => 'bio',
-            'biography' => 'bio',
-            'description' => 'bio',
-            'about' => 'bio',
-
-            // Referral code variations (optional)
-            'referral_code' => 'referral_code',
-            'coach_referral_code' => 'referral_code',
-            'code' => 'referral_code',
-        ];
-
-        // Map the normalized headers to standard field names
-        $field_map = [];
-        foreach ($normalized_header as $index => $norm_col) {
-            if (isset($column_mapping[$norm_col])) {
-                $standard_name = $column_mapping[$norm_col];
-                $field_map[$standard_name] = $index;
-            }
-        }
+        $field_map = intersoccer_map_coach_csv_headers($header);
 
         // Validate required columns are present
         $required_columns = ['first_name', 'last_name', 'email'];
@@ -3094,7 +3102,7 @@ class InterSoccer_Admin_Settings {
             }
 
             try {
-                $result = $this->create_or_update_coach($coach_data, $update_existing);
+                $result = $this->create_or_update_coach($coach_data, $update_existing, $generate_referral_codes);
                 $coach_info = [
                     'first_name' => $coach_data['first_name'],
                     'last_name' => $coach_data['last_name'],
@@ -3131,9 +3139,23 @@ class InterSoccer_Admin_Settings {
     /**
      * Create or update coach user
      */
-    private function create_or_update_coach($coach_data, $update_existing = false) {
+    private function create_or_update_coach($coach_data, $update_existing = false, $generate_referral_codes = false) {
+        $provided_code = InterSoccer_Referral_Handler::normalize_coach_referral_code($coach_data['referral_code'] ?? '');
+
         // Check if user exists
         $user = get_user_by('email', $coach_data['email']);
+        $exclude_user_id = $user ? (int) $user->ID : 0;
+
+        if ($provided_code !== '') {
+            $conflict_user_id = InterSoccer_Referral_Handler::find_user_id_by_coach_referral_code($provided_code, $exclude_user_id);
+            if ($conflict_user_id) {
+                throw new Exception(sprintf(
+                    'Referral code "%s" is already assigned to another coach (user ID %d)',
+                    $provided_code,
+                    $conflict_user_id
+                ));
+            }
+        }
 
         if (!$user) {
             // Create new user with coach role directly
@@ -3191,94 +3213,18 @@ class InterSoccer_Admin_Settings {
             intersoccer_referral_log('InterSoccer: Coach role not found during import');
         }
 
-        // Save/import referral code when provided; otherwise preserve existing and only generate when missing.
-        $provided_code = $this->normalize_coach_referral_code($coach_data['referral_code'] ?? '');
+        // Save/import referral code when provided; otherwise preserve existing. Generate only when requested.
         if ($provided_code !== '') {
-            $conflict_user_id = $this->find_user_id_by_coach_referral_code($provided_code, $user_id);
-            if ($conflict_user_id) {
-                throw new Exception(sprintf(
-                    'Referral code "%s" is already assigned to another coach (user ID %d)',
-                    $provided_code,
-                    $conflict_user_id
-                ));
-            }
-            update_user_meta($user_id, 'referral_code', $provided_code);
-        } else {
-            $existing_code = $this->normalize_coach_referral_code(get_user_meta($user_id, 'referral_code', true));
-            if (empty($existing_code)) {
-                $generated_code = $this->generate_unique_coach_referral_code($user_id);
-                update_user_meta($user_id, 'referral_code', $generated_code);
+            update_user_meta($user_id, InterSoccer_Referral_Handler::COACH_REFERRAL_CODE_META, $provided_code);
+        } elseif ($generate_referral_codes) {
+            $existing_code = InterSoccer_Referral_Handler::get_coach_referral_code($user_id);
+            if ($existing_code === '') {
+                InterSoccer_Referral_Handler::ensure_coach_referral_code($user_id);
             }
         }
 
-        $effective_code = $this->normalize_coach_referral_code(get_user_meta($user_id, 'referral_code', true));
+        $effective_code = InterSoccer_Referral_Handler::get_coach_referral_code($user_id);
         return ['action' => $action, 'user_id' => $user_id, 'referral_code' => $effective_code];
-    }
-
-    /**
-     * Normalize coach referral code while preserving sequential formats (e.g. COACH000123).
-     *
-     * @param string $code
-     * @return string
-     */
-    private function normalize_coach_referral_code($code) {
-        $normalized = strtoupper(trim((string) $code));
-        $normalized = preg_replace('/[^A-Z0-9_-]/', '', $normalized);
-        return (string) $normalized;
-    }
-
-    /**
-     * Find an existing user by coach referral code.
-     *
-     * @param string $code
-     * @param int    $exclude_user_id
-     * @return int
-     */
-    private function find_user_id_by_coach_referral_code($code, $exclude_user_id = 0) {
-        $normalized = $this->normalize_coach_referral_code($code);
-        if ($normalized === '') {
-            return 0;
-        }
-
-        $users = get_users([
-            'meta_key' => 'referral_code',
-            'meta_value' => $normalized,
-            'fields' => ['ID'],
-            'number' => 2,
-        ]);
-
-        if (empty($users)) {
-            return 0;
-        }
-
-        foreach ($users as $user) {
-            if ((int) $user->ID !== (int) $exclude_user_id) {
-                return (int) $user->ID;
-            }
-        }
-
-        return 0;
-    }
-
-    /**
-     * Generate a coach referral code that does not collide with existing ones.
-     *
-     * @param int $user_id
-     * @return string
-     */
-    private function generate_unique_coach_referral_code($user_id) {
-        $attempts = 0;
-        do {
-            $attempts++;
-            $candidate = 'COACH' . $user_id . strtoupper(str_replace('_', '', wp_generate_password(6, false)));
-            $collision_user_id = $this->find_user_id_by_coach_referral_code($candidate, $user_id);
-        } while ($collision_user_id && $attempts < 10);
-
-        if (!empty($collision_user_id)) {
-            throw new Exception('Could not generate unique coach referral code');
-        }
-
-        return $candidate;
     }
 
     /**
@@ -3292,7 +3238,7 @@ class InterSoccer_Admin_Settings {
             return;
         }
 
-        $current_code = $this->normalize_coach_referral_code(get_user_meta($user->ID, 'referral_code', true));
+        $current_code = InterSoccer_Referral_Handler::get_coach_referral_code($user->ID);
         ?>
         <h2><?php esc_html_e('Coach Referral Settings', 'intersoccer-referral'); ?></h2>
         <table class="form-table" role="presentation">
@@ -3307,7 +3253,7 @@ class InterSoccer_Admin_Settings {
                         class="regular-text"
                     />
                     <p class="description">
-                        <?php esc_html_e('Optional. Leave blank to auto-generate on import/usage. Codes must be unique.', 'intersoccer-referral'); ?>
+                        <?php esc_html_e('Optional. Leave blank until a code is imported or generated (e.g. via “Send referral code”). Codes must be unique.', 'intersoccer-referral'); ?>
                     </p>
                 </td>
             </tr>
@@ -3336,10 +3282,10 @@ class InterSoccer_Admin_Settings {
         }
 
         $raw_code = wp_unslash($_POST['intersoccer_coach_referral_code']);
-        $normalized = $this->normalize_coach_referral_code($raw_code);
+        $normalized = InterSoccer_Referral_Handler::normalize_coach_referral_code($raw_code);
 
         if ($normalized !== '') {
-            $conflict_user_id = $this->find_user_id_by_coach_referral_code($normalized, $user_id);
+            $conflict_user_id = InterSoccer_Referral_Handler::find_user_id_by_coach_referral_code($normalized, $user_id);
             if ($conflict_user_id) {
                 $url = add_query_arg(
                     [
@@ -3354,7 +3300,7 @@ class InterSoccer_Admin_Settings {
             }
         }
 
-        update_user_meta($user_id, 'referral_code', $normalized);
+        update_user_meta($user_id, InterSoccer_Referral_Handler::COACH_REFERRAL_CODE_META, $normalized);
     }
 
     /**

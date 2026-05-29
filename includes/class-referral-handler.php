@@ -32,30 +32,123 @@ class InterSoccer_Referral_Handler {
         return home_url('/?cust_ref=' . $code);
     }
 
-    public static function generate_coach_referral_link($coach_id) {
-        $code = get_user_meta($coach_id, 'referral_code', true);
-        if (!$code) {
-            $code = 'COACH' . $coach_id . strtoupper(str_replace('_', '', wp_generate_password(6, false)));
-            update_user_meta($coach_id, 'referral_code', $code);
-        }
-        return home_url('/?ref=' . $code);
+    /**
+     * User meta key for coach referral codes.
+     */
+    public const COACH_REFERRAL_CODE_META = 'referral_code';
+
+    /**
+     * Normalize coach referral code while preserving sequential formats (e.g. COACH000123).
+     *
+     * @param string $code
+     * @return string
+     */
+    public static function normalize_coach_referral_code($code) {
+        $normalized = strtoupper(trim((string) $code));
+        $normalized = preg_replace('/[^A-Z0-9_-]/', '', $normalized);
+        return (string) $normalized;
     }
 
     /**
-     * Retrieve the coach referral code, generating it if needed
+     * Retrieve the stored coach referral code without generating one.
      *
      * @param int $coach_id
      * @return string
      */
     public static function get_coach_referral_code($coach_id) {
-        $code = get_user_meta($coach_id, 'referral_code', true);
+        return self::normalize_coach_referral_code(
+            get_user_meta((int) $coach_id, self::COACH_REFERRAL_CODE_META, true)
+        );
+    }
 
-        if (!$code) {
-            self::generate_coach_referral_link($coach_id);
-            $code = get_user_meta($coach_id, 'referral_code', true);
+    /**
+     * Find an existing user by coach referral code.
+     *
+     * @param string $code
+     * @param int    $exclude_user_id
+     * @return int
+     */
+    public static function find_user_id_by_coach_referral_code($code, $exclude_user_id = 0) {
+        $normalized = self::normalize_coach_referral_code($code);
+        if ($normalized === '') {
+            return 0;
         }
 
-        return $code ?: '';
+        $users = get_users([
+            'meta_key' => self::COACH_REFERRAL_CODE_META,
+            'meta_value' => $normalized,
+            'fields' => ['ID'],
+            'number' => 2,
+        ]);
+
+        if (empty($users)) {
+            return 0;
+        }
+
+        foreach ($users as $user) {
+            if ((int) $user->ID !== (int) $exclude_user_id) {
+                return (int) $user->ID;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Generate a coach referral code that does not collide with existing ones.
+     *
+     * @param int $user_id
+     * @return string
+     * @throws Exception When a unique code cannot be generated.
+     */
+    public static function generate_unique_coach_referral_code($user_id) {
+        $attempts = 0;
+        do {
+            $attempts++;
+            $candidate = 'COACH' . (int) $user_id . strtoupper(str_replace('_', '', wp_generate_password(6, false)));
+            $collision_user_id = self::find_user_id_by_coach_referral_code($candidate, $user_id);
+        } while ($collision_user_id && $attempts < 10);
+
+        if (!empty($collision_user_id)) {
+            throw new Exception('Could not generate unique coach referral code');
+        }
+
+        return $candidate;
+    }
+
+    /**
+     * Create a coach referral code when missing (explicit request only).
+     *
+     * @param int $coach_id
+     * @return string Normalized referral code (existing or newly generated).
+     * @throws Exception When generation fails.
+     */
+    public static function ensure_coach_referral_code($coach_id) {
+        $coach_id = (int) $coach_id;
+        $existing = self::get_coach_referral_code($coach_id);
+        if ($existing !== '') {
+            return $existing;
+        }
+
+        $generated = self::generate_unique_coach_referral_code($coach_id);
+        update_user_meta($coach_id, self::COACH_REFERRAL_CODE_META, $generated);
+
+        return $generated;
+    }
+
+    /**
+     * Build a referral link from the stored coach code (does not create a code).
+     *
+     * @param int $coach_id
+     * @return string Referral URL, or empty string when no code is assigned.
+     */
+    public static function generate_coach_referral_link($coach_id) {
+        $code = self::get_coach_referral_code($coach_id);
+        if ($code === '') {
+            return '';
+        }
+
+        return home_url('/?ref=' . $code);
     }
 
     /**
@@ -81,7 +174,16 @@ class InterSoccer_Referral_Handler {
             return ['success' => false, 'sent' => false, 'message' => sprintf(__('Coach %s has no valid email.', 'intersoccer-referral'), $coach->display_name)];
         }
 
-        $code = self::get_coach_referral_code($coach_id);
+        try {
+            $code = self::ensure_coach_referral_code($coach_id);
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'sent' => false,
+                'message' => __('Could not generate a referral code for this coach.', 'intersoccer-referral'),
+            ];
+        }
+
         $referral_link = self::generate_coach_referral_link($coach_id);
         $dashboard_url = admin_url('admin.php?page=intersoccer-coach-dashboard');
         $site_name = get_bloginfo('name');
@@ -757,6 +859,10 @@ class InterSoccer_Referral_Handler {
 
         if (defined('COOKIE_DOMAIN') && COOKIE_DOMAIN) {
             $options['domain'] = COOKIE_DOMAIN;
+        }
+
+        if (headers_sent()) {
+            return;
         }
 
         setcookie('intersoccer_referral', $value, $options);
