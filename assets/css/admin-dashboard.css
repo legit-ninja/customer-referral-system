@@ -822,6 +822,67 @@
     margin-right: 4px;
 }
 
+.coach-referrals-monthly-wrap .coach-referrals-period-bar {
+    flex-wrap: wrap;
+}
+
+.coach-referrals-monthly-wrap .period-nav-group {
+    flex: 1 1 auto;
+}
+
+.coach-referrals-monthly-wrap #coach-referrals-month {
+    min-width: 150px;
+}
+
+.coach-referrals-monthly-wrap .period-presets {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.coach-referrals-monthly-wrap .period-presets .preset-sep {
+    color: #c3c4c7;
+}
+
+.coach-referrals-monthly-wrap .export-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.coach-referrals-monthly-wrap .coach-referrals-kpis {
+    margin-top: 0;
+}
+
+.coach-referrals-chart-section,
+.coach-referrals-breakdown-section,
+.coach-referrals-transactions-section {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    margin-bottom: 24px;
+}
+
+.coach-referrals-chart-section h2,
+.coach-referrals-breakdown-section h2,
+.coach-referrals-transactions-section h2 {
+    margin: 0 0 16px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.coach-referrals-chart-section .chart-container {
+    position: relative;
+    height: 280px;
+}
+
+.coach-referrals-transactions-section.intersoccer-referrals-table {
+    padding: 20px;
+}
+
 .intersoccer-referrals-table {
     background: white;
     border-radius: 12px;

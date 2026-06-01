@@ -68,6 +68,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         add_action('wp_ajax_intersoccer_update_referral_eligibility', [$this->referrals, 'ajax_update_referral_eligibility']);
         add_action('wp_ajax_intersoccer_clear_referral_code', [$this, 'clear_referral_code_ajax']);
         add_action('wp_ajax_intersoccer_filter_coach_referrals', [$this->referrals, 'ajax_filter_coach_referrals']);
+        add_action('wp_ajax_intersoccer_get_coach_monthly_report', [$this->referrals, 'ajax_get_coach_monthly_report']);
         add_action('admin_post_intersoccer_delete_referral', [$this->referrals, 'handle_delete_referral']);
 
         // Debug action to test AJAX is working
@@ -274,7 +275,7 @@ class InterSoccer_Referral_Admin_Dashboard {
             }
             wp_enqueue_script('intersoccer-admin-js', INTERSOCCER_REFERRAL_URL . 'assets/js/admin-dashboard.js', ['jquery', 'chart-js'], INTERSOCCER_REFERRAL_VERSION, true);
 
-            wp_localize_script('intersoccer-admin-js', 'intersoccer_admin', [
+            $localize = [
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('intersoccer_admin_nonce'),
                 'simulator_nonce' => wp_create_nonce('intersoccer_simulator_nonce'),
@@ -292,8 +293,27 @@ class InterSoccer_Referral_Admin_Dashboard {
                     'coach_events_remove_error' => __('Error removing event', 'intersoccer-referral'),
                     'coach_events_status_error' => __('Error updating status', 'intersoccer-referral'),
                     'coach_events_status_network_error' => __('Network error updating status', 'intersoccer-referral'),
-                ]
-            ]);
+                    'coach_referrals_loading' => __('Loading report…', 'intersoccer-referral'),
+                    'coach_referrals_error' => __('Could not load monthly report. Please try again.', 'intersoccer-referral'),
+                ],
+            ];
+
+            if (strpos($hook, 'intersoccer-coach-referrals') !== false) {
+                $initial_month = gmdate('Y-m');
+                $initial_coach = !empty($_GET['coach_id']) ? absint($_GET['coach_id']) : 0;
+                if (!empty($_GET['month'])) {
+                    $parsed = $this->referrals->sanitize_month(wp_unslash($_GET['month']));
+                    if ($parsed) {
+                        $initial_month = $parsed;
+                    }
+                }
+                $localize['coach_referrals_report'] = $this->referrals->get_coach_monthly_report_data(
+                    $initial_month,
+                    $initial_coach ?: null
+                );
+            }
+
+            wp_localize_script('intersoccer-admin-js', 'intersoccer_admin', $localize);
 
             // Enqueue settings page and tools page specific assets
             if (strpos($hook, 'intersoccer-settings') !== false || strpos($hook, 'intersoccer-tools') !== false) {

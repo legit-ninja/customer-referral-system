@@ -21,49 +21,223 @@
         initCoachAssignmentsAdmin();
     });
 
-    /**
-     * Coach Referrals page: wire up the filter button.
-     */
-    function initCoachReferralsFilter() {
-        const $btn = $('#filter-referrals');
+    let coachReferralsCommissionChart = null;
 
-        if ($btn.length === 0) {
+    /**
+     * Coach Referrals page: monthly report, chart, filters, and exports.
+     */
+    function initCoachReferralsMonthlyReport() {
+        const $wrap = $('.coach-referrals-monthly-wrap');
+
+        if ($wrap.length === 0) {
             return;
         }
 
-        $btn.on('click', function(e) {
-            e.preventDefault();
+        const $monthInput = $('#coach-referrals-month');
+        const $coachFilter = $('#coach-filter');
+        const $applyBtn = $('#filter-referrals');
+        const i18n = (typeof intersoccer_admin !== 'undefined' && intersoccer_admin.i18n) ? intersoccer_admin.i18n : {};
 
-            const coachId  = $('#coach-filter').val()  || '';
-            const dateFrom = $('#date-from').val()     || '';
-            const dateTo   = $('#date-to').val()       || '';
+        function getSelectedMonth() {
+            return $monthInput.val() || $wrap.data('initial-month') || '';
+        }
 
-            $btn.prop('disabled', true).text('Filtering\u2026');
+        function getSelectedCoachId() {
+            return $coachFilter.val() || '';
+        }
 
-            $.ajax({
-                url:      intersoccer_admin.ajax_url,
-                type:     'POST',
+        function syncExportFields() {
+            $('#export-month').val(getSelectedMonth());
+            $('#export-coach-id').val(getSelectedCoachId());
+        }
+
+        function shiftMonth(delta) {
+            const current = getSelectedMonth();
+            if (!current) {
+                return;
+            }
+            const parts = current.split('-');
+            const date = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1 + delta, 1);
+            const next = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
+            $monthInput.val(next);
+            refreshReport();
+        }
+
+        function loadTransactions() {
+            const coachId = getSelectedCoachId();
+            const month = getSelectedMonth();
+
+            return $.ajax({
+                url: intersoccer_admin.ajax_url,
+                type: 'POST',
                 dataType: 'json',
                 data: {
-                    action:    'intersoccer_filter_coach_referrals',
-                    nonce:     intersoccer_admin.nonce,
-                    coach_id:  coachId,
-                    date_from: dateFrom,
-                    date_to:   dateTo
+                    action: 'intersoccer_filter_coach_referrals',
+                    nonce: intersoccer_admin.nonce,
+                    coach_id: coachId,
+                    month: month
                 }
             }).done(function(response) {
                 if (response && response.success && response.data && response.data.html !== undefined) {
                     $('#coach-referrals-tbody').html(response.data.html);
+                }
+            });
+        }
+
+        function renderCommissionChart(chartData, selectedMonth) {
+            const canvas = document.getElementById('coach-referrals-commission-chart');
+            if (!canvas || typeof Chart === 'undefined' || !chartData) {
+                return;
+            }
+
+            const backgroundColors = (chartData.months || []).map(function(m) {
+                return m === selectedMonth ? 'rgba(39, 174, 96, 0.85)' : 'rgba(52, 152, 219, 0.65)';
+            });
+
+            if (coachReferralsCommissionChart) {
+                coachReferralsCommissionChart.destroy();
+            }
+
+            coachReferralsCommissionChart = new Chart(canvas.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: chartData.labels || [],
+                    datasets: [{
+                        label: 'Commission (CHF)',
+                        data: chartData.values || [],
+                        backgroundColor: backgroundColors,
+                        borderColor: '#2980b9',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value + ' CHF';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function refreshReport() {
+            const month = getSelectedMonth();
+            const coachId = getSelectedCoachId();
+            syncExportFields();
+
+            $applyBtn.prop('disabled', true).text(i18n.coach_referrals_loading || 'Loading\u2026');
+
+            const reportRequest = $.ajax({
+                url: intersoccer_admin.ajax_url,
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    action: 'intersoccer_get_coach_monthly_report',
+                    nonce: intersoccer_admin.nonce,
+                    month: month,
+                    coach_id: coachId
+                }
+            });
+
+            const transactionsRequest = loadTransactions();
+
+            $.when(reportRequest, transactionsRequest).done(function(reportResponse) {
+                const response = reportResponse[0];
+                if (response && response.success && response.data) {
+                    if (response.data.summary_html) {
+                        $('#coach-referrals-summary').html(response.data.summary_html);
+                    }
+                    if (response.data.coaches_html) {
+                        $('#coach-monthly-breakdown-tbody').html(response.data.coaches_html);
+                    }
+                    if (response.data.chart) {
+                        renderCommissionChart(response.data.chart, month);
+                    }
                 } else {
-                    const msg = response && response.data && response.data.message
-                        ? response.data.message : 'Filter failed. Please try again.';
-                    window.alert('Error: ' + msg);
+                    window.alert(i18n.coach_referrals_error || 'Could not load monthly report. Please try again.');
                 }
             }).fail(function() {
-                window.alert('Network error. Please try again.');
+                window.alert(i18n.coach_referrals_error || 'Could not load monthly report. Please try again.');
             }).always(function() {
-                $btn.prop('disabled', false).text('Filter');
+                $applyBtn.prop('disabled', false).text('Apply');
             });
+        }
+
+        // Initial chart from localized bootstrap data.
+        if (typeof intersoccer_admin !== 'undefined' && intersoccer_admin.coach_referrals_report) {
+            renderCommissionChart(
+                intersoccer_admin.coach_referrals_report.chart,
+                intersoccer_admin.coach_referrals_report.month
+            );
+        }
+
+        syncExportFields();
+
+        $('#coach-referrals-prev-month').on('click', function(e) {
+            e.preventDefault();
+            shiftMonth(-1);
+        });
+
+        $('#coach-referrals-next-month').on('click', function(e) {
+            e.preventDefault();
+            shiftMonth(1);
+        });
+
+        $monthInput.on('change', function() {
+            refreshReport();
+        });
+
+        $('.period-preset').on('click', function(e) {
+            e.preventDefault();
+            const preset = $(this).data('preset');
+            const now = new Date();
+            let target;
+
+            if (preset === 'last_month') {
+                target = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+            } else {
+                target = new Date(now.getFullYear(), now.getMonth(), 1);
+            }
+
+            const monthVal = target.getFullYear() + '-' + String(target.getMonth() + 1).padStart(2, '0');
+            $monthInput.val(monthVal);
+            refreshReport();
+        });
+
+        $applyBtn.on('click', function(e) {
+            e.preventDefault();
+            refreshReport();
+        });
+
+        $(document).on('click', '.view-coach-transactions', function(e) {
+            e.preventDefault();
+            const coachId = $(this).data('coach-id');
+            if (!coachId) {
+                return;
+            }
+            $coachFilter.val(String(coachId));
+            syncExportFields();
+            refreshReport();
+            const $section = $('#coach-referrals-transactions');
+            if ($section.length) {
+                $('html, body').animate({ scrollTop: $section.offset().top - 40 }, 300);
+            }
+        });
+
+        $('.coach-referrals-export button[type="submit"]').on('click', function() {
+            const mode = $(this).data('export-mode') || 'transactions';
+            $('#export-mode').val(mode);
+            syncExportFields();
         });
     }
 
@@ -806,7 +980,7 @@
      */
     function bindEvents() {
         initUpdateCredits();
-        initCoachReferralsFilter();
+        initCoachReferralsMonthlyReport();
         initResetDataTab();
     }
 

@@ -38,43 +38,195 @@ class InterSoccer_Admin_Referrals {
             }
         }
 
+        $initial_month = $this->sanitize_month(isset($_GET['month']) ? $_GET['month'] : '') ?: gmdate('Y-m');
+        $initial_coach = !empty($_GET['coach_id']) ? absint($_GET['coach_id']) : 0;
+        $report        = $this->get_coach_monthly_report_data($initial_month, $initial_coach ?: null);
+
         ?>
-        <div class="wrap intersoccer-admin">
+        <div class="wrap intersoccer-admin coach-referrals-monthly-wrap" data-initial-month="<?php echo esc_attr($initial_month); ?>" data-initial-coach="<?php echo esc_attr((string) $initial_coach); ?>">
             <h1 class="wp-heading-inline"><?php esc_html_e('Coach Referrals', 'intersoccer-referral'); ?></h1>
 
-            <div class="intersoccer-filters">
-                <div class="filters-group">
+            <div class="coach-referrals-period-bar intersoccer-filters">
+                <div class="filters-group period-nav-group">
+                    <button type="button" class="button" id="coach-referrals-prev-month" aria-label="<?php esc_attr_e('Previous month', 'intersoccer-referral'); ?>">
+                        <span class="dashicons dashicons-arrow-left-alt2"></span>
+                    </button>
+                    <input type="month" id="coach-referrals-month" value="<?php echo esc_attr($initial_month); ?>">
+                    <button type="button" class="button" id="coach-referrals-next-month" aria-label="<?php esc_attr_e('Next month', 'intersoccer-referral'); ?>">
+                        <span class="dashicons dashicons-arrow-right-alt2"></span>
+                    </button>
+                    <div class="period-presets">
+                        <button type="button" class="button button-link period-preset" data-preset="this_month"><?php esc_html_e('This month', 'intersoccer-referral'); ?></button>
+                        <span class="preset-sep">|</span>
+                        <button type="button" class="button button-link period-preset" data-preset="last_month"><?php esc_html_e('Last month', 'intersoccer-referral'); ?></button>
+                    </div>
                     <select id="coach-filter">
                         <option value=""><?php esc_html_e('All Coaches', 'intersoccer-referral'); ?></option>
                         <?php
                         $coaches = get_users(['role' => 'coach']);
                         foreach ($coaches as $coach) {
-                            echo '<option value="' . esc_attr($coach->ID) . '">' . esc_html($coach->display_name) . '</option>';
+                            printf(
+                                '<option value="%1$s" %2$s>%3$s</option>',
+                                esc_attr($coach->ID),
+                                selected($initial_coach, $coach->ID, false),
+                                esc_html($coach->display_name)
+                            );
                         }
                         ?>
                     </select>
-                    <input type="date" id="date-from" placeholder="<?php esc_attr_e('From Date', 'intersoccer-referral'); ?>">
-                    <input type="date" id="date-to" placeholder="<?php esc_attr_e('To Date', 'intersoccer-referral'); ?>">
-                    <button class="button" id="filter-referrals"><?php esc_html_e('Filter', 'intersoccer-referral'); ?></button>
+                    <button class="button button-primary" id="filter-referrals"><?php esc_html_e('Apply', 'intersoccer-referral'); ?></button>
                 </div>
-                <form class="coach-referrals-export" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                    <?php wp_nonce_field('intersoccer_export_coach_referrals', 'intersoccer_export_coach_referrals_nonce'); ?>
-                    <input type="hidden" name="action" value="intersoccer_export_coach_referrals">
-                    <input type="hidden" name="export_limit" value="500">
-                    <button type="submit" class="button button-secondary">
-                        <span class="dashicons dashicons-download"></span>
-                        <?php esc_html_e('Export to Excel', 'intersoccer-referral'); ?>
-                    </button>
-                </form>
+                <div class="export-actions">
+                    <form class="coach-referrals-export" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                        <?php wp_nonce_field('intersoccer_export_coach_referrals', 'intersoccer_export_coach_referrals_nonce'); ?>
+                        <input type="hidden" name="action" value="intersoccer_export_coach_referrals">
+                        <input type="hidden" name="export_mode" id="export-mode" value="transactions">
+                        <input type="hidden" name="export_month" id="export-month" value="<?php echo esc_attr($initial_month); ?>">
+                        <input type="hidden" name="export_coach_id" id="export-coach-id" value="<?php echo esc_attr((string) $initial_coach); ?>">
+                        <input type="hidden" name="export_limit" value="2000">
+                        <button type="submit" class="button button-secondary" data-export-mode="transactions">
+                            <span class="dashicons dashicons-download"></span>
+                            <?php esc_html_e('Export Transactions', 'intersoccer-referral'); ?>
+                        </button>
+                        <button type="submit" class="button button-secondary" data-export-mode="monthly_summary">
+                            <span class="dashicons dashicons-download"></span>
+                            <?php esc_html_e('Export Monthly Summary', 'intersoccer-referral'); ?>
+                        </button>
+                    </form>
+                </div>
             </div>
 
-            <div class="intersoccer-referrals-table">
-                <?php $this->display_coach_referrals_table(); ?>
+            <div id="coach-referrals-summary" class="intersoccer-stats-grid coach-referrals-kpis">
+                <?php echo $this->build_monthly_summary_markup($report['summary']); ?>
+            </div>
+
+            <div class="coach-referrals-chart-section">
+                <h2><?php esc_html_e('Commission Trend (12 months)', 'intersoccer-referral'); ?></h2>
+                <div class="chart-container">
+                    <canvas id="coach-referrals-commission-chart" height="80"></canvas>
+                </div>
+            </div>
+
+            <div class="coach-referrals-breakdown-section">
+                <h2><?php esc_html_e('Coaches — Monthly Summary', 'intersoccer-referral'); ?></h2>
+                <table class="wp-list-table widefat fixed striped" id="coach-monthly-breakdown-table">
+                    <thead>
+                        <tr>
+                            <th><?php esc_html_e('Coach', 'intersoccer-referral'); ?></th>
+                            <th><?php esc_html_e('Referral Code', 'intersoccer-referral'); ?></th>
+                            <th><?php esc_html_e('Referrals', 'intersoccer-referral'); ?></th>
+                            <th><?php esc_html_e('Completed', 'intersoccer-referral'); ?></th>
+                            <th><?php esc_html_e('Commission', 'intersoccer-referral'); ?></th>
+                            <th><?php esc_html_e('Paid', 'intersoccer-referral'); ?></th>
+                            <th><?php esc_html_e('Unpaid', 'intersoccer-referral'); ?></th>
+                            <th><?php esc_html_e('Actions', 'intersoccer-referral'); ?></th>
+                        </tr>
+                    </thead>
+                    <tbody id="coach-monthly-breakdown-tbody">
+                        <?php echo $this->build_coach_breakdown_rows($report['coaches']); ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="intersoccer-referrals-table coach-referrals-transactions-section" id="coach-referrals-transactions">
+                <h2><?php esc_html_e('Transactions', 'intersoccer-referral'); ?></h2>
+                <?php $this->display_coach_referrals_table([
+                    'month'    => $initial_month,
+                    'coach_id' => $initial_coach ?: null,
+                ]); ?>
             </div>
 
         </div>
 
         <?php
+    }
+
+    /**
+     * Render KPI summary cards HTML.
+     *
+     * @param array<string,mixed> $summary
+     * @return string
+     */
+    public function build_monthly_summary_markup(array $summary) {
+        ob_start();
+        ?>
+        <div class="stat-card commissions-card">
+            <div class="stat-icon"><span class="dashicons dashicons-money-alt"></span></div>
+            <div class="stat-content">
+                <h3><?php echo esc_html(number_format_i18n($summary['total_commission'] ?? 0, 2)); ?> CHF</h3>
+                <p><?php esc_html_e('Total Commission', 'intersoccer-referral'); ?></p>
+            </div>
+        </div>
+        <div class="stat-card referrals-card">
+            <div class="stat-icon"><span class="dashicons dashicons-groups"></span></div>
+            <div class="stat-content">
+                <h3><?php echo esc_html(number_format_i18n($summary['referrals_count'] ?? 0)); ?></h3>
+                <p><?php esc_html_e('Referrals', 'intersoccer-referral'); ?></p>
+                <span class="stat-change neutral"><?php echo esc_html(sprintf(
+                    /* translators: %d: completed referral count */
+                    __('%d completed', 'intersoccer-referral'),
+                    (int) ($summary['completed_count'] ?? 0)
+                )); ?></span>
+            </div>
+        </div>
+        <div class="stat-card credits-earned-card">
+            <div class="stat-icon"><span class="dashicons dashicons-yes-alt"></span></div>
+            <div class="stat-content">
+                <h3><?php echo esc_html(number_format_i18n($summary['paid_commission'] ?? 0, 2)); ?> CHF</h3>
+                <p><?php esc_html_e('Paid', 'intersoccer-referral'); ?></p>
+            </div>
+        </div>
+        <div class="stat-card credits-used-card">
+            <div class="stat-icon"><span class="dashicons dashicons-clock"></span></div>
+            <div class="stat-content">
+                <h3><?php echo esc_html(number_format_i18n($summary['unpaid_commission'] ?? 0, 2)); ?> CHF</h3>
+                <p><?php esc_html_e('Unpaid', 'intersoccer-referral'); ?></p>
+            </div>
+        </div>
+        <div class="stat-card conversion-card">
+            <div class="stat-icon"><span class="dashicons dashicons-businessman"></span></div>
+            <div class="stat-content">
+                <h3><?php echo esc_html(number_format_i18n($summary['active_coaches'] ?? 0)); ?></h3>
+                <p><?php esc_html_e('Active Coaches', 'intersoccer-referral'); ?></p>
+            </div>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * Render per-coach monthly breakdown rows.
+     *
+     * @param array<int,array<string,mixed>> $coaches
+     * @return string
+     */
+    public function build_coach_breakdown_rows(array $coaches) {
+        if (empty($coaches)) {
+            return '<tr><td colspan="8" style="text-align:center;padding:24px 0;color:#999;">'
+                . esc_html__('No coach commissions for this month.', 'intersoccer-referral')
+                . '</td></tr>';
+        }
+
+        ob_start();
+        foreach ($coaches as $coach) {
+            ?>
+            <tr>
+                <td><strong><?php echo esc_html($coach['coach_name'] ?: __('Unknown', 'intersoccer-referral')); ?></strong></td>
+                <td><code><?php echo esc_html($coach['referral_code'] ?: '—'); ?></code></td>
+                <td><?php echo esc_html(number_format_i18n($coach['referrals_count'])); ?></td>
+                <td><?php echo esc_html(number_format_i18n($coach['completed_count'])); ?></td>
+                <td><strong><?php echo esc_html(number_format_i18n($coach['total_commission'], 2)); ?> CHF</strong></td>
+                <td><?php echo esc_html(number_format_i18n($coach['paid_commission'], 2)); ?> CHF</td>
+                <td><?php echo esc_html(number_format_i18n($coach['unpaid_commission'], 2)); ?> CHF</td>
+                <td>
+                    <button type="button" class="button button-small view-coach-transactions" data-coach-id="<?php echo esc_attr((string) $coach['coach_id']); ?>">
+                        <?php esc_html_e('View transactions', 'intersoccer-referral'); ?>
+                    </button>
+                </td>
+            </tr>
+            <?php
+        }
+        return ob_get_clean();
     }
 
     /**
@@ -117,14 +269,26 @@ class InterSoccer_Admin_Referrals {
             $params[]     = (int) $args['coach_id'];
         }
 
+        if (!empty($args['month'])) {
+            $bounds = $this->get_month_date_bounds($args['month']);
+            if ($bounds) {
+                $args['date_from'] = $bounds['from'];
+                $args['date_to']   = $bounds['to'];
+            }
+        }
+
         if (!empty($args['date_from'])) {
             $conditions[] = 'r.created_at >= %s';
             $params[]     = sanitize_text_field($args['date_from']);
         }
 
         if (!empty($args['date_to'])) {
+            $date_to = sanitize_text_field($args['date_to']);
+            if (strlen($date_to) <= 10) {
+                $date_to .= ' 23:59:59';
+            }
             $conditions[] = 'r.created_at <= %s';
-            $params[]     = sanitize_text_field($args['date_to']);
+            $params[]     = $date_to;
         }
 
         $where = 'WHERE ' . implode(' AND ', $conditions);
@@ -176,10 +340,302 @@ class InterSoccer_Admin_Referrals {
     }
 
     /**
+     * Sanitize a month string to Y-m format.
+     *
+     * @param string $month Raw month value.
+     * @return string|null
+     */
+    public function sanitize_month($month) {
+        $month = sanitize_text_field((string) $month);
+        if (preg_match('/^\d{4}-\d{2}$/', $month)) {
+            return $month;
+        }
+
+        return null;
+    }
+
+    /**
+     * First and last datetime strings for a calendar month.
+     *
+     * @param string $month Y-m format.
+     * @return array{from:string,to:string}|null
+     */
+    public function get_month_date_bounds($month) {
+        $month = $this->sanitize_month($month);
+        if (!$month) {
+            return null;
+        }
+
+        $start = $month . '-01 00:00:00';
+        $end   = gmdate('Y-m-t 23:59:59', strtotime($start . ' UTC'));
+
+        return [
+            'from' => $start,
+            'to'   => $end,
+        ];
+    }
+
+    /**
+     * SQL expression for resolved commission amount on a referral row.
+     *
+     * @return string
+     */
+    private function get_commission_amount_sql() {
+        return 'COALESCE(cc.commission_amount, rc.credit_amount, r.commission_amount, 0)';
+    }
+
+    /**
+     * SQL expression: 1 when commission is paid, else 0.
+     *
+     * @return string
+     */
+    private function get_commission_paid_sql() {
+        return "CASE WHEN LOWER(COALESCE(cc.status, '')) = 'paid' OR LOWER(COALESCE(rc.status, '')) = 'paid' THEN 1 ELSE 0 END";
+    }
+
+    /**
+     * Base FROM/JOIN clause for monthly coach referral aggregates.
+     *
+     * @return string
+     */
+    private function get_monthly_referrals_from_sql() {
+        global $wpdb;
+
+        return "
+            FROM {$wpdb->prefix}intersoccer_referrals r
+            LEFT JOIN {$wpdb->prefix}intersoccer_referral_credits rc ON r.id = rc.referral_id
+            LEFT JOIN {$wpdb->prefix}intersoccer_coach_commissions cc ON cc.order_id = r.order_id AND cc.coach_id = r.coach_id
+            WHERE r.coach_id IS NOT NULL
+        ";
+    }
+
+    /**
+     * Build month filter SQL fragment and params.
+     *
+     * @param string $month Y-m.
+     * @param int|null $coach_id Optional coach filter.
+     * @return array{sql:string,params:array<int|string>}
+     */
+    private function get_month_filter_clause($month, $coach_id = null) {
+        $bounds = $this->get_month_date_bounds($month);
+        if (!$bounds) {
+            return ['sql' => ' AND 1=0 ', 'params' => []];
+        }
+
+        $clause = ' AND r.created_at >= %s AND r.created_at <= %s ';
+        $params = [$bounds['from'], $bounds['to']];
+
+        if ($coach_id) {
+            $clause  .= ' AND r.coach_id = %d ';
+            $params[] = (int) $coach_id;
+        }
+
+        return ['sql' => $clause, 'params' => $params];
+    }
+
+    /**
+     * Commission trends for the last N months.
+     *
+     * @param int $months Number of months.
+     * @param int|null $coach_id Optional coach filter.
+     * @return array{labels:array<int,string>,values:array<int,float>,months:array<int,string>}
+     */
+    public function get_monthly_commission_trends($months = 12, $coach_id = null) {
+        global $wpdb;
+
+        $months   = max(1, min(24, (int) $months));
+        $labels   = [];
+        $values   = [];
+        $month_keys = [];
+        $amount_sql = $this->get_commission_amount_sql();
+        $from_sql   = $this->get_monthly_referrals_from_sql();
+
+        for ($i = $months - 1; $i >= 0; $i--) {
+            $month_key = gmdate('Y-m', strtotime("-{$i} months"));
+            $month_keys[] = $month_key;
+            $labels[] = gmdate('M Y', strtotime($month_key . '-01'));
+            $values[] = 0.0;
+        }
+
+        $oldest = $month_keys[0];
+        $bounds = $this->get_month_date_bounds($oldest);
+        $newest_bounds = $this->get_month_date_bounds(end($month_keys));
+
+        if (!$bounds || !$newest_bounds) {
+            return [
+                'labels' => $labels,
+                'values' => $values,
+                'months' => $month_keys,
+            ];
+        }
+
+        $coach_clause = '';
+        $params       = [$bounds['from'], $newest_bounds['to']];
+
+        if ($coach_id) {
+            $coach_clause = ' AND r.coach_id = %d ';
+            $params[]     = (int) $coach_id;
+        }
+
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT DATE_FORMAT(r.created_at, '%%Y-%%m') AS month_year,
+                    SUM({$amount_sql}) AS total_commission
+             {$from_sql}
+             AND r.created_at >= %s AND r.created_at <= %s
+             {$coach_clause}
+             GROUP BY month_year
+             ORDER BY month_year ASC",
+            $params
+        ));
+
+        $indexed = [];
+        foreach ($rows as $row) {
+            $indexed[$row->month_year] = (float) $row->total_commission;
+        }
+
+        foreach ($month_keys as $index => $key) {
+            $values[$index] = $indexed[$key] ?? 0.0;
+        }
+
+        return [
+            'labels' => $labels,
+            'values' => $values,
+            'months' => $month_keys,
+        ];
+    }
+
+    /**
+     * KPI summary for a single month.
+     *
+     * @param string $month Y-m.
+     * @param int|null $coach_id Optional coach filter.
+     * @return array<string,mixed>
+     */
+    public function get_monthly_summary($month, $coach_id = null) {
+        global $wpdb;
+
+        $month = $this->sanitize_month($month) ?: gmdate('Y-m');
+        $filter = $this->get_month_filter_clause($month, $coach_id);
+        $amount_sql = $this->get_commission_amount_sql();
+        $paid_sql   = $this->get_commission_paid_sql();
+        $from_sql   = $this->get_monthly_referrals_from_sql();
+
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT
+                COUNT(*) AS referrals_count,
+                SUM(CASE WHEN r.status = 'completed' THEN 1 ELSE 0 END) AS completed_count,
+                SUM({$amount_sql}) AS total_commission,
+                SUM(CASE WHEN {$paid_sql} = 1 THEN {$amount_sql} ELSE 0 END) AS paid_commission,
+                SUM(CASE WHEN {$paid_sql} = 0 THEN {$amount_sql} ELSE 0 END) AS unpaid_commission,
+                COUNT(DISTINCT r.coach_id) AS active_coaches
+             {$from_sql}
+             {$filter['sql']}",
+            $filter['params']
+        ));
+
+        return [
+            'month'             => $month,
+            'referrals_count'   => (int) ($row->referrals_count ?? 0),
+            'completed_count'   => (int) ($row->completed_count ?? 0),
+            'total_commission'  => (float) ($row->total_commission ?? 0),
+            'paid_commission'   => (float) ($row->paid_commission ?? 0),
+            'unpaid_commission' => (float) ($row->unpaid_commission ?? 0),
+            'active_coaches'    => (int) ($row->active_coaches ?? 0),
+        ];
+    }
+
+    /**
+     * Per-coach rollup for a month.
+     *
+     * @param string $month Y-m.
+     * @param int|null $coach_id Optional coach filter.
+     * @return array<int,array<string,mixed>>
+     */
+    public function get_monthly_coach_breakdown($month, $coach_id = null) {
+        global $wpdb;
+
+        $month = $this->sanitize_month($month) ?: gmdate('Y-m');
+        $filter = $this->get_month_filter_clause($month, $coach_id);
+        $amount_sql = $this->get_commission_amount_sql();
+        $paid_sql   = $this->get_commission_paid_sql();
+
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT
+                r.coach_id,
+                c.display_name AS coach_name,
+                c.user_email AS coach_email,
+                code.meta_value AS referral_code,
+                COUNT(*) AS referrals_count,
+                SUM(CASE WHEN r.status = 'completed' THEN 1 ELSE 0 END) AS completed_count,
+                SUM({$amount_sql}) AS total_commission,
+                SUM(CASE WHEN {$paid_sql} = 1 THEN {$amount_sql} ELSE 0 END) AS paid_commission,
+                SUM(CASE WHEN {$paid_sql} = 0 THEN {$amount_sql} ELSE 0 END) AS unpaid_commission
+             FROM {$wpdb->prefix}intersoccer_referrals r
+             LEFT JOIN {$wpdb->users} c ON r.coach_id = c.ID
+             LEFT JOIN {$wpdb->usermeta} code ON code.user_id = r.coach_id AND code.meta_key = 'referral_code'
+             LEFT JOIN {$wpdb->prefix}intersoccer_referral_credits rc ON r.id = rc.referral_id
+             LEFT JOIN {$wpdb->prefix}intersoccer_coach_commissions cc ON cc.order_id = r.order_id AND cc.coach_id = r.coach_id
+             WHERE r.coach_id IS NOT NULL
+             {$filter['sql']}
+             GROUP BY r.coach_id, c.display_name, c.user_email, code.meta_value
+             ORDER BY total_commission DESC",
+            $filter['params']
+        ));
+
+        $breakdown = [];
+        foreach ($rows as $row) {
+            $breakdown[] = [
+                'coach_id'          => (int) $row->coach_id,
+                'coach_name'        => (string) ($row->coach_name ?? ''),
+                'coach_email'       => (string) ($row->coach_email ?? ''),
+                'referral_code'     => (string) ($row->referral_code ?? ''),
+                'referrals_count'   => (int) $row->referrals_count,
+                'completed_count'   => (int) $row->completed_count,
+                'total_commission'  => (float) $row->total_commission,
+                'paid_commission'   => (float) $row->paid_commission,
+                'unpaid_commission' => (float) $row->unpaid_commission,
+            ];
+        }
+
+        return $breakdown;
+    }
+
+    /**
+     * Full monthly report payload for AJAX and page bootstrap.
+     *
+     * @param string $month Y-m.
+     * @param int|null $coach_id Optional coach filter.
+     * @return array<string,mixed>
+     */
+    public function get_coach_monthly_report_data($month, $coach_id = null) {
+        $month    = $this->sanitize_month($month) ?: gmdate('Y-m');
+        $coach_id = $coach_id ? (int) $coach_id : null;
+
+        return [
+            'month'    => $month,
+            'coach_id' => $coach_id,
+            'summary'  => $this->get_monthly_summary($month, $coach_id),
+            'coaches'  => $this->get_monthly_coach_breakdown($month, $coach_id),
+            'chart'    => $this->get_monthly_commission_trends(12, $coach_id),
+        ];
+    }
+
+    /**
      * Display coach referrals table
      */
-    private function display_coach_referrals_table() {
-        $referrals = $this->get_coach_referrals();
+    private function display_coach_referrals_table($args = []) {
+        $defaults = [
+            'month'    => gmdate('Y-m'),
+            'coach_id' => null,
+            'limit'    => 50,
+        ];
+        $args = wp_parse_args($args, $defaults);
+
+        $referrals = $this->get_coach_referrals([
+            'month'    => $args['month'],
+            'coach_id' => $args['coach_id'],
+            'limit'    => (int) $args['limit'],
+        ]);
 
         ?>
         <table class="wp-list-table widefat fixed striped intersoccer-referrals-table">
@@ -303,16 +759,49 @@ class InterSoccer_Admin_Referrals {
             wp_send_json_error(['message' => __('You do not have permission to filter referrals.', 'intersoccer-referral')], 403);
         }
 
+        $month = !empty($_POST['month']) ? $this->sanitize_month($_POST['month']) : null;
+
         $args = [
             'coach_id'  => !empty($_POST['coach_id']) ? absint($_POST['coach_id']) : null,
+            'month'     => $month,
             'date_from' => !empty($_POST['date_from']) ? sanitize_text_field($_POST['date_from']) : null,
             'date_to'   => !empty($_POST['date_to']) ? sanitize_text_field($_POST['date_to']) : null,
             'limit'     => 50,
         ];
 
+        if ($month) {
+            $args['date_from'] = null;
+            $args['date_to']   = null;
+        }
+
         $referrals = $this->get_coach_referrals($args);
 
         wp_send_json_success(['html' => $this->build_referral_rows($referrals)]);
+    }
+
+    /**
+     * AJAX handler: monthly report summary, coach breakdown, and chart data.
+     */
+    public function ajax_get_coach_monthly_report() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => __('You do not have permission to view this report.', 'intersoccer-referral')], 403);
+        }
+
+        $month    = !empty($_POST['month']) ? $this->sanitize_month($_POST['month']) : gmdate('Y-m');
+        $coach_id = !empty($_POST['coach_id']) ? absint($_POST['coach_id']) : null;
+
+        $report = $this->get_coach_monthly_report_data($month, $coach_id);
+
+        wp_send_json_success([
+            'month'          => $report['month'],
+            'summary_html'   => $this->build_monthly_summary_markup($report['summary']),
+            'coaches_html'   => $this->build_coach_breakdown_rows($report['coaches']),
+            'summary'        => $report['summary'],
+            'coaches'        => $report['coaches'],
+            'chart'          => $report['chart'],
+        ]);
     }
 
     public function render_customer_referrals_page() {
@@ -1066,18 +1555,56 @@ class InterSoccer_Admin_Referrals {
             $this->redirect_with_notice('commission_error');
         }
 
-        $limit = isset($_POST['export_limit']) ? absint($_POST['export_limit']) : 500;
-        $limit = min(max(1, $limit), 2000);
-
-        $referrals = $this->get_coach_referrals([
-            'limit' => $limit,
-        ]);
+        $export_mode = isset($_POST['export_mode']) ? sanitize_key($_POST['export_mode']) : 'transactions';
+        $month       = !empty($_POST['export_month']) ? $this->sanitize_month($_POST['export_month']) : gmdate('Y-m');
+        $coach_id    = !empty($_POST['export_coach_id']) ? absint($_POST['export_coach_id']) : null;
 
         if (function_exists('nocache_headers')) {
             nocache_headers();
         }
         header('Content-Type: text/csv; charset=utf-8');
-        header('Content-Disposition: attachment; filename="coach-referrals-' . gmdate('Ymd-His') . '.csv"');
+
+        if ($export_mode === 'monthly_summary') {
+            header('Content-Disposition: attachment; filename="coach-monthly-summary-' . $month . '.csv"');
+            $output = fopen('php://output', 'w');
+            fputcsv($output, [
+                'Coach',
+                'Coach Email',
+                'Referral Code',
+                'Referrals',
+                'Completed',
+                'Commission (CHF)',
+                'Paid (CHF)',
+                'Unpaid (CHF)',
+            ]);
+
+            foreach ($this->get_monthly_coach_breakdown($month, $coach_id) as $coach) {
+                fputcsv($output, [
+                    $coach['coach_name'],
+                    $coach['coach_email'],
+                    $coach['referral_code'],
+                    $coach['referrals_count'],
+                    $coach['completed_count'],
+                    number_format($coach['total_commission'], 2, '.', ''),
+                    number_format($coach['paid_commission'], 2, '.', ''),
+                    number_format($coach['unpaid_commission'], 2, '.', ''),
+                ]);
+            }
+
+            fclose($output);
+            exit;
+        }
+
+        $limit = isset($_POST['export_limit']) ? absint($_POST['export_limit']) : 500;
+        $limit = min(max(1, $limit), 2000);
+
+        $referrals = $this->get_coach_referrals([
+            'limit'    => $limit,
+            'month'    => $month,
+            'coach_id' => $coach_id,
+        ]);
+
+        header('Content-Disposition: attachment; filename="coach-referrals-' . $month . '-' . gmdate('Ymd-His') . '.csv"');
 
         $output = fopen('php://output', 'w');
         fputcsv($output, [
