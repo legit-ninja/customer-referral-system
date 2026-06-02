@@ -100,7 +100,7 @@ class CheckoutReferralDiscountTest extends TestCase {
 
         $coachFee = null;
         foreach (WC()->cart->fees as $fee) {
-            if ($fee['name'] === 'Coach Referral Discount') {
+            if ($fee['name'] === 'Referral Discount') {
                 $coachFee = $fee;
                 break;
             }
@@ -149,7 +149,7 @@ class CheckoutReferralDiscountTest extends TestCase {
         $this->dashboard->apply_points_discount_as_fee(WC()->cart);
 
         $coachFee = array_filter(WC()->cart->fees, function($fee) {
-            return $fee['name'] === 'Coach Referral Discount';
+            return $fee['name'] === 'Referral Discount';
         });
 
         $this->assertEmpty($coachFee, 'Coach referral fee should not be added for returning customers');
@@ -216,7 +216,7 @@ class CheckoutReferralDiscountTest extends TestCase {
         $this->dashboard->apply_points_discount_as_fee(WC()->cart);
 
         $coachFee = array_filter(WC()->cart->fees, function($fee) {
-            return $fee['name'] === 'Coach Referral Discount';
+            return $fee['name'] === 'Referral Discount';
         });
 
         $this->assertNotEmpty($coachFee, 'Coach referral fee should be added again when prior order never became successful');

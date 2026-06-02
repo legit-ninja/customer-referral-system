@@ -141,8 +141,8 @@ msgstr "%d Punkte an Trainer %s für Kundenkauf vergeben (CHF %.2f). Neues Gutha
 msgid "Referral code applied! You will receive a discount from coach %s."
 msgstr "Empfehlungscode angewendet! Sie erhalten einen Rabatt von Trainer %s."
 
-msgid "Coach Referral Discount"
-msgstr "Trainer-Empfehlungsrabatt"
+msgid "Referral Discount"
+msgstr "Empfehlungsrabatt"
 
 msgid "Points Discount"
 msgstr "Punkte-Rabatt"

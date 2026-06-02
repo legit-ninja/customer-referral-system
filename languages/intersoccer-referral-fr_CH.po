@@ -141,8 +141,8 @@ msgstr "%d points attribués à l'entraîneur %s pour l'achat du client (CHF %.2
 msgid "Referral code applied! You will receive a discount from coach %s."
 msgstr "Code de parrainage appliqué ! Vous recevrez une réduction de l'entraîneur %s."
 
-msgid "Coach Referral Discount"
-msgstr "Réduction de parrainage d'entraîneur"
+msgid "Referral Discount"
+msgstr "Réduction de parrainage"
 
 msgid "Points Discount"
 msgstr "Réduction de points"

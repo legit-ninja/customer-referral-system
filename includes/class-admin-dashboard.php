@@ -1064,7 +1064,7 @@ class InterSoccer_Referral_Admin_Dashboard {
 
         if ($referral_code && $eligible_for_discount) {
             $discount_amount = -10; // 10 CHF discount for referral codes
-            $cart->add_fee(__('Coach Referral Discount', 'intersoccer-referral'), $discount_amount, true, '');
+            $cart->add_fee(__('Referral Discount', 'intersoccer-referral'), $discount_amount, true, '');
 
             // Mark that we applied the first-order discount during this checkout attempt.
             // This is later copied to the order meta in maybe_mark_first_order_discount_on_order().
