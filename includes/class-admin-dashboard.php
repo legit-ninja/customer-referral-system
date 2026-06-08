@@ -760,8 +760,14 @@ class InterSoccer_Referral_Admin_Dashboard {
         $points_to_redeem = isset($_POST['intersoccer_points_to_redeem']) ? intval($_POST['intersoccer_points_to_redeem']) : 0;
 
         if ($points_to_redeem > 0) {
-            // Store points to be deducted in session for later processing
-            WC()->session->set('intersoccer_points_to_redeem', $points_to_redeem);
+            if (is_object($order) && method_exists($order, 'update_meta_data')) {
+                $order->update_meta_data('_intersoccer_points_redeemed', $points_to_redeem);
+            }
+
+            $session = $this->get_wc_session();
+            if ($session) {
+                $session->set('intersoccer_points_to_redeem', $points_to_redeem);
+            }
 
             // Add order note
             $order->add_order_note(sprintf(__('Customer redeemed %d referral credits.', 'intersoccer-referral'), $points_to_redeem));
@@ -783,68 +789,224 @@ class InterSoccer_Referral_Admin_Dashboard {
     }
 
     /**
-     * Deduct points when order is completed
+     * WooCommerce session handle when available (null in wp-admin and other non-checkout contexts).
+     *
+     * @return object|null
      */
-    public function deduct_points_on_order_completion($order_id, $old_status, $new_status) {
-        if ($new_status !== 'completed') return;
+    private function get_wc_session() {
+        if (!function_exists('WC')) {
+            return null;
+        }
 
-        $order = wc_get_order($order_id);
-        $points_to_redeem = WC()->session->get('intersoccer_points_to_redeem');
+        $wc = WC();
+        return (is_object($wc) && isset($wc->session) && $wc->session) ? $wc->session : null;
+    }
 
-        if ($points_to_redeem > 0) {
-            $user_id = $order->get_customer_id();
+    /**
+     * Points redeemed via the "Referral Credits Discount" order fee line.
+     *
+     * @param WC_Order $order
+     * @return int
+     */
+    private function get_referral_credits_discount_points_from_order($order) {
+        if (!is_object($order) || !method_exists($order, 'get_items')) {
+            return 0;
+        }
 
-            // Deduct points from user
-            $current_credits = get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0;
-            $new_credits = max(0, $current_credits - $points_to_redeem);
-            update_user_meta($user_id, 'intersoccer_points_balance', $new_credits);
+        $fee_label = __('Referral Credits Discount', 'intersoccer-referral');
 
-            // Find the fee item for the discount
-            $fee_item_id = null;
-            foreach ($order->get_items('fee') as $item_id => $item) {
-                if ($item->get_name() === __('Referral Credits Discount', 'intersoccer-referral')) {
-                    $fee_item_id = $item_id;
-                    break;
-                }
+        foreach ($order->get_items('fee') as $item) {
+            if (!is_object($item) || !method_exists($item, 'get_name')) {
+                continue;
+            }
+            if ($item->get_name() !== $fee_label) {
+                continue;
+            }
+            if (!method_exists($item, 'get_total')) {
+                return 0;
             }
 
-            // Record the redemption
-            global $wpdb;
-            $wpdb->insert(
-                $wpdb->prefix . 'intersoccer_credit_redemptions',
-                [
-                    'customer_id' => $user_id,
-                    'order_item_id' => $fee_item_id,
-                    'credit_amount' => $points_to_redeem,
-                    'order_total' => $order->get_total(),
-                    'discount_applied' => $points_to_redeem, // 1 point = 1 CHF discount
-                    'created_at' => current_time('mysql')
-                ]
-            );
+            return (int) round(abs((float) $item->get_total()));
+        }
 
-            // Clear session
-            WC()->session->set('intersoccer_points_to_redeem', 0);
+        return 0;
+    }
 
-            // Add order note
-            $order->add_order_note(sprintf(__('Deducted %d credits from customer balance. New balance: %d', 'intersoccer-referral'), $points_to_redeem, $new_credits));
+    /**
+     * Resolve loyalty credits to deduct when an order is marked completed.
+     *
+     * @param WC_Order $order
+     * @return int
+     */
+    private function resolve_points_to_redeem_on_completion($order) {
+        if (!is_object($order) || !method_exists($order, 'get_meta')) {
+            return 0;
+        }
+
+        if ((int) $order->get_meta('_intersoccer_credits_deducted_on_completion', true) === 1) {
+            return 0;
+        }
+
+        $from_fee = $this->get_referral_credits_discount_points_from_order($order);
+        if ($from_fee > 0) {
+            return $from_fee;
+        }
+
+        $from_meta = (int) $order->get_meta('_intersoccer_points_redeemed', true);
+        if ($from_meta > 0) {
+            return $from_meta;
+        }
+
+        $session = $this->get_wc_session();
+        if ($session) {
+            return (int) $session->get('intersoccer_points_to_redeem', 0);
+        }
+
+        return 0;
+    }
+
+    /**
+     * Referral code and coach ID for completion handlers (session + order meta).
+     *
+     * @param int      $order_id
+     * @param WC_Order $order
+     * @return array{0: string, 1: int}
+     */
+    private function resolve_referral_context_for_order($order_id, $order) {
+        $referral_code = '';
+        $referral_coach_id = 0;
+
+        $session = $this->get_wc_session();
+        if ($session) {
+            $referral_code = (string) $session->get('intersoccer_applied_referral_code', '');
+            $referral_coach_id = (int) $session->get('intersoccer_referral_coach_id', 0);
+        }
+
+        if ($referral_code === '' && is_object($order) && method_exists($order, 'get_meta')) {
+            $referral_code = (string) $order->get_meta('_intersoccer_referral_code', true);
+        }
+        if ($referral_code === '') {
+            $referral_code = (string) get_post_meta($order_id, '_intersoccer_referral_code', true);
+        }
+
+        if ($referral_coach_id <= 0 && is_object($order) && method_exists($order, 'get_meta')) {
+            $referral_coach_id = (int) $order->get_meta('_intersoccer_referring_coach_id', true);
+        }
+        if ($referral_coach_id <= 0) {
+            $referral_coach_id = (int) get_post_meta($order_id, '_intersoccer_referring_coach_id', true);
+        }
+
+        return [trim($referral_code), $referral_coach_id];
+    }
+
+    /**
+     * Whether a referral bonus was already stored for this order.
+     *
+     * @param int $order_id
+     * @return bool
+     */
+    private function referral_reward_already_recorded($order_id) {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'intersoccer_referral_rewards';
+        $existing = $wpdb->get_var(
+            $wpdb->prepare("SELECT id FROM {$table} WHERE order_id = %d LIMIT 1", (int) $order_id)
+        );
+
+        return !empty($existing);
+    }
+
+    /**
+     * Deduct points when order is completed
+     *
+     * @param int           $order_id
+     * @param string        $old_status
+     * @param string        $new_status
+     * @param WC_Order|null $order
+     */
+    public function deduct_points_on_order_completion($order_id, $old_status, $new_status, $order = null) {
+        if ($new_status !== 'completed') {
+            return;
+        }
+
+        if (!$order instanceof WC_Order) {
+            $order = wc_get_order($order_id);
+        }
+        if (!$order) {
+            return;
+        }
+
+        $points_to_redeem = $this->resolve_points_to_redeem_on_completion($order);
+
+        if ($points_to_redeem > 0) {
+            $user_id = (int) $order->get_customer_id();
+            if ($user_id > 0) {
+                // Deduct points from user
+                $current_credits = get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0;
+                $new_credits = max(0, $current_credits - $points_to_redeem);
+                update_user_meta($user_id, 'intersoccer_points_balance', $new_credits);
+
+                // Find the fee item for the discount
+                $fee_item_id = null;
+                if (method_exists($order, 'get_items')) {
+                    $fee_label = __('Referral Credits Discount', 'intersoccer-referral');
+                    foreach ($order->get_items('fee') as $item_id => $item) {
+                        if (is_object($item) && method_exists($item, 'get_name') && $item->get_name() === $fee_label) {
+                            $fee_item_id = $item_id;
+                            break;
+                        }
+                    }
+                }
+
+                // Record the redemption
+                global $wpdb;
+                $wpdb->insert(
+                    $wpdb->prefix . 'intersoccer_credit_redemptions',
+                    [
+                        'customer_id' => $user_id,
+                        'order_item_id' => $fee_item_id,
+                        'credit_amount' => $points_to_redeem,
+                        'order_total' => $order->get_total(),
+                        'discount_applied' => $points_to_redeem, // 1 point = 1 CHF discount
+                        'created_at' => current_time('mysql'),
+                    ]
+                );
+
+                if (method_exists($order, 'update_meta_data') && method_exists($order, 'save')) {
+                    $order->update_meta_data('_intersoccer_credits_deducted_on_completion', 1);
+                    $order->update_meta_data('_intersoccer_points_redeemed', $points_to_redeem);
+                    $order->save();
+                }
+
+                $session = $this->get_wc_session();
+                if ($session) {
+                    $session->set('intersoccer_points_to_redeem', 0);
+                }
+
+                // Add order note
+                $order->add_order_note(sprintf(
+                    __('Deducted %d credits from customer balance. New balance: %d', 'intersoccer-referral'),
+                    $points_to_redeem,
+                    $new_credits
+                ));
+            }
         }
 
         // Award points to coach for every purchase (CHF 10 spent = 1 point)
         $this->award_purchase_points_to_coach($order);
 
         // Award points to coach for referral code usage (one-time bonus)
-        $referral_code = WC()->session->get('intersoccer_applied_referral_code');
-        $referral_coach_id = WC()->session->get('intersoccer_referral_coach_id');
+        list($referral_code, $referral_coach_id) = $this->resolve_referral_context_for_order($order_id, $order);
         intersoccer_referral_log("Checking referral bonus: code=$referral_code, coach_id=$referral_coach_id");
 
-        if ($referral_code && $referral_coach_id) {
+        if ($referral_code && $referral_coach_id && !$this->referral_reward_already_recorded($order_id)) {
             // Check if this is the customer's first completed order
             $customer_orders = wc_get_orders([
                 'customer_id' => $order->get_customer_id(),
                 'status' => 'completed',
-                'limit' => 1
+                'limit' => 1,
             ]);
-            intersoccer_referral_log("Customer completed orders count: " . count($customer_orders));
+            intersoccer_referral_log('Customer completed orders count: ' . count($customer_orders));
 
             // If this is their first completed order, award bonus points to coach
             if (count($customer_orders) === 1 && $customer_orders[0]->get_id() === $order_id) {
@@ -866,18 +1028,26 @@ class InterSoccer_Referral_Admin_Dashboard {
                         'order_id' => $order_id,
                         'referral_code' => $referral_code,
                         'points_awarded' => $points_to_award,
-                        'created_at' => current_time('mysql')
+                        'created_at' => current_time('mysql'),
                     ]
                 );
 
                 // Add order note
                 $coach_info = get_userdata($referral_coach_id);
-                $order->add_order_note(sprintf(__('Awarded %d bonus points to coach %s for referral code usage. New balance: %d', 'intersoccer-referral'),
-                    $points_to_award, $coach_info->display_name, $new_coach_points));
+                if ($coach_info) {
+                    $order->add_order_note(sprintf(
+                        __('Awarded %d bonus points to coach %s for referral code usage. New balance: %d', 'intersoccer-referral'),
+                        $points_to_award,
+                        $coach_info->display_name,
+                        $new_coach_points
+                    ));
+                }
 
-                // Clear referral session data
-                WC()->session->set('intersoccer_applied_referral_code', null);
-                WC()->session->set('intersoccer_referral_coach_id', null);
+                $session = $this->get_wc_session();
+                if ($session) {
+                    $session->set('intersoccer_applied_referral_code', null);
+                    $session->set('intersoccer_referral_coach_id', null);
+                }
             }
         }
     }
