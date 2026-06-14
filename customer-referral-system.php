@@ -39,6 +39,39 @@ if (!function_exists('intersoccer_referral_log')) {
     }
 }
 
+/**
+ * Read the first-order referral discount amount stored on an order.
+ */
+if (!function_exists('intersoccer_referral_get_first_order_discount_amount')) {
+    function intersoccer_referral_get_first_order_discount_amount($order) {
+        if (!is_object($order)) {
+            return 0.0;
+        }
+
+        if (method_exists($order, 'get_meta')) {
+            $amount = (float) $order->get_meta('_intersoccer_first_order_discount_amount', true);
+            if ($amount > 0) {
+                return $amount;
+            }
+        }
+
+        if (method_exists($order, 'get_id')) {
+            return (float) get_post_meta((int) $order->get_id(), '_intersoccer_first_order_discount_amount', true);
+        }
+
+        return 0.0;
+    }
+}
+
+/**
+ * Coach one-time bonus points when a referral code leads to a first completed order.
+ */
+if (!function_exists('intersoccer_referral_get_coach_referral_bonus_points')) {
+    function intersoccer_referral_get_coach_referral_bonus_points() {
+        return max(0, (int) get_option('intersoccer_coach_referral_bonus_points', 50));
+    }
+}
+
 if (!file_exists(INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.php')) {
     intersoccer_referral_log('Error: class-referral-handler.php not found at ' . INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.php');
 }
@@ -642,6 +675,7 @@ class InterSoccer_Referral_System {
         // Customer incentives
         add_option('intersoccer_new_customer_discount', 10);
         add_option('intersoccer_new_customer_credits', 50);
+        add_option('intersoccer_coach_referral_bonus_points', 50);
         add_option('intersoccer_first_session_bonus', 200);
 
         // System settings

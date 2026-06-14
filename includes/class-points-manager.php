@@ -356,9 +356,10 @@ class InterSoccer_Points_Manager {
      * 
      * @param float $amount The currency amount in CHF
      * @param int $user_id Optional user ID to apply role-specific rate
+     * @param string $context 'purchase' or 'referral'
      * @return int The number of points earned (integer only)
      */
-    private function calculate_points_from_amount($amount, $user_id = null, $is_first_time = false) {
+    private function calculate_points_from_amount($amount, $user_id = null, $is_first_time = false, $context = 'purchase') {
         $amount = max(0, (float) $amount);
         $mode = $this->get_allocation_mode();
 
@@ -376,13 +377,22 @@ class InterSoccer_Points_Manager {
         }
 
         // Default ratio-based allocation
-        // For purchases, use purchase rate; for referrals, use referral rate
-        // First-time customers get special rate if applicable
-        $context = 'purchase'; // Default to purchase context
         $rate = max(1, $this->get_points_rate_for_user($user_id, $context, $is_first_time));
 
-        // Use floor() to ensure integer points (no fractional points)
         return (int) floor($amount / $rate);
+    }
+
+    /**
+     * Calculate points earned from an order total using configured allocation rules.
+     *
+     * @param float    $order_total   Order total in CHF.
+     * @param int|null $user_id       User earning the points.
+     * @param string   $context       'purchase' or 'referral'.
+     * @param bool     $is_first_time Whether this is the earner's first purchase (purchase context only).
+     * @return int
+     */
+    public function calculate_points_from_order_total($order_total, $user_id = null, $context = 'purchase', $is_first_time = false) {
+        return $this->calculate_points_from_amount($order_total, $user_id, $is_first_time, $context);
     }
 
     /**

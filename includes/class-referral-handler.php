@@ -504,12 +504,21 @@ class InterSoccer_Referral_Handler {
         $referral_status = 'pending';
 
         $is_first_purchase = $this->is_first_purchase($customer_id, $order_id);
-        // Calculate customer referral reward: 10% of purchase value (1 point = 1 CHF)
+        $order_total = max(0, (float) $order->get_total());
+        $referrer_reward_points = 0;
         if ($is_customer_referrer && $eligibility['eligible']) {
-            $order_total = $order->get_total();
-            $referrer_reward_points = (int) floor($order_total * 0.10); // 10% of purchase value
-        } else {
-            $referrer_reward_points = 0;
+            if (class_exists('InterSoccer_Points_Manager')) {
+                $points_manager = new InterSoccer_Points_Manager();
+                $referrer_reward_points = (int) $points_manager->calculate_points_from_order_total(
+                    $order_total,
+                    (int) $referrer['id'],
+                    'referral',
+                    false
+                );
+            } else {
+                $rate = max(1, (int) get_option('intersoccer_points_rate_customer_referral', 10));
+                $referrer_reward_points = (int) floor($order_total / $rate);
+            }
         }
 
         update_post_meta($order_id, '_intersoccer_referral_eligibility', $eligibility);
@@ -610,7 +619,10 @@ class InterSoccer_Referral_Handler {
             wp_mail(
                 $order->get_billing_email(),
                 'Welcome to InterSoccer!',
-                'Thanks for joining! You have 50 CHF credits and are connected with your coach partner.'
+                sprintf(
+                    'Thanks for joining! You have %d CHF credits and are connected with your coach partner.',
+                    $customer_bonus_points
+                )
             );
         }
 

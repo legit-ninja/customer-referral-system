@@ -159,6 +159,21 @@ if (!function_exists('intersoccer_referral_log')) {
     }
 }
 
+if (!function_exists('intersoccer_referral_get_first_order_discount_amount')) {
+    function intersoccer_referral_get_first_order_discount_amount($order) {
+        if (is_object($order) && method_exists($order, 'get_meta')) {
+            return (float) $order->get_meta('_intersoccer_first_order_discount_amount', true);
+        }
+        return 0.0;
+    }
+}
+
+if (!function_exists('intersoccer_referral_get_coach_referral_bonus_points')) {
+    function intersoccer_referral_get_coach_referral_bonus_points() {
+        return max(0, (int) get_option('intersoccer_coach_referral_bonus_points', 50));
+    }
+}
+
 // Include WordPress test utilities if available, otherwise mock
 if (file_exists(dirname(__DIR__, 2) . '/vendor/autoload.php')) {
     require_once dirname(__DIR__, 2) . '/vendor/autoload.php';

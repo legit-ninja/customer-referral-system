@@ -315,6 +315,15 @@ class InterSoccer_Commission_Manager {
         }
 
         if ($referral_code && $referral_coach_id) {
+            global $wpdb;
+            $rewards_table = $wpdb->prefix . 'intersoccer_referral_rewards';
+            $existing_reward = $wpdb->get_var(
+                $wpdb->prepare("SELECT id FROM {$rewards_table} WHERE order_id = %d LIMIT 1", (int) $order_id)
+            );
+            if ($existing_reward) {
+                return;
+            }
+
             // Check if this is the customer's first completed order
             $customer_orders = wc_get_orders([
                 'customer_id' => $customer_id,
@@ -324,7 +333,12 @@ class InterSoccer_Commission_Manager {
 
             // If this is their first completed order, award points to coach
             if (count($customer_orders) === 1 && $customer_orders[0]->get_id() === $order_id) {
-                $points_to_award = 50; // Award 50 points to coach for successful referral
+                $points_to_award = intersoccer_referral_get_coach_referral_bonus_points();
+                $discount_amount = intersoccer_referral_get_first_order_discount_amount($order);
+
+                if ($points_to_award <= 0) {
+                    return;
+                }
 
                 // Get current coach points balance (note: this is different from commission credits)
                 $current_coach_points = get_user_meta($referral_coach_id, 'intersoccer_points_balance', true) ?: 0;
@@ -342,7 +356,7 @@ class InterSoccer_Commission_Manager {
                         'order_id' => $order_id,
                         'referral_code' => $referral_code,
                         'points_awarded' => $points_to_award,
-                        'discount_amount' => 10.00, // 10 CHF discount given to customer
+                        'discount_amount' => $discount_amount,
                         'created_at' => current_time('mysql')
                     ]
                 );

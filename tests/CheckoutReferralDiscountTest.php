@@ -64,6 +64,9 @@ class CheckoutReferralDiscountTest extends TestCase {
             public function set_session() {
                 $this->set_session_called = true;
             }
+            public function get_subtotal() {
+                return 100;
+            }
             public function add_fee($name, $amount, $taxable = true, $tax_class = '') {
                 $this->fees[] = compact('name', 'amount', 'taxable', 'tax_class');
             }
@@ -92,9 +95,9 @@ class CheckoutReferralDiscountTest extends TestCase {
         $this->assertSame(902, $mock_session['intersoccer_referral_coach_id']);
         $this->assertTrue(WC()->cart->calculate_called);
         $this->assertTrue(WC()->cart->set_session_called);
-        $this->assertSame(10, $result['discount_amount']);
+        $this->assertEquals(10, $result['discount_amount']);
 
-        // Applying fees should add the 10 CHF discount.
+        // Applying fees should add the 10% discount (100 CHF subtotal => 10 CHF).
         $this->dashboard->apply_points_discount_as_fee(WC()->cart);
         $this->assertNotEmpty(WC()->cart->fees);
 

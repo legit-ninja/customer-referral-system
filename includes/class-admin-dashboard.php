@@ -992,7 +992,7 @@ class InterSoccer_Referral_Admin_Dashboard {
             }
         }
 
-        // Award points to coach for every purchase (CHF 10 spent = 1 point)
+        // Award points to coach for every purchase (uses configured purchase rate)
         $this->award_purchase_points_to_coach($order);
 
         // Award points to coach for referral code usage (one-time bonus)
@@ -1011,8 +1011,9 @@ class InterSoccer_Referral_Admin_Dashboard {
             // If this is their first completed order, award bonus points to coach
             if (count($customer_orders) === 1 && $customer_orders[0]->get_id() === $order_id) {
                 intersoccer_referral_log("Awarding referral bonus to coach $referral_coach_id");
-                $points_to_award = 50; // Award 50 bonus points to coach for successful referral
+                $points_to_award = intersoccer_referral_get_coach_referral_bonus_points();
 
+                if ($points_to_award > 0) {
                 // Get current coach points balance
                 $current_coach_points = get_user_meta($referral_coach_id, 'intersoccer_points_balance', true) ?: 0;
                 $new_coach_points = $current_coach_points + $points_to_award;
@@ -1048,6 +1049,7 @@ class InterSoccer_Referral_Admin_Dashboard {
                     $session->set('intersoccer_applied_referral_code', null);
                     $session->set('intersoccer_referral_coach_id', null);
                 }
+                }
             }
         }
     }
@@ -1068,9 +1070,21 @@ class InterSoccer_Referral_Admin_Dashboard {
             return; // No linked coach
         }
 
-        // Calculate points to award: CHF 10 spent = 1 point
-        $order_total = $order->get_total();
-        $points_to_award = floor($order_total / 10); // 1 point per CHF 10 spent
+        // Calculate points to award using configured purchase allocation rules.
+        $order_total = max(0, (float) $order->get_total());
+        $points_to_award = 0;
+        if (class_exists('InterSoccer_Points_Manager')) {
+            $points_manager = new InterSoccer_Points_Manager();
+            $points_to_award = (int) $points_manager->calculate_points_from_order_total(
+                $order_total,
+                (int) $coach_id,
+                'purchase',
+                false
+            );
+        } else {
+            $rate = max(1, (int) get_option('intersoccer_points_rate_customer_purchase', 10));
+            $points_to_award = (int) floor($order_total / $rate);
+        }
         intersoccer_referral_log("Order total: $order_total, points to award: $points_to_award");
 
         if ($points_to_award <= 0) {
@@ -1233,17 +1247,21 @@ class InterSoccer_Referral_Admin_Dashboard {
         $eligible_for_discount = $this->customer_is_eligible_for_first_order_discount($current_user_id);
 
         if ($referral_code && $eligible_for_discount) {
-            $discount_amount = -10; // 10 CHF discount for referral codes
-            $cart->add_fee(__('Referral Discount', 'intersoccer-referral'), $discount_amount, true, '');
+            $cart_subtotal = method_exists($cart, 'get_subtotal') ? (float) $cart->get_subtotal() : 0;
+            $discount_value = $this->calculate_first_order_referral_discount($cart_subtotal);
+            $discount_amount = $discount_value > 0 ? -$discount_value : 0;
+            if ($discount_amount < 0) {
+                $cart->add_fee(__('Referral Discount', 'intersoccer-referral'), $discount_amount, true, '');
 
-            // Mark that we applied the first-order discount during this checkout attempt.
-            // This is later copied to the order meta in maybe_mark_first_order_discount_on_order().
-            $session->set('intersoccer_first_order_discount_pending', 'yes');
-            $session->set('intersoccer_first_order_discount_code', strtoupper((string) $referral_code));
-            $session->set('intersoccer_first_order_discount_amount', 10);
+                // Mark that we applied the first-order discount during this checkout attempt.
+                // This is later copied to the order meta in maybe_mark_first_order_discount_on_order().
+                $session->set('intersoccer_first_order_discount_pending', 'yes');
+                $session->set('intersoccer_first_order_discount_code', strtoupper((string) $referral_code));
+                $session->set('intersoccer_first_order_discount_amount', $discount_value);
 
-            if (defined('WP_DEBUG') && WP_DEBUG) {
-                intersoccer_referral_log("InterSoccer Referral: Applying first-order referral discount - user=$current_user_id, code=$referral_code, discount=$discount_amount");
+                if (defined('WP_DEBUG') && WP_DEBUG) {
+                    intersoccer_referral_log("InterSoccer Referral: Applying first-order referral discount - user=$current_user_id, code=$referral_code, discount=$discount_amount");
+                }
             }
         } elseif ($referral_code && defined('WP_DEBUG') && WP_DEBUG) {
             intersoccer_referral_log("InterSoccer Referral: Skipping referral discount - user=$current_user_id, code=$referral_code, eligible=" . ($eligible_for_discount ? 'yes' : 'no'));
@@ -1303,6 +1321,23 @@ class InterSoccer_Referral_Admin_Dashboard {
     }
 
     /**
+     * Percentage off first order when a referral code is applied (default 10%).
+     */
+    private function get_first_order_referral_discount_percent() {
+        $percent = (float) get_option('intersoccer_new_customer_discount', 10);
+        return max(0, min(100, $percent));
+    }
+
+    /**
+     * Calculate first-order referral discount from cart subtotal.
+     */
+    private function calculate_first_order_referral_discount($cart_subtotal) {
+        $subtotal = max(0, (float) $cart_subtotal);
+        $percent = $this->get_first_order_referral_discount_percent();
+        return round($subtotal * ($percent / 100), 2);
+    }
+
+    /**
      * If the first-order discount was applied in cart fees, copy a marker to the order.
      * This lets us \"consume\" the one-time benefit only when the order reaches a successful status.
      *
@@ -1326,7 +1361,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         }
 
         $code = strtoupper((string) $session->get('intersoccer_first_order_discount_code'));
-        $amount = (int) $session->get('intersoccer_first_order_discount_amount', 10);
+        $amount = (float) $session->get('intersoccer_first_order_discount_amount', 0);
 
         $order->update_meta_data('_intersoccer_first_order_discount_applied', 1);
         $order->update_meta_data('_intersoccer_first_order_discount_code', $code);
@@ -1599,11 +1634,15 @@ class InterSoccer_Referral_Admin_Dashboard {
 
             do_action('intersoccer_referral_code_used', $referral_code, get_current_user_id(), $coach->ID);
 
+            $ajax_cart_subtotal = (WC()->cart && method_exists(WC()->cart, 'get_subtotal')) ? (float) WC()->cart->get_subtotal() : 0;
+            $ajax_discount_amount = $eligible_for_discount
+                ? $this->calculate_first_order_referral_discount($ajax_cart_subtotal)
+                : 0;
             return [
                 'success' => true,
                 'message' => $status_message,
                 'coach_name' => $coach_name,
-                'discount_amount' => $eligible_for_discount ? 10 : 0
+                'discount_amount' => $ajax_discount_amount
             ];
         }
 
@@ -1663,11 +1702,15 @@ class InterSoccer_Referral_Admin_Dashboard {
 
             do_action('intersoccer_referral_code_used', $referral_code, get_current_user_id(), $referrer_customer->ID);
 
+            $ajax_cart_subtotal = (WC()->cart && method_exists(WC()->cart, 'get_subtotal')) ? (float) WC()->cart->get_subtotal() : 0;
+            $ajax_discount_amount = $eligible_for_discount
+                ? $this->calculate_first_order_referral_discount($ajax_cart_subtotal)
+                : 0;
             return [
                 'success' => true,
                 'message' => $status_message,
                 'coach_name' => $referrer_name,
-                'discount_amount' => $eligible_for_discount ? 10 : 0
+                'discount_amount' => $ajax_discount_amount
             ];
         }
 
