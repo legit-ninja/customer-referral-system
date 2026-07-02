@@ -837,4 +837,147 @@ class CommissionManagerTest extends TestCase {
             return $method->invokeArgs($instance, $parameters);
         }
     }
+
+    // Regression: AUDIT-008 — Double coach commission on order completion
+    public function test_commission_paid_only_once_per_order() {
+        global $mock_wpdb_get_row_results, $mock_wc_order_override, $mock_user_meta;
+
+        $mock_wpdb_get_row_results = [
+            '__queue__' => [
+                function ($query) {
+                    return (object) [
+                        'id' => 99,
+                        'coach_id' => 7,
+                        'customer_id' => 5,
+                        'order_id' => 888,
+                        'purchase_count' => 1,
+                        'status' => 'pending',
+                    ];
+                },
+            ],
+        ];
+
+        update_user_meta(7, 'intersoccer_credits', 0);
+
+        $mock_wc_order_override = new WC_Order(888);
+        $mock_wc_order_override->set_total(180);
+        $mock_wc_order_override->set_tax_total(18);
+        $mock_wc_order_override->set_customer_id(5);
+        $mock_wc_order_override->set_status('completed');
+
+        $this->mockCoachCustomerCount(5);
+
+        $manager = InterSoccer_Commission_Manager::get_instance();
+        $manager->process_referral_commissions(888);
+        $credits_after_first = (float) get_user_meta(7, 'intersoccer_credits', true);
+
+        $manager->process_referral_commissions(888);
+        $credits_after_second = (float) get_user_meta(7, 'intersoccer_credits', true);
+
+        $this->assertGreaterThan(0, $credits_after_first, 'Commission should be paid on first completion');
+        $this->assertEquals(
+            $credits_after_first,
+            $credits_after_second,
+            'Firing order completion twice must not double intersoccer_credits'
+        );
+    }
+
+    // Regression: AUDIT-011 — Customer-referrer rows may credit coach_id 0 before bail
+    public function test_customer_referrer_does_not_update_coach_credits() {
+        global $mock_wpdb_get_row_results, $mock_wc_order_override;
+
+        $mock_wpdb_get_row_results = [
+            '__queue__' => [
+                function ($query) {
+                    return (object) [
+                        'id' => 101,
+                        'coach_id' => 0,
+                        'customer_id' => 12,
+                        'order_id' => 909,
+                        'purchase_count' => 1,
+                        'status' => 'pending',
+                    ];
+                },
+            ],
+        ];
+
+        update_user_meta(0, 'intersoccer_credits', 0);
+
+        $mock_wc_order_override = new WC_Order(909);
+        $mock_wc_order_override->set_total(100);
+        $mock_wc_order_override->set_tax_total(0);
+        $mock_wc_order_override->set_customer_id(12);
+        $mock_wc_order_override->set_status('completed');
+
+        $manager = InterSoccer_Commission_Manager::get_instance();
+        $manager->process_referral_commissions(909);
+
+        $this->assertSame(
+            0.0,
+            (float) get_user_meta(0, 'intersoccer_credits', true),
+            'Referral row with null/zero coach_id must not increment any user intersoccer_credits'
+        );
+    }
+
+    // Regression: AUDIT-012 — Partnership cooldown blocks all partnership commission payouts
+    public function test_partnership_commission_paid_during_cooldown() {
+        global $mock_wpdb_get_row_results, $mock_wc_order_override;
+
+        $mock_wpdb_get_row_results = [
+            '__queue__' => [
+                function ($query) {
+                    if (strpos($query, 'WHERE order_id') !== false) {
+                        return null;
+                    }
+                    return null;
+                },
+            ],
+        ];
+
+        $customer_id = 55;
+        $coach_id = 77;
+        update_user_meta($customer_id, 'intersoccer_partnership_coach_id', $coach_id);
+        update_user_meta($customer_id, 'intersoccer_partnership_switch_cooldown', gmdate('Y-m-d H:i:s', time() + DAY_IN_SECONDS));
+        update_user_meta($coach_id, 'intersoccer_credits', 0);
+
+        $mock_wc_order_override = new WC_Order(910);
+        $mock_wc_order_override->set_total(200);
+        $mock_wc_order_override->set_tax_total(0);
+        $mock_wc_order_override->set_customer_id($customer_id);
+        $mock_wc_order_override->set_status('completed');
+
+        $this->mockCoachCustomerCount(3);
+
+        $manager = InterSoccer_Commission_Manager::get_instance();
+        $manager->process_referral_commissions(910);
+
+        $this->assertGreaterThan(
+            0,
+            (float) get_user_meta($coach_id, 'intersoccer_credits', true),
+            'Partnership commission should pay during switch cooldown (cooldown blocks switching only)'
+        );
+    }
+
+    // Regression: AUDIT-013 — record_commission_credit inserts order_id column missing from schema
+    public function test_record_commission_credit_insert_succeeds() {
+        global $mock_wpdb_last_insert, $mock_wpdb_last_insert_by_table;
+
+        $mock_wpdb_last_insert = null;
+        $mock_wpdb_last_insert_by_table = [];
+
+        $manager = InterSoccer_Commission_Manager::get_instance();
+        $order = new WC_Order(777);
+        $order->set_total(100);
+        $order->set_tax_total(0);
+
+        $this->invokePrivateMethod(
+            InterSoccer_Commission_Manager::class,
+            'record_commission_credit',
+            [42, 7, 5, 777, 12.5, 'commission', $order, []]
+        );
+
+        $this->assertNotNull($mock_wpdb_last_insert, 'wpdb->insert into referral_credits should succeed');
+        $this->assertSame('wp_intersoccer_referral_credits', $mock_wpdb_last_insert['table']);
+        $this->assertArrayHasKey('order_id', $mock_wpdb_last_insert['data']);
+    }
 }

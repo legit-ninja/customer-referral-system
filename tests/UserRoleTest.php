@@ -342,4 +342,46 @@ class UserRoleTest extends TestCase {
         ];
         add_role('partner', __('Partner', 'intersoccer-referral'), $partner_capabilities);
     }
+
+    // Regression: AUDIT-014 — Coach role missing referral capabilities when PM registers role first
+    public function test_referral_caps_added_to_existing_coach_role() {
+        remove_role('coach');
+        add_role('coach', 'Coach', ['read' => true, 'edit_posts' => true]);
+
+        $plugin_file = dirname(__DIR__) . '/customer-referral-system.php';
+        $source = file_get_contents($plugin_file);
+        $this->assertStringContainsString('add_custom_roles', $source);
+
+        if (preg_match('/function add_custom_roles\(\)\s*\{.*?\n    \}/s', $source, $matches)) {
+            $this->assertStringContainsString(
+                'add_cap',
+                $matches[0],
+                'CRS should add_cap to existing coach role when PM registered it first'
+            );
+        }
+
+        $coach = get_role('coach');
+        $this->assertTrue(
+            $coach && $coach->has_cap('view_referral_dashboard'),
+            'Coach user should have view_referral_dashboard after PM+CRS both active'
+        );
+    }
+
+    // Regression: ECO-002 — Coach role capabilities depend on plugin load order
+    public function test_coach_caps_after_pm_loaded_first() {
+        remove_role('coach');
+        add_role('coach', 'Coach', ['read' => true, 'edit_posts' => true]);
+
+        $coach = get_role('coach');
+        $this->assertFalse($coach->has_cap('view_referral_dashboard'), 'PM-minimal coach should lack referral caps before CRS merge');
+
+        $this->recreateRoles();
+
+        $coach = get_role('coach');
+        $this->assertTrue(
+            $coach->has_cap('view_referral_dashboard'),
+            'Coach has referral dashboard caps regardless of plugin load order'
+        );
+        $this->assertTrue($coach->has_cap('manage_referrals'));
+    }
 }

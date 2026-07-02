@@ -1087,4 +1087,30 @@ class PointsManagerTest extends TestCase {
 
         return $method->invokeArgs($object, $parameters);
     }
+
+    // Regression: AUDIT-010 — Points_Manager registers WC hooks on every instantiation
+    public function test_multiple_instantiations_register_hooks_once() {
+        $this->assertTrue(
+            method_exists('InterSoccer_Points_Manager', 'get_instance'),
+            'Points_Manager should expose singleton get_instance() to avoid duplicate woocommerce_order_status_completed hooks'
+        );
+
+        $first = new InterSoccer_Points_Manager();
+        $second = new InterSoccer_Points_Manager();
+
+        $order = $this->registerWcOrder(new WC_Order(), 4567);
+        $order->set_customer_id(321);
+        $order->set_total(100);
+
+        $first->allocate_points_for_order(4567);
+        $balance_after_first = (int) ($GLOBALS['mock_points_balances'][321] ?? 0);
+        $second->allocate_points_for_order(4567);
+        $balance_after_second = (int) ($GLOBALS['mock_points_balances'][321] ?? 0);
+
+        $this->assertSame(
+            $balance_after_first,
+            $balance_after_second,
+            'Two Points_Manager instances must not double-allocate points for the same order'
+        );
+    }
 }
