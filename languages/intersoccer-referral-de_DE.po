@@ -447,3 +447,9 @@ msgstr "Bei InterSoccer mitmachen!"
 msgid "I thought you'd love InterSoccer's soccer training programs! Use my referral code: %s or visit: %s"
 msgstr "Ich dachte, dir gefallen InterSoccers Fussballprogramme! Nutze meinen Empfehlungscode: %s oder besuche: %s"
 
+msgid "Current Balance"
+msgstr "Aktuelles Guthaben"
+
+msgid "points"
+msgstr "Punkte"
+

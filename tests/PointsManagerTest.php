@@ -28,6 +28,7 @@ class PointsManagerTest extends TestCase {
     private function resetPointsTestState(): void {
         global $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_customer_spent, $mock_session;
 
+        $this->resetPointsManagerSingleton();
         $mock_points_balances = [];
         $mock_order_points_allocated = [];
         $mock_points_log_rows = [];
@@ -1075,6 +1076,20 @@ class PointsManagerTest extends TestCase {
         delete_option('intersoccer_points_rate_customer_purchase');
         delete_option('intersoccer_points_rate_customer_referral');
         delete_option('intersoccer_points_rate_first_time_customer');
+    }
+
+    /**
+     * Reset singleton so each test gets a fresh Points_Manager instance.
+     */
+    private function resetPointsManagerSingleton(): void {
+        if (!class_exists('InterSoccer_Points_Manager', false)) {
+            return;
+        }
+
+        $reflection = new ReflectionClass(InterSoccer_Points_Manager::class);
+        $property = $reflection->getProperty('instance');
+        $property->setAccessible(true);
+        $property->setValue(null, null);
     }
 
     /**

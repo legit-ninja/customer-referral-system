@@ -45,6 +45,8 @@ class InterSoccer_Referral_Dashboard {
             'customer_dashboard_facebook_message' => 'Join InterSoccer! Use my referral code: %s',
             'customer_dashboard_email_subject' => 'Join InterSoccer!',
             'customer_dashboard_email_body' => 'I thought you\'d love InterSoccer\'s soccer training programs! Use my referral code: %s or visit: %s',
+            'customer_dashboard_current_balance' => 'Current Balance',
+            'customer_dashboard_points_unit' => 'points',
         ];
         
         foreach ($strings as $name => $string) {
@@ -126,6 +128,8 @@ class InterSoccer_Referral_Dashboard {
             return '<p>' . __('Please log in to view your referral dashboard.', 'intersoccer-referral') . '</p>';
         }
         $user_id = get_current_user_id();
+        $points_manager = InterSoccer_Points_Manager::get_instance();
+        $points_balance = $points_manager->get_points_balance($user_id);
         $referral_link = InterSoccer_Referral_Handler::generate_customer_referral_link($user_id);
         $referral_code = get_user_meta($user_id, 'intersoccer_customer_referral_code', true);
         if (!$referral_code) {
@@ -151,6 +155,8 @@ class InterSoccer_Referral_Dashboard {
         $string_name_facebook_message = 'customer_dashboard_facebook_message';
         $string_name_email_subject = 'customer_dashboard_email_subject';
         $string_name_email_body = 'customer_dashboard_email_body';
+        $string_name_current_balance = 'customer_dashboard_current_balance';
+        $string_name_points_unit = 'customer_dashboard_points_unit';
         
         // Define original English strings
         $original_share_earn = 'Share & Earn';
@@ -169,6 +175,8 @@ class InterSoccer_Referral_Dashboard {
         $original_facebook_message = 'Join InterSoccer! Use my referral code: %s';
         $original_email_subject = 'Join InterSoccer!';
         $original_email_body = 'I thought you\'d love InterSoccer\'s soccer training programs! Use my referral code: %s or visit: %s';
+        $original_current_balance = 'Current Balance';
+        $original_points_unit = 'points';
         
         // Get translated strings - use WordPress translation as fallback
         $share_earn_title = __('Share & Earn', 'intersoccer-referral');
@@ -187,6 +195,8 @@ class InterSoccer_Referral_Dashboard {
         $facebook_message_template = __('Join InterSoccer! Use my referral code: %s', 'intersoccer-referral');
         $email_subject = __('Join InterSoccer!', 'intersoccer-referral');
         $email_body_template = __('I thought you\'d love InterSoccer\'s soccer training programs! Use my referral code: %s or visit: %s', 'intersoccer-referral');
+        $current_balance_label = __('Current Balance', 'intersoccer-referral');
+        $points_unit_label = __('points', 'intersoccer-referral');
         
         // Apply WPML translations if available (strings are registered on init hook)
         if (defined('ICL_SITEPRESS_VERSION')) {
@@ -309,16 +319,34 @@ class InterSoccer_Referral_Dashboard {
             if ($t !== $original_email_body) {
                 $email_body_template = $t;
             }
+            $t = $get_translation($original_current_balance, $string_name_current_balance);
+            if ($t !== $original_current_balance) {
+                $current_balance_label = $t;
+            }
+            $t = $get_translation($original_points_unit, $string_name_points_unit);
+            if ($t !== $original_points_unit) {
+                $points_unit_label = $t;
+            }
         }
         
         // Build messages with referral code and link
         $whatsapp_message = sprintf($whatsapp_message_template, $referral_code, $referral_link);
         $facebook_message = sprintf($facebook_message_template, $referral_code);
         $email_body = sprintf($email_body_template, $referral_code, $referral_link);
+        $formatted_points_balance = function_exists('number_format_i18n')
+            ? number_format_i18n($points_balance)
+            : number_format($points_balance);
         
         ob_start();
         ?>
         <div class="intersoccer-customer-dashboard">
+            <div class="dashboard-stats">
+                <div class="stat-card points-card" aria-label="<?php echo esc_attr($current_balance_label); ?>">
+                    <div class="stat-label"><?php echo esc_html($current_balance_label); ?></div>
+                    <div class="stat-value"><?php echo esc_html($formatted_points_balance); ?></div>
+                    <div class="stat-unit"><?php echo esc_html($points_unit_label); ?></div>
+                </div>
+            </div>
             <!-- Referral Code & Link Section -->
             <div class="referral-section">
                 <h3><?php echo esc_html($share_earn_title); ?></h3>

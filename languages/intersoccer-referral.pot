@@ -317,3 +317,9 @@ msgstr ""
 msgid "Refer & Earn"
 msgstr ""
 
+msgid "Current Balance"
+msgstr ""
+
+msgid "points"
+msgstr ""
+

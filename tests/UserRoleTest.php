@@ -354,11 +354,14 @@ class UserRoleTest extends TestCase {
 
         if (preg_match('/function add_custom_roles\(\)\s*\{.*?\n    \}/s', $source, $matches)) {
             $this->assertStringContainsString(
-                'add_cap',
+                'InterSoccer_Referral_Role_Registration',
                 $matches[0],
-                'CRS should add_cap to existing coach role when PM registered it first'
+                'CRS should merge referral caps when PM registered coach role first'
             );
         }
+
+        require_once __DIR__ . '/../includes/class-referral-role-registration.php';
+        InterSoccer_Referral_Role_Registration::register_custom_roles();
 
         $coach = get_role('coach');
         $this->assertTrue(

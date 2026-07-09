@@ -404,3 +404,9 @@ msgstr "Möchten Sie %s wirklich als Coach-Partner:in auswählen?"
 msgid "Refer & Earn"
 msgstr "Empfehlen & verdienen"
 
+msgid "Current Balance"
+msgstr "Aktuelles Guthaben"
+
+msgid "points"
+msgstr "Punkte"
+

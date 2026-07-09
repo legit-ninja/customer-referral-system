@@ -5,6 +5,44 @@
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* Points balance card */
+.dashboard-stats {
+    margin-bottom: 24px;
+}
+
+.stat-card.points-card {
+    padding: 25px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    border-top: 4px solid #667eea;
+}
+
+.stat-card.points-card .stat-label {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #64748b;
+    margin-bottom: 8px;
+}
+
+.stat-card.points-card .stat-value {
+    font-size: 42px;
+    font-weight: 700;
+    line-height: 1.1;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.stat-card.points-card .stat-unit {
+    font-size: 14px;
+    color: #94a3b8;
+    margin-top: 4px;
+}
+
 /* Referral Section */
 .referral-section {
     /* background: white; */

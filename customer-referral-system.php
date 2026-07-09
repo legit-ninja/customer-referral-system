@@ -3,7 +3,7 @@
  * Plugin Name: InterSoccer Referral System
  * Plugin URI: https://intersoccer.ch
  * Description: Advanced coach referral program with gamification and comprehensive analytics.
- * Version: 1.7.7
+ * Version: 1.7.8
  * Author: Jeremy Lee
  * Author URI: https://github.com/legit-ninja
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('INTERSOCCER_REFERRAL_VERSION', '1.7.7');
+define('INTERSOCCER_REFERRAL_VERSION', '1.7.8');
 define('INTERSOCCER_REFERRAL_PATH', plugin_dir_path(__FILE__));
 define('INTERSOCCER_REFERRAL_URL', plugin_dir_url(__FILE__));
 define('INTERSOCCER_REFERRAL_BASENAME', plugin_basename(__FILE__));
@@ -185,7 +185,7 @@ class InterSoccer_Referral_System {
         
         new InterSoccer_Referral_Admin_Dashboard();
         new InterSoccer_Coach_Admin_Dashboard();
-        new InterSoccer_Points_Manager();
+        InterSoccer_Points_Manager::get_instance();
         new InterSoccer_Admin_Audit();
 
         // Initialize audit logging system
@@ -593,52 +593,9 @@ class InterSoccer_Referral_System {
     }
     
     private function add_custom_roles() {
-        // Add Coach role
-        $coach_capabilities = [
-            'read' => true,
-            'view_referral_dashboard' => true,
-            'manage_referrals' => true,
-            'view_coach_reports' => true,
-        ];
-        
-        if (!get_role('coach')) {
-            add_role('coach', __('Coach', 'intersoccer-referral'), $coach_capabilities);
-        }
-
-        // Add Content Creator role
-        $content_creator_capabilities = [
-            'read' => true,
-            'view_referral_dashboard' => true,
-            'create_content' => true,
-            'edit_own_content' => true,
-            'manage_content_referrals' => true,
-        ];
-
-        if (!get_role('content_creator')) {
-            add_role('content_creator', __('Content Creator', 'intersoccer-referral'), $content_creator_capabilities);
-        }
-
-        // Add Partner role
-        $partner_capabilities = [
-            'read' => true,
-            'view_referral_dashboard' => true,
-            'manage_partnerships' => true,
-            'view_partner_reports' => true,
-            'manage_partner_referrals' => true,
-        ];
-
-        if (!get_role('partner')) {
-            add_role('partner', __('Partner', 'intersoccer-referral'), $partner_capabilities);
-        }
-        
-        // Add capabilities to existing roles
-        $admin_role = get_role('administrator');
-        if ($admin_role) {
-            $admin_role->add_cap('view_referral_dashboard');
-            $admin_role->add_cap('manage_referrals');
-            $admin_role->add_cap('view_coach_reports');
-            $admin_role->add_cap('manage_coach_system');
-        }
+        require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-role-registration.php';
+        InterSoccer_Referral_Role_Registration::register_custom_roles();
+        InterSoccer_Referral_Role_Registration::register_admin_capabilities();
     }
     
     private function set_default_options() {

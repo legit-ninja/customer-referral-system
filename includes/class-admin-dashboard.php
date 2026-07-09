@@ -917,6 +917,23 @@ class InterSoccer_Referral_Admin_Dashboard {
     }
 
     /**
+     * Check whether purchase reward points were already recorded for an order.
+     *
+     * @param int $order_id
+     * @return bool
+     */
+    private function purchase_reward_already_recorded($order_id) {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'intersoccer_purchase_rewards';
+        $existing = $wpdb->get_var(
+            $wpdb->prepare("SELECT id FROM {$table} WHERE order_id = %d LIMIT 1", (int) $order_id)
+        );
+
+        return !empty($existing);
+    }
+
+    /**
      * Deduct points when order is completed
      *
      * @param int           $order_id
@@ -1058,6 +1075,12 @@ class InterSoccer_Referral_Admin_Dashboard {
      * Award points to coach for customer purchases (CHF 10 spent = 1 point)
      */
     private function award_purchase_points_to_coach($order) {
+        $order_id = (int) $order->get_id();
+        if ($this->purchase_reward_already_recorded($order_id)) {
+            intersoccer_referral_log("Purchase points already recorded for order {$order_id}");
+            return;
+        }
+
         $customer_id = $order->get_customer_id();
         intersoccer_referral_log("Awarding purchase points: customer_id=$customer_id, order_id=" . $order->get_id());
 

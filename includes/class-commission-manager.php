@@ -227,7 +227,7 @@ class InterSoccer_Commission_Manager {
             $order_id
         ));
 
-        if ($referral) {
+        if ($referral && (int) $referral->coach_id > 0) {
             $commission_data = self::calculate_total_commission(
                 $order,
                 $referral->coach_id,
@@ -397,12 +397,6 @@ class InterSoccer_Commission_Manager {
         // Check for partnership coach
         $partnership_coach_id = get_user_meta($customer_id, 'intersoccer_partnership_coach_id', true);
         if (!$partnership_coach_id) return;
-
-        // Check partnership cooldown
-        $cooldown_end = get_user_meta($customer_id, 'intersoccer_partnership_switch_cooldown', true);
-        if ($cooldown_end && strtotime($cooldown_end) > time()) {
-            return;
-        }
 
         // Calculate partnership commission
         $partnership_commission = self::calculate_partnership_commission($order, $partnership_coach_id);

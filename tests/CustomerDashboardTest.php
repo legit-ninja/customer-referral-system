@@ -17,9 +17,12 @@ use PHPUnit\Framework\TestCase;
 class CustomerDashboardTest extends TestCase {
 
     protected function setUp(): void {
-        global $mock_current_user_id, $mock_user_meta;
+        global $mock_current_user_id, $mock_user_meta, $mock_points_balances;
 
         $mock_current_user_id = 123;
+        $mock_points_balances = [
+            123 => 150,
+        ];
         $mock_user_meta = [
             123 => [
                 'intersoccer_credits' => 150,
@@ -31,17 +34,32 @@ class CustomerDashboardTest extends TestCase {
         ];
 
         require_once __DIR__ . '/../includes/class-referral-handler.php';
+        require_once __DIR__ . '/../includes/class-points-manager.php';
         require_once __DIR__ . '/../includes/class-dashboard.php';
+        $this->resetPointsManagerSingleton();
     }
 
     protected function tearDown(): void {
-        global $mock_current_user_id, $mock_user_meta;
+        global $mock_current_user_id, $mock_user_meta, $mock_points_balances;
 
         $mock_current_user_id = 1;
         $mock_user_meta = [];
+        $mock_points_balances = [];
+        $this->resetPointsManagerSingleton();
         $this->resetCustomerDashboardRenderState();
 
         parent::tearDown();
+    }
+
+    private function resetPointsManagerSingleton(): void {
+        if (!class_exists('InterSoccer_Points_Manager', false)) {
+            return;
+        }
+
+        $reflection = new ReflectionClass(InterSoccer_Points_Manager::class);
+        $property = $reflection->getProperty('instance');
+        $property->setAccessible(true);
+        $property->setValue(null, null);
     }
 
     private function resetCustomerDashboardRenderState(): void {
@@ -101,6 +119,36 @@ class CustomerDashboardTest extends TestCase {
 
         $this->assertStringContainsString('intersoccer-customer-dashboard', $output);
         $this->assertStringContainsString('referral-section', $output);
+    }
+
+    public function testRenderCustomerDashboard_ContainsCurrentBalance() {
+        $output = $this->renderCustomerDashboardFresh();
+
+        $this->assertStringContainsString('dashboard-stats', $output);
+        $this->assertStringContainsString('points-card', $output);
+        $this->assertStringContainsString('Current Balance', $output);
+    }
+
+    public function testRenderCustomerDashboard_DisplaysPointsBalance() {
+        $output = $this->renderCustomerDashboardFresh();
+
+        $this->assertStringContainsString('150', $output);
+        $this->assertStringContainsString('points', $output);
+        $this->assertLessThan(
+            strpos($output, 'referral-section'),
+            strpos($output, 'dashboard-stats'),
+            'Balance card should appear above the referral section'
+        );
+    }
+
+    public function testRenderCustomerDashboard_ZeroBalance() {
+        global $mock_points_balances;
+
+        $mock_points_balances[123] = 0;
+        $output = $this->renderCustomerDashboardFresh();
+
+        $this->assertStringContainsString('dashboard-stats', $output);
+        $this->assertStringContainsString('stat-value">0</div>', $output);
     }
 
     public function testRenderCustomerDashboard_WithNoReferrals() {

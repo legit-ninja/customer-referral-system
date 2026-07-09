@@ -484,12 +484,17 @@ class OrderProcessingIntegrationTest extends TestCase {
     public function test_purchase_points_awarded_once_per_order() {
         require_once __DIR__ . '/../includes/class-admin-dashboard.php';
 
-        global $mock_wpdb_last_insert_by_table, $mock_user_meta;
+        global $mock_wpdb_last_insert_by_table, $mock_user_meta, $mock_users;
 
         $mock_wpdb_last_insert_by_table = [];
         $customer_id = 501;
         $coach_id = 88;
         $order_id = 7001;
+
+        $mock_users[$coach_id] = (object) [
+            'ID' => $coach_id,
+            'display_name' => 'Test Coach',
+        ];
 
         update_user_meta($customer_id, 'intersoccer_preferred_coach', $coach_id);
         update_user_meta($coach_id, 'intersoccer_points_balance', 0);
@@ -498,8 +503,9 @@ class OrderProcessingIntegrationTest extends TestCase {
         $order->set_customer_id($customer_id);
         $order->set_total(100);
 
-        $dashboard = new InterSoccer_Admin_Dashboard();
-        $method = new ReflectionMethod(InterSoccer_Admin_Dashboard::class, 'award_purchase_points_to_coach');
+        $reflection = new ReflectionClass(InterSoccer_Referral_Admin_Dashboard::class);
+        $dashboard = $reflection->newInstanceWithoutConstructor();
+        $method = $reflection->getMethod('award_purchase_points_to_coach');
         $method->setAccessible(true);
 
         $method->invoke($dashboard, $order);

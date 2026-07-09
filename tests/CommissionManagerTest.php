@@ -924,14 +924,7 @@ class CommissionManagerTest extends TestCase {
         global $mock_wpdb_get_row_results, $mock_wc_order_override;
 
         $mock_wpdb_get_row_results = [
-            '__queue__' => [
-                function ($query) {
-                    if (strpos($query, 'WHERE order_id') !== false) {
-                        return null;
-                    }
-                    return null;
-                },
-            ],
+            'WHERE order_id' => null,
         ];
 
         $customer_id = 55;

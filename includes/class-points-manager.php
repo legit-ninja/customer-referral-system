@@ -3,10 +3,25 @@
 
 class InterSoccer_Points_Manager {
 
+    /**
+     * Singleton instance for reuse and direct method calls.
+     *
+     * @var InterSoccer_Points_Manager|null
+     */
+    private static $instance = null;
+
     private $points_log_table;
     private $points_per_currency = 0.1; // 1 point per 10 CHF spent (legacy ratio metadata)
 
     public function __construct() {
+        if (self::$instance instanceof self) {
+            $this->points_log_table = self::$instance->points_log_table;
+            $this->points_per_currency = self::$instance->points_per_currency;
+            return;
+        }
+
+        self::$instance = $this;
+
         global $wpdb;
         $this->points_log_table = $wpdb->prefix . 'intersoccer_points_log';
 
@@ -38,6 +53,19 @@ class InterSoccer_Points_Manager {
         
         // Hook into the scheduled event
         add_action('intersoccer_deferred_points_allocation', [$this, 'process_deferred_points_allocation']);
+    }
+
+    /**
+     * Retrieve the singleton instance.
+     *
+     * @return self
+     */
+    public static function get_instance() {
+        if (!(self::$instance instanceof self)) {
+            self::$instance = new self();
+        }
+
+        return self::$instance;
     }
 
     /**

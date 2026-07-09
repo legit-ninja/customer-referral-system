@@ -538,7 +538,7 @@ if (!class_exists('Mock_WPDB')) {
         }
 
         public function get_var($query) {
-            global $mock_customer_spent, $mock_wpdb_get_var_results, $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows;
+            global $mock_customer_spent, $mock_wpdb_get_var_results, $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_purchase_rewards_by_order;
 
             if (!empty($mock_wpdb_get_var_results)) {
                 foreach ($mock_wpdb_get_var_results as $needle => $result) {
@@ -605,6 +605,11 @@ if (!class_exists('Mock_WPDB')) {
                 return $mock_order_points_allocated[$order_id] ?? 0;
             }
 
+            if (strpos($query, 'purchase_rewards') !== false && preg_match('/order_id\s*=\s*(\d+)/', $query, $matches)) {
+                $order_id = (int) $matches[1];
+                return $mock_purchase_rewards_by_order[$order_id] ?? null;
+            }
+
             if (strpos($query, 'latest_balances') !== false) {
                 return array_sum($mock_points_balances);
             }
@@ -669,7 +674,7 @@ if (!class_exists('Mock_WPDB')) {
         }
 
         public function insert($table, $data) {
-            global $mock_wpdb_last_insert, $mock_wpdb_last_insert_by_table, $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows;
+            global $mock_wpdb_last_insert, $mock_wpdb_last_insert_by_table, $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_purchase_rewards_by_order;
 
             static $insert_id = 1;
             $mock_wpdb_last_insert = compact('table', 'data');
@@ -686,6 +691,10 @@ if (!class_exists('Mock_WPDB')) {
                 if (isset($data['order_id'], $data['transaction_type']) && $data['transaction_type'] === 'order_purchase') {
                     $mock_order_points_allocated[(int) $data['order_id']] = $data['points_amount'] ?? true;
                 }
+            }
+
+            if (strpos($table, 'purchase_rewards') !== false && isset($data['order_id'])) {
+                $mock_purchase_rewards_by_order[(int) $data['order_id']] = $insert_id;
             }
 
             $this->insert_id = $insert_id++;
@@ -1101,7 +1110,7 @@ if (!function_exists('wc_add_notice')) {
 }
 
 // Initialize global mock variables
-global $mock_current_user_id, $mock_user_meta, $mock_users, $mock_orders, $mock_session, $mock_customer_spent, $mock_get_posts_results, $mock_wpdb_get_row_results, $mock_wpdb_get_results, $mock_wpdb_get_var_results, $mock_wpdb_last_insert, $mock_wpdb_last_update, $mock_wpdb_last_delete, $mock_wc_products, $mock_wc_product_lookup, $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_shortcodes, $mock_user_capabilities, $mock_is_account_page, $mock_query_vars, $mock_backtrace_summary, $mock_ajax_referer_valid, $mock_wp_verify_nonce_result;
+global $mock_current_user_id, $mock_user_meta, $mock_users, $mock_orders, $mock_session, $mock_customer_spent, $mock_get_posts_results, $mock_wpdb_get_row_results, $mock_wpdb_get_results, $mock_wpdb_get_var_results, $mock_wpdb_last_insert, $mock_wpdb_last_update, $mock_wpdb_last_delete, $mock_wc_products, $mock_wc_product_lookup, $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_purchase_rewards_by_order, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_shortcodes, $mock_user_capabilities, $mock_is_account_page, $mock_query_vars, $mock_backtrace_summary, $mock_ajax_referer_valid, $mock_wp_verify_nonce_result;
 $mock_current_user_id = 1;
 $mock_user_meta = [];
 $mock_shortcodes = [];
@@ -1125,6 +1134,7 @@ $mock_wpdb_last_delete = null;
 $mock_points_balances = [];
 $mock_order_points_allocated = [];
 $mock_points_log_rows = [];
+$mock_purchase_rewards_by_order = [];
 $mock_wc_orders_by_id = [];
 $mock_wc_get_orders = null;
 $mock_user_roles = [];
