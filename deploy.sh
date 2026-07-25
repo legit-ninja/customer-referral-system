@@ -164,7 +164,7 @@ run_phpunit_tests() {
         fi
     fi
     
-    # Test 3: Points Migration
+    # Test 3: Points Migration Integers (optional — file not in repo; skip cleanly)
     if [ -f "tests/PointsMigrationIntegersTest.php" ]; then
         echo -e "  ${BLUE}•${NC} PointsMigrationIntegersTest (Migration Safety)"
         php vendor/bin/phpunit tests/PointsMigrationIntegersTest.php --testdox 2>&1
@@ -174,6 +174,8 @@ run_phpunit_tests() {
             echo -e "    ${RED}✗ FAILED - BLOCKING DEPLOYMENT${NC}"
             return 1
         fi
+    else
+        echo -e "  ${YELLOW}•${NC} PointsMigrationIntegersTest — not present, skipped"
     fi
     
     # Test 4: CSV Import
@@ -354,10 +356,12 @@ run_phpunit_tests() {
         echo -e "  ${YELLOW}•${NC} PointsMigrationTest (Migration Operations)"
         php vendor/bin/phpunit tests/PointsMigrationTest.php --testdox 2>&1
         if [ $? -eq 0 ]; then
-            echo -e "    ${GREEN}✓ PASSED (28 tests)${NC}"
+            echo -e "    ${GREEN}✓ PASSED${NC}"
         else
-            echo -e "    ${YELLOW}⚠ FAILED - Warning${NC}"
+            echo -e "    ${YELLOW}⚠ FAILED (non-blocking)${NC}"
         fi
+    else
+        echo -e "  ${YELLOW}•${NC} PointsMigrationTest — not present, skipped"
     fi
     
     if [ -f "tests/APIDummyTest.php" ]; then
