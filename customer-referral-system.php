@@ -78,7 +78,6 @@ if (!file_exists(INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.ph
 // Include necessary files
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-commission-manager.php';
-require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-commission-calculator.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-dashboard.php';
 // Include modular admin dashboard classes
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-dashboard-main.php';
@@ -177,9 +176,6 @@ class InterSoccer_Referral_System {
 
         // Initialize core classes
         new InterSoccer_Referral_Handler();
-        new InterSoccer_Commission_Calculator();
-        
-        
         new InterSoccer_Referral_Dashboard();
         
         
