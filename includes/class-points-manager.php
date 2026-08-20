@@ -586,16 +586,27 @@ class InterSoccer_Points_Manager {
             return false;
         }
 
+        update_user_meta($customer_id, 'intersoccer_points_balance', (int) $new_balance);
+
         return $wpdb->insert_id;
     }
 
     /**
-     * Get current points balance for a customer
-     * 
+     * Get current redeemable points balance for a customer.
+     *
+     * User meta is the balance shown in admin and at checkout. Ledger last-row
+     * is a fallback when meta has never been written. A stored 0 is a real
+     * balance (do not treat it as missing).
+     *
      * @param int $customer_id The customer's user ID
      * @return int The customer's current points balance (integer only)
      */
     public function get_points_balance($customer_id) {
+        $meta = get_user_meta($customer_id, 'intersoccer_points_balance', true);
+        if ($meta !== '' && $meta !== false && $meta !== null) {
+            return intval($meta);
+        }
+
         global $wpdb;
 
         $balance = $wpdb->get_var($wpdb->prepare(

@@ -26,12 +26,13 @@ class PointsManagerTest extends TestCase {
     }
 
     private function resetPointsTestState(): void {
-        global $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_customer_spent, $mock_session;
+        global $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_customer_spent, $mock_session, $mock_user_meta;
 
         $this->resetPointsManagerSingleton();
         $mock_points_balances = [];
         $mock_order_points_allocated = [];
         $mock_points_log_rows = [];
+        $mock_user_meta = [];
         $mock_wc_orders_by_id = [];
         $mock_wc_get_orders = null;
         $mock_user_roles = [];
@@ -231,6 +232,26 @@ class PointsManagerTest extends TestCase {
         $balance = $points_manager->get_points_balance(1);
         $this->assertEquals(35, $balance);
         $this->assertIsInt($balance, 'Balance must be integer only');
+    }
+
+    /**
+     * Admin Add must use the displayed (usermeta) balance when it diverges from
+     * the last ledger running total (e.g. checkout redeemed from meta only).
+     */
+    public function testAdminAddUsesMetaWhenLedgerDiverged() {
+        $points_manager = new InterSoccer_Points_Manager();
+
+        global $mock_points_balances, $mock_user_meta;
+        $mock_points_balances[44500] = 52;
+        $mock_user_meta[44500] = [
+            'intersoccer_points_balance' => 0,
+        ];
+
+        $points_manager->add_points_transaction(44500, 'admin_adjustment', 30, null, 'debug');
+
+        $this->assertSame(30, $points_manager->get_points_balance(44500));
+        $this->assertSame(30, (int) get_user_meta(44500, 'intersoccer_points_balance', true));
+        $this->assertSame(30, (int) $mock_points_balances[44500]);
     }
 
     /**
