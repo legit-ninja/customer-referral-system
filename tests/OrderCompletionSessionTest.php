@@ -11,6 +11,7 @@ class OrderCompletionSessionTest extends TestCase {
 
     protected function setUp(): void {
         require_once __DIR__ . '/../includes/class-admin-dashboard.php';
+        require_once __DIR__ . '/../includes/class-points-manager.php';
 
         $reflection = new ReflectionClass(InterSoccer_Referral_Admin_Dashboard::class);
         $this->dashboard = $reflection->newInstanceWithoutConstructor();

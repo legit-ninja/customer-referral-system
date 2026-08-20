@@ -958,10 +958,23 @@ class InterSoccer_Referral_Admin_Dashboard {
         if ($points_to_redeem > 0) {
             $user_id = (int) $order->get_customer_id();
             if ($user_id > 0) {
-                // Deduct points from user
-                $current_credits = get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0;
-                $new_credits = max(0, $current_credits - $points_to_redeem);
-                update_user_meta($user_id, 'intersoccer_points_balance', $new_credits);
+                $points_manager = InterSoccer_Points_Manager::get_instance();
+                $current_credits = $points_manager->get_points_balance($user_id);
+                $debit = min((int) $points_to_redeem, max(0, $current_credits));
+                if ($debit > 0) {
+                    $points_manager->add_points_transaction(
+                        $user_id,
+                        'points_redemption',
+                        -$debit,
+                        (int) $order_id,
+                        sprintf(
+                            __('Redeemed %d points on order #%d', 'intersoccer-referral'),
+                            $debit,
+                            $order_id
+                        )
+                    );
+                }
+                $new_credits = $points_manager->get_points_balance($user_id);
 
                 // Find the fee item for the discount
                 $fee_item_id = null;
