@@ -684,40 +684,78 @@ class InterSoccer_Points_Manager {
         check_ajax_referer('intersoccer_admin_nonce', 'nonce');
         if (!current_user_can('manage_options')) {
             wp_send_json_error(['message' => 'Unauthorized']);
+            return;
         }
 
         $customer_id = intval($_POST['customer_id'] ?? 0);
-        $limit = intval($_POST['limit'] ?? 50);
-        $offset = intval($_POST['offset'] ?? 0);
+        if ($customer_id <= 0) {
+            wp_send_json_error(['message' => 'Customer ID is required']);
+            return;
+        }
+
+        $limit = min(200, max(1, intval($_POST['limit'] ?? 100)));
+        $offset = max(0, intval($_POST['offset'] ?? 0));
 
         global $wpdb;
 
-        $where_clause = $customer_id ? $wpdb->prepare("WHERE customer_id = %d", $customer_id) : "";
-
         $transactions = $wpdb->get_results($wpdb->prepare(
             "SELECT * FROM {$this->points_log_table}
-             {$where_clause}
+             WHERE customer_id = %d
              ORDER BY created_at DESC, id DESC
              LIMIT %d OFFSET %d",
-            $limit, $offset
+            $customer_id,
+            $limit,
+            $offset
         ));
+
+        if (!is_array($transactions)) {
+            $transactions = [];
+        }
 
         $formatted_transactions = [];
         foreach ($transactions as $transaction) {
+            $order_id = isset($transaction->order_id) ? absint($transaction->order_id) : 0;
+            $order_url = '';
+            if ($order_id && function_exists('admin_url')) {
+                $order_url = admin_url('post.php?post=' . $order_id . '&action=edit');
+            }
+
+            $metadata = null;
+            if (!empty($transaction->metadata) && is_string($transaction->metadata)) {
+                $decoded = json_decode($transaction->metadata, true);
+                $metadata = is_array($decoded) ? $decoded : null;
+            }
+
             $formatted_transactions[] = [
                 'id' => $transaction->id,
                 'customer_id' => $transaction->customer_id,
-                'order_id' => $transaction->order_id,
+                'order_id' => $order_id,
+                'order_url' => $order_url,
                 'transaction_type' => $transaction->transaction_type,
                 'points_amount' => intval($transaction->points_amount),
                 'points_balance' => intval($transaction->points_balance),
                 'description' => $transaction->description,
                 'created_at' => $transaction->created_at,
-                'metadata' => json_decode($transaction->metadata, true)
+                'metadata' => $metadata,
             ];
         }
 
-        wp_send_json_success(['transactions' => $formatted_transactions]);
+        $redeemable_balance = $this->get_points_balance($customer_id);
+        $ledger_running_balance = null;
+        if (!empty($formatted_transactions)) {
+            $ledger_running_balance = intval($formatted_transactions[0]['points_balance']);
+        }
+
+        $balance_mismatch = ($ledger_running_balance === null)
+            ? ($redeemable_balance !== 0)
+            : ($redeemable_balance !== $ledger_running_balance);
+
+        wp_send_json_success([
+            'transactions' => $formatted_transactions,
+            'redeemable_balance' => $redeemable_balance,
+            'ledger_running_balance' => $ledger_running_balance,
+            'balance_mismatch' => $balance_mismatch,
+        ]);
     }
 
     /**

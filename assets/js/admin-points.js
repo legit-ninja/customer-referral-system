@@ -123,11 +123,11 @@ jQuery(document).ready(function($) {
         $('#points-adjustment-modal').show();
     });
 
-    $('.modal-close').on('click', function() {
-        $('#points-adjustment-modal').hide();
+    $(document).on('click', '.modal-close', function() {
+        $(this).closest('.intersoccer-modal').hide();
     });
 
-    $(document).on('click', '#points-adjustment-modal', function(e) {
+    $(document).on('click', '.intersoccer-modal', function(e) {
         if (e.target === this) {
             $(this).hide();
         }
@@ -160,10 +160,115 @@ jQuery(document).ready(function($) {
         });
     });
 
-    // View history (placeholder for now)
+    function escapeHtml(value) {
+        if (value === null || value === undefined) {
+            return '';
+        }
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function formatSignedPoints(points) {
+        const amount = parseInt(points, 10) || 0;
+        if (amount > 0) {
+            return '+' + amount;
+        }
+        return String(amount);
+    }
+
+    function renderHistoryTable(transactions) {
+        if (!transactions || transactions.length === 0) {
+            return '<p>No points transactions found for this customer.</p>';
+        }
+
+        let html = '<table class="wp-list-table widefat fixed striped">';
+        html += '<thead><tr>';
+        html += '<th>Date</th><th>Type</th><th>Amount</th><th>Balance</th><th>Order</th><th>Description</th>';
+        html += '</tr></thead><tbody>';
+
+        transactions.forEach(function(row) {
+            const amount = parseInt(row.points_amount, 10) || 0;
+            const amountClass = amount >= 0 ? 'points-history-amount-positive' : 'points-history-amount-negative';
+            let orderCell = '—';
+            if (row.order_id) {
+                if (row.order_url) {
+                    orderCell = '<a href="' + escapeHtml(row.order_url) + '" target="_blank" rel="noopener noreferrer">#' + escapeHtml(row.order_id) + '</a>';
+                } else {
+                    orderCell = '#' + escapeHtml(row.order_id);
+                }
+            }
+
+            html += '<tr>';
+            html += '<td>' + escapeHtml(row.created_at || '') + '</td>';
+            html += '<td>' + escapeHtml(row.transaction_type || '') + '</td>';
+            html += '<td class="' + amountClass + '">' + escapeHtml(formatSignedPoints(amount)) + '</td>';
+            html += '<td>' + escapeHtml(row.points_balance) + '</td>';
+            html += '<td>' + orderCell + '</td>';
+            html += '<td>' + escapeHtml(row.description || '') + '</td>';
+            html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+        return html;
+    }
+
     $(document).on('click', '.view-history', function() {
-        const userName = $(this).data('user-name');
-        alert('Points history for ' + userName + ' - Feature coming soon!');
+        const userId = parseInt($(this).data('user-id'), 10);
+        const userName = $(this).data('user-name') || '';
+
+        $('#points-history-customer').html(
+            '<p><strong>Customer:</strong> ' + escapeHtml(userName) + '</p>' +
+            '<div class="points-history-summary">' +
+            '<span><strong>Redeemable:</strong> <span id="points-history-redeemable">—</span></span>' +
+            '<span><strong>Last ledger running:</strong> <span id="points-history-ledger">—</span></span>' +
+            '</div>'
+        );
+        $('#points-history-banner').hide().empty();
+        $('#points-history-table-wrap').html('<p class="points-history-loading">Loading history...</p>');
+        $('#points-history-modal').show();
+
+        if (!userId) {
+            $('#points-history-table-wrap').html('<p>Unable to load history: missing customer ID.</p>');
+            return;
+        }
+
+        $.ajax({
+            url: intersoccer_admin.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'get_points_history',
+                customer_id: userId,
+                limit: 100,
+                nonce: intersoccer_admin.nonce
+            },
+            success: function(response) {
+                if (!response.success) {
+                    const message = (response.data && response.data.message) ? response.data.message : 'Unable to load history';
+                    $('#points-history-table-wrap').html('<p>' + escapeHtml(message) + '</p>');
+                    return;
+                }
+
+                const data = response.data || {};
+                const redeemable = data.redeemable_balance;
+                const ledger = data.ledger_running_balance;
+                $('#points-history-redeemable').text(redeemable === undefined || redeemable === null ? '—' : redeemable);
+                $('#points-history-ledger').text(ledger === undefined || ledger === null ? '—' : ledger);
+
+                if (data.balance_mismatch) {
+                    $('#points-history-banner')
+                        .text('Redeemable balance does not match the last journal running total. Treat Current Points as source of truth; this table is the journal.')
+                        .show();
+                }
+
+                $('#points-history-table-wrap').html(renderHistoryTable(data.transactions));
+            },
+            error: function() {
+                $('#points-history-table-wrap').html('<p>Error loading points history.</p>');
+            }
+        });
     });
 });
 

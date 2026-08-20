@@ -26,7 +26,7 @@ class PointsManagerTest extends TestCase {
     }
 
     private function resetPointsTestState(): void {
-        global $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_customer_spent, $mock_session, $mock_user_meta;
+        global $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_customer_spent, $mock_session, $mock_user_meta, $mock_wpdb_get_results, $mock_wp_json_response, $mock_user_capabilities;
 
         $this->resetPointsManagerSingleton();
         $mock_points_balances = [];
@@ -38,6 +38,10 @@ class PointsManagerTest extends TestCase {
         $mock_user_roles = [];
         $mock_customer_spent = [];
         $mock_session = [];
+        $mock_wpdb_get_results = [];
+        $mock_wp_json_response = null;
+        $mock_user_capabilities = [];
+        $_POST = [];
     }
 
     private function registerWcOrder(WC_Order $order, int $order_id = 123): WC_Order {
@@ -1097,6 +1101,143 @@ class PointsManagerTest extends TestCase {
         delete_option('intersoccer_points_rate_customer_purchase');
         delete_option('intersoccer_points_rate_customer_referral');
         delete_option('intersoccer_points_rate_first_time_customer');
+    }
+
+    public function testGetPointsHistoryAjaxRequiresManageOptions() {
+        global $mock_user_capabilities, $mock_wp_json_response;
+
+        $mock_user_capabilities['manage_options'] = false;
+        $_POST = [
+            'nonce' => 'test',
+            'customer_id' => 44500,
+        ];
+
+        $points_manager = new InterSoccer_Points_Manager();
+        $points_manager->get_points_history_ajax();
+
+        $this->assertIsArray($mock_wp_json_response);
+        $this->assertFalse($mock_wp_json_response['success']);
+        $this->assertSame('Unauthorized', $mock_wp_json_response['data']['message']);
+    }
+
+    public function testGetPointsHistoryAjaxRequiresCustomerId() {
+        global $mock_wp_json_response, $mock_wpdb_get_results;
+
+        $mock_wpdb_get_results['intersoccer_points_log'] = [
+            (object) [
+                'id' => 99,
+                'customer_id' => 1,
+                'order_id' => 0,
+                'transaction_type' => 'order_purchase',
+                'points_amount' => 10,
+                'points_balance' => 10,
+                'description' => 'should not leak',
+                'created_at' => '2026-08-20 10:00:00',
+                'metadata' => '{}',
+            ],
+        ];
+        $_POST = [
+            'nonce' => 'test',
+            'customer_id' => 0,
+        ];
+
+        $points_manager = new InterSoccer_Points_Manager();
+        $points_manager->get_points_history_ajax();
+
+        $this->assertIsArray($mock_wp_json_response);
+        $this->assertFalse($mock_wp_json_response['success']);
+        $this->assertSame('Customer ID is required', $mock_wp_json_response['data']['message']);
+        $this->assertArrayNotHasKey('transactions', $mock_wp_json_response['data']);
+    }
+
+    public function testGetPointsHistoryAjaxEmptyLogWithZeroMeta() {
+        global $mock_wp_json_response, $mock_wpdb_get_results, $mock_user_meta;
+
+        $mock_wpdb_get_results['intersoccer_points_log'] = [];
+        $mock_user_meta[44500] = ['intersoccer_points_balance' => 0];
+        $_POST = [
+            'nonce' => 'test',
+            'customer_id' => 44500,
+        ];
+
+        $points_manager = new InterSoccer_Points_Manager();
+        $points_manager->get_points_history_ajax();
+
+        $this->assertTrue($mock_wp_json_response['success']);
+        $this->assertSame([], $mock_wp_json_response['data']['transactions']);
+        $this->assertSame(0, $mock_wp_json_response['data']['redeemable_balance']);
+        $this->assertNull($mock_wp_json_response['data']['ledger_running_balance']);
+        $this->assertFalse($mock_wp_json_response['data']['balance_mismatch']);
+    }
+
+    public function testGetPointsHistoryAjaxEmptyLogWithOrphanMetaIsMismatch() {
+        global $mock_wp_json_response, $mock_wpdb_get_results, $mock_user_meta;
+
+        $mock_wpdb_get_results['intersoccer_points_log'] = [];
+        $mock_user_meta[44500] = ['intersoccer_points_balance' => 30];
+        $_POST = [
+            'nonce' => 'test',
+            'customer_id' => 44500,
+        ];
+
+        $points_manager = new InterSoccer_Points_Manager();
+        $points_manager->get_points_history_ajax();
+
+        $this->assertTrue($mock_wp_json_response['success']);
+        $this->assertSame([], $mock_wp_json_response['data']['transactions']);
+        $this->assertSame(30, $mock_wp_json_response['data']['redeemable_balance']);
+        $this->assertNull($mock_wp_json_response['data']['ledger_running_balance']);
+        $this->assertTrue($mock_wp_json_response['data']['balance_mismatch']);
+    }
+
+    public function testGetPointsHistoryAjaxReturnsRowsAndFlagsMismatch() {
+        global $mock_wp_json_response, $mock_wpdb_get_results, $mock_user_meta;
+
+        $mock_user_meta[44500] = ['intersoccer_points_balance' => 0];
+        $mock_wpdb_get_results['intersoccer_points_log'] = [
+            (object) [
+                'id' => 2,
+                'customer_id' => 44500,
+                'order_id' => 555,
+                'transaction_type' => 'admin_adjustment',
+                'points_amount' => 30,
+                'points_balance' => 52,
+                'description' => 'manual add',
+                'created_at' => '2026-08-20 12:00:00',
+                'metadata' => '{"reason":"debug"}',
+            ],
+            (object) [
+                'id' => 1,
+                'customer_id' => 44500,
+                'order_id' => 0,
+                'transaction_type' => 'order_purchase',
+                'points_amount' => 22,
+                'points_balance' => 22,
+                'description' => 'purchase',
+                'created_at' => '2026-08-19 09:00:00',
+                'metadata' => '',
+            ],
+        ];
+        $_POST = [
+            'nonce' => 'test',
+            'customer_id' => 44500,
+            'limit' => 100,
+        ];
+
+        $points_manager = new InterSoccer_Points_Manager();
+        $points_manager->get_points_history_ajax();
+
+        $this->assertTrue($mock_wp_json_response['success']);
+        $data = $mock_wp_json_response['data'];
+        $this->assertCount(2, $data['transactions']);
+        $this->assertSame(0, $data['redeemable_balance']);
+        $this->assertSame(52, $data['ledger_running_balance']);
+        $this->assertTrue($data['balance_mismatch']);
+        $this->assertSame('admin_adjustment', $data['transactions'][0]['transaction_type']);
+        $this->assertSame(555, $data['transactions'][0]['order_id']);
+        $this->assertSame('https://example.test/wp-admin/post.php?post=555&action=edit', $data['transactions'][0]['order_url']);
+        $this->assertSame('', $data['transactions'][1]['order_url']);
+        $this->assertSame(['reason' => 'debug'], $data['transactions'][0]['metadata']);
     }
 
     /**

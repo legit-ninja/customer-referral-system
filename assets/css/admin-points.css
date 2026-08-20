@@ -92,6 +92,40 @@
     overflow-y: auto;
 }
 
+.points-history-modal .modal-content {
+    max-width: 900px;
+}
+
+.points-history-banner {
+    margin-bottom: 16px;
+    padding: 10px 12px;
+    border-radius: 4px;
+    background: #fff8e5;
+    border: 1px solid #dba617;
+    color: #3c434a;
+}
+
+.points-history-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.points-history-table-wrap {
+    overflow-x: auto;
+}
+
+.points-history-amount-positive {
+    color: #27ae60;
+    font-weight: 600;
+}
+
+.points-history-amount-negative {
+    color: #e74c3c;
+    font-weight: 600;
+}
+
 .modal-header {
     display: flex;
     justify-content: space-between;

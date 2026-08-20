@@ -61,7 +61,6 @@ class InterSoccer_Referral_Admin_Dashboard {
         add_action('wp_ajax_export_audit_log', [$this->settings, 'export_audit_log']);
         add_action('wp_ajax_bulk_credit_adjustment', [$this->settings, 'bulk_credit_adjustment']);
         add_action('wp_ajax_get_points_statistics', [$this->settings, 'get_points_statistics_ajax']);
-        add_action('wp_ajax_get_points_ledger', [$this->points, 'get_points_ledger_ajax']);
         add_action('wp_ajax_get_points_users', [$this->points, 'get_points_users_ajax']);
         add_action('wp_ajax_adjust_user_points', [$this->points, 'adjust_user_points_ajax']);
         add_action('wp_ajax_export_points_report', [$this->points, 'export_points_report_ajax']);
