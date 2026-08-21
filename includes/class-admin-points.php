@@ -97,6 +97,23 @@ class InterSoccer_Admin_Points {
                     </div>
                 </div>
             </div>
+
+            <!-- Points History Modal (read-only journal) -->
+            <div id="points-history-modal" class="intersoccer-modal points-history-modal" style="display: none;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>Points History</h2>
+                        <button type="button" class="modal-close">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="points-history-customer"></div>
+                        <div id="points-history-banner" class="points-history-banner" style="display: none;"></div>
+                        <div id="points-history-table-wrap">
+                            <p class="points-history-loading">Loading history...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <?php

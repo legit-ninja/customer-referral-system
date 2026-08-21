@@ -120,6 +120,12 @@ if (!function_exists('esc_url')) {
     }
 }
 
+if (!function_exists('admin_url')) {
+    function admin_url($path = '', $scheme = 'admin') {
+        return 'https://example.test/wp-admin/' . ltrim((string) $path, '/');
+    }
+}
+
 if (!function_exists('setcookie')) {
     function setcookie($name, $value = '', $expires = 0, $path = '', $domain = '', $secure = false, $httponly = false) {
         global $mock_cookies;
