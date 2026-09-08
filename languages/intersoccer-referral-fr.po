@@ -398,6 +398,12 @@ msgstr "Télécharger le code QR"
 msgid "Share QR Code"
 msgstr "Partager le code QR"
 
+msgid "Let another parent scan this with their phone"
+msgstr "Laissez un autre parent scanner ceci avec son téléphone."
+
+msgid "QR code for your InterSoccer referral link"
+msgstr "Code QR de votre lien de parrainage InterSoccer"
+
 msgid "Are you sure you want to select %s as your coach partner?"
 msgstr "Voulez-vous vraiment sélectionner %s comme coach partenaire ?"
 

@@ -163,6 +163,33 @@
 .facebook-btn { background: #4267b2; color: white; }
 .email-btn { background: #6c757d; color: white; }
 
+.referral-qr-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    margin: 24px 0 8px;
+}
+
+.referral-qr {
+    width: 200px;
+    height: 200px;
+}
+
+.referral-qr img,
+.referral-qr canvas,
+.referral-qr table {
+    display: block;
+    width: 200px;
+    height: 200px;
+}
+
+.referral-qr-caption {
+    margin: 12px 0 0;
+    font-size: 14px;
+    color: #64748b;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .social-share-buttons {
@@ -171,6 +198,10 @@
     
     .referral-link-container {
         flex-direction: column;
+    }
+
+    .referral-qr-container {
+        margin: 20px 0 4px;
     }
 }
 

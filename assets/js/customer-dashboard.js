@@ -1,4 +1,4 @@
-/* global window, document, navigator */
+/* global window, document, navigator, QRCode */
 
 (function () {
     'use strict';
@@ -156,15 +156,38 @@
         }
     }
 
+    function renderReferralQr() {
+        const el = document.getElementById('referral-qr');
+        if (!el || typeof QRCode === 'undefined') {
+            return;
+        }
+
+        const link = el.getAttribute('data-referral-link');
+        if (!link) {
+            return;
+        }
+
+        new QRCode(el, {
+            text: link,
+            width: 200,
+            height: 200
+        });
+    }
+
+    function initCustomerDashboard() {
+        hideThemeElements();
+        renderReferralQr();
+    }
+
     // Keep these available for existing inline onclick handlers.
     window.copyReferralCode = copyReferralCode;
     window.copyReferralLink = copyReferralLink;
 
     // Run immediately and also on DOMContentLoaded
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', hideThemeElements);
+        document.addEventListener('DOMContentLoaded', initCustomerDashboard);
     } else {
-        hideThemeElements();
+        initCustomerDashboard();
     }
 
     // Also run after delays to catch dynamically added content
