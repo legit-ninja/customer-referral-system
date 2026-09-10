@@ -309,6 +309,27 @@ php scripts/test-verification.php
 - Translation ready with `load_plugin_textdomain()`
 - Supports RTL languages
 
+## Technical Notes
+
+### Customer Balance Meta Keys
+
+The plugin uses two user-meta keys for customer balances:
+
+| Meta Key | Purpose | Status |
+|----------|---------|--------|
+| `intersoccer_points_balance` | **Canonical.** The redeemable loyalty-points balance shown to customers and used at checkout. Managed by `InterSoccer_Points_Manager`. | Active |
+| `intersoccer_customer_credits` | Legacy/parallel key used by referral-credit flows (customer-to-customer transfers, referral bonuses via `InterSoccer_Referral_Handler`). Kept in sync with points in most paths but written separately by older credit logic. | Legacy — read for compatibility; new code should use `intersoccer_points_balance`. |
+
+**Guideline:** When adjusting balances, use the **Referrals > Customer Points** admin page — it updates `intersoccer_points_balance` and logs changes. Direct writes to `intersoccer_customer_credits` should only occur in the existing referral-credit code paths.
+
+### Import / Export Policy
+
+This plugin supports **CSV** for all data imports and exports (see [CSV-IMPORT-FORMATS.md](docs/guides/CSV-IMPORT-FORMATS.md)).
+
+**Excel / XLSX exports are not provided here.** Excel export functionality lives in the sibling plugin `intersoccer-reports-rosters` (GitHub: `legit-ninja/reports-rosters`). Do not add PhpSpreadsheet or XLSX generation to this plugin; keep the export surface intentionally small and CSV-only.
+
+---
+
 ## Documentation
 
 ### 📚 Complete documentation available in `/docs/` folder
