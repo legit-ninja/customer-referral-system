@@ -124,6 +124,15 @@ You can also filter the list:
 - **With Points** — only customers who have a positive balance
 - **Zero Points** — customers with no points (useful to check if awarding failed)
 
+### From a WooCommerce order
+
+When you open an order in **WooCommerce → Orders → Edit**, the General / customer section shows the customer's **current loyalty points** (including `0`). If they redeemed points on that order, a second line shows how many.
+
+- **Adjust points** opens the same Adjust dialog used on Customer Points, without leaving the order.
+- **History** opens the same read-only journal dialog on the order.
+
+Administrators find the full customer list under **Referrals → Customer Points**. Shop managers (office staff) see **WooCommerce → Customer Points**. Guest orders have no WordPress user, so there is no balance and no Adjust button.
+
 ---
 
 ## 5. How to Adjust Points

@@ -149,11 +149,12 @@ class InterSoccer_Referral_Admin_Dashboard {
             [$this->financial, 'render_financial_report_page']
         );
 
+        $points_parent = current_user_can('manage_options') ? 'intersoccer-referrals' : 'woocommerce';
         add_submenu_page(
-            'intersoccer-referrals',
-            'Customer Points',
-            'Customer Points',
-            'manage_options',
+            $points_parent,
+            __('Customer Points', 'intersoccer-referral'),
+            __('Customer Points', 'intersoccer-referral'),
+            'manage_woocommerce',
             'intersoccer-customer-points',
             [$this->points, 'render_points_page']
         );
@@ -312,7 +313,16 @@ class InterSoccer_Referral_Admin_Dashboard {
                 );
             }
 
+            if (strpos($hook, 'intersoccer-customer-points') !== false && $this->points) {
+                $focus_payload = $this->points->get_script_focus_payload();
+                $localize['focus_user'] = $focus_payload['focus_user'];
+                $localize['focus_action'] = $focus_payload['focus_action'];
+            }
+
             wp_localize_script('intersoccer-admin-js', 'intersoccer_admin', $localize);
+            if (strpos($hook, 'intersoccer-customer-points') !== false) {
+                wp_localize_script('intersoccer-admin-points-js', 'intersoccer_admin', $localize);
+            }
 
             // Enqueue settings page and tools page specific assets
             if (strpos($hook, 'intersoccer-settings') !== false || strpos($hook, 'intersoccer-tools') !== false) {

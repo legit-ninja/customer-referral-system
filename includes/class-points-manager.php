@@ -663,11 +663,24 @@ class InterSoccer_Points_Manager {
     }
 
     /**
+     * Customer Points Adjust / History access (admin or shop manager).
+     *
+     * @return bool
+     */
+    private function user_can_manage_points() {
+        if (class_exists('InterSoccer_Admin_Points')) {
+            return InterSoccer_Admin_Points::user_can_manage_points();
+        }
+
+        return current_user_can('manage_options') || current_user_can('manage_woocommerce');
+    }
+
+    /**
      * Get points balance via AJAX
      */
     public function get_points_balance_ajax() {
         check_ajax_referer('intersoccer_admin_nonce', 'nonce');
-        if (!current_user_can('manage_options')) {
+        if (!$this->user_can_manage_points()) {
             wp_send_json_error(['message' => 'Unauthorized']);
         }
 
@@ -682,7 +695,7 @@ class InterSoccer_Points_Manager {
      */
     public function get_points_history_ajax() {
         check_ajax_referer('intersoccer_admin_nonce', 'nonce');
-        if (!current_user_can('manage_options')) {
+        if (!$this->user_can_manage_points()) {
             wp_send_json_error(['message' => 'Unauthorized']);
             return;
         }

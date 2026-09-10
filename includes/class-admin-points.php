@@ -3,65 +3,221 @@
 
 class InterSoccer_Admin_Points {
 
+    /**
+     * Print Adjust/History modals in admin footer on order edit.
+     *
+     * @var bool
+     */
+    private $print_order_loyalty_modals = false;
+
     public function __construct() {
         add_action('wp_ajax_get_points_users', [$this, 'get_points_users_ajax']);
         add_action('wp_ajax_adjust_user_points', [$this, 'adjust_user_points_ajax']);
         add_action('wp_ajax_export_points_report', [$this, 'export_points_report_ajax']);
+        add_action('woocommerce_admin_order_data_after_order_details', [$this, 'render_order_loyalty_panel'], 10, 1);
+        add_action('admin_enqueue_scripts', [$this, 'enqueue_order_loyalty_assets']);
+        add_action('admin_footer', [$this, 'render_order_loyalty_modals']);
     }
 
-    public function render_points_page() {
+    /**
+     * Whether the current user may open Customer Points (Adjust / History).
+     */
+    public static function user_can_manage_points() {
+        return current_user_can('manage_options') || current_user_can('manage_woocommerce');
+    }
+
+    /**
+     * Deep-link to Customer Points for a user.
+     *
+     * @param int    $user_id
+     * @param string $focus adjust|history|empty
+     * @return string
+     */
+    public static function get_customer_points_url($user_id, $focus = '') {
+        $args = [
+            'page' => 'intersoccer-customer-points',
+            'user_id' => absint($user_id),
+        ];
+        $focus = sanitize_key((string) $focus);
+        if (in_array($focus, ['adjust', 'history'], true)) {
+            $args['focus'] = $focus;
+        }
+
+        return admin_url('admin.php?' . http_build_query($args));
+    }
+
+    /**
+     * Focus payload from GET user_id / focus (Customer Points page).
+     *
+     * @return array<string, mixed>|null
+     */
+    public static function get_request_focus_data() {
+        $user_id = isset($_GET['user_id']) ? absint($_GET['user_id']) : 0;
+        if ($user_id <= 0) {
+            return null;
+        }
+
+        $user = get_user_by('ID', $user_id);
+        if (!$user) {
+            return null;
+        }
+
+        $focus = isset($_GET['focus']) ? sanitize_key((string) $_GET['focus']) : '';
+        if (!in_array($focus, ['adjust', 'history'], true)) {
+            $focus = '';
+        }
+
+        $balance = 0;
+        if (class_exists('InterSoccer_Points_Manager')) {
+            $balance = InterSoccer_Points_Manager::get_instance()->get_points_balance($user_id);
+        }
+
+        return [
+            'id' => $user_id,
+            'name' => (string) $user->display_name,
+            'email' => (string) $user->user_email,
+            'balance' => (int) $balance,
+            'focus' => $focus,
+        ];
+    }
+
+    /**
+     * Localize payload for admin-points.js deep-link.
+     *
+     * @return array{focus_user: array<string, mixed>|null, focus_action: string}
+     */
+    public function get_script_focus_payload() {
+        $data = self::get_request_focus_data();
+        if (!$data) {
+            return [
+                'focus_user' => null,
+                'focus_action' => '',
+            ];
+        }
+
+        return [
+            'focus_user' => [
+                'id' => $data['id'],
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'balance' => $data['balance'],
+            ],
+            'focus_action' => $data['focus'],
+        ];
+    }
+
+    /**
+     * Order-edit panel HTML (no echo).
+     *
+     * @param mixed $order
+     * @return string
+     */
+    public function get_order_loyalty_panel_html($order) {
+        if (!is_object($order) || !method_exists($order, 'get_customer_id')) {
+            return '';
+        }
+
+        $customer_id = (int) $order->get_customer_id();
+        $can_manage = self::user_can_manage_points();
+
+        if ($customer_id <= 0) {
+            return '<div class="intersoccer-order-loyalty-points"><p>'
+                . esc_html(__('This order has no linked customer account, so there is no loyalty points balance.', 'intersoccer-referral'))
+                . '</p></div>';
+        }
+
+        $balance = 0;
+        if (class_exists('InterSoccer_Points_Manager')) {
+            $balance = (int) InterSoccer_Points_Manager::get_instance()->get_points_balance($customer_id);
+        }
+
+        $html = '<div class="intersoccer-order-loyalty-points">';
+        $html .= '<p><strong>' . esc_html(__('Loyalty points', 'intersoccer-referral')) . ':</strong> '
+            . esc_html((string) $balance) . '</p>';
+
+        $redeemed = 0;
+        if (method_exists($order, 'get_meta')) {
+            $redeemed = (int) $order->get_meta('_intersoccer_points_redeemed', true);
+        }
+        if ($redeemed > 0) {
+            $html .= '<p>' . esc_html(sprintf(
+                /* translators: %d: points redeemed on this order */
+                __('Redeemed on this order: %d', 'intersoccer-referral'),
+                $redeemed
+            )) . '</p>';
+        }
+
+        if ($can_manage) {
+            $user = function_exists('get_user_by') ? get_user_by('ID', $customer_id) : false;
+            $name = ($user && isset($user->display_name)) ? (string) $user->display_name : '';
+            $html .= '<p class="intersoccer-order-loyalty-points__actions">';
+            $html .= '<button type="button" class="button adjust-points" data-user-id="'
+                . esc_attr((string) $customer_id) . '" data-user-name="' . esc_attr($name) . '">'
+                . esc_html(__('Adjust points', 'intersoccer-referral')) . '</button> ';
+            $html .= '<button type="button" class="button view-history" data-user-id="'
+                . esc_attr((string) $customer_id) . '" data-user-name="' . esc_attr($name) . '">'
+                . esc_html(__('History', 'intersoccer-referral')) . '</button>';
+            $html .= '</p>';
+        }
+
+        $html .= '</div>';
+        return $html;
+    }
+
+    /**
+     * Print loyalty panel on WooCommerce order edit (classic + HPOS).
+     *
+     * @param mixed $order
+     */
+    public function render_order_loyalty_panel($order) {
+        echo $this->get_order_loyalty_panel_html($order);
+    }
+
+    /**
+     * Load panel styles on order edit (admin-dashboard enqueue is gated on "intersoccer" hooks).
+     *
+     * @param string $hook
+     */
+    public function enqueue_order_loyalty_assets($hook) {
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        $id = ($screen && isset($screen->id)) ? (string) $screen->id : (string) $hook;
+        if (strpos($id, 'shop_order') === false && strpos($id, 'shop-order') === false && strpos($id, 'wc-orders') === false) {
+            return;
+        }
+        if (!defined('INTERSOCCER_REFERRAL_URL')) {
+            return;
+        }
+        $version = defined('INTERSOCCER_REFERRAL_VERSION') ? INTERSOCCER_REFERRAL_VERSION : '1.0';
+        wp_enqueue_style(
+            'intersoccer-order-loyalty-css',
+            INTERSOCCER_REFERRAL_URL . 'assets/css/admin-points.css',
+            [],
+            $version
+        );
+        wp_enqueue_script(
+            'intersoccer-admin-points-js',
+            INTERSOCCER_REFERRAL_URL . 'assets/js/admin-points.js',
+            ['jquery'],
+            $version,
+            true
+        );
+        wp_localize_script('intersoccer-admin-points-js', 'intersoccer_admin', [
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('intersoccer_admin_nonce'),
+        ]);
+        if (self::user_can_manage_points()) {
+            $this->print_order_loyalty_modals = true;
+        }
+    }
+
+    /**
+     * Existing Adjust / History dialogs (same IDs as Customer Points).
+     *
+     * @return string
+     */
+    public function get_points_modals_html() {
+        ob_start();
         ?>
-        <div class="wrap intersoccer-admin">
-            <h1 class="wp-heading-inline">Customer Points Management</h1>
-
-            <div class="intersoccer-points-controls">
-                <button class="button button-primary" id="refresh-points-table">
-                    <span class="dashicons dashicons-update"></span>
-                    Refresh
-                </button>
-                <button class="button button-secondary" id="export-points-report">
-                    <span class="dashicons dashicons-download"></span>
-                    Export Report
-                </button>
-                <div class="points-summary">
-                    <span id="total-customers">Loading...</span> customers with points
-                </div>
-            </div>
-
-            <div class="intersoccer-points-filters">
-                <select id="points-filter">
-                    <option value="all">All Customers</option>
-                    <option value="with-points">With Points Only</option>
-                    <option value="zero-points">Zero Points</option>
-                </select>
-                <input type="text" id="points-search" placeholder="Search by name or email..." style="min-width: 250px;">
-                <button class="button" id="clear-filters">Clear Filters</button>
-            </div>
-
-            <div class="intersoccer-points-table-container">
-                <table class="wp-list-table widefat fixed striped" id="points-users-table">
-                    <thead>
-                        <tr>
-                            <th class="column-user">Customer</th>
-                            <th class="column-email">Email</th>
-                            <th class="column-points">Current Points</th>
-                            <th class="column-total-earned">Total Earned</th>
-                            <th class="column-total-spent">Total Spent</th>
-                            <th class="column-last-activity">Last Activity</th>
-                            <th class="column-actions">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="points-table-body">
-                        <tr>
-                            <td colspan="7" style="text-align: center; padding: 40px;">
-                                <div class="spinner is-active" style="float: none; margin: 0 auto;"></div>
-                                <p>Loading customer points data...</p>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
             <!-- Points Adjustment Modal -->
             <div id="points-adjustment-modal" class="intersoccer-modal" style="display: none;">
                 <div class="modal-content">
@@ -114,6 +270,113 @@ class InterSoccer_Admin_Points {
                     </div>
                 </div>
             </div>
+        <?php
+        return (string) ob_get_clean();
+    }
+
+    /**
+     * Print Adjust/History modals on order edit (outside overflow-clipped metaboxes).
+     */
+    public function render_order_loyalty_modals() {
+        if (empty($this->print_order_loyalty_modals)) {
+            return;
+        }
+        echo $this->get_points_modals_html();
+    }
+
+    /**
+     * Banner HTML when arriving from an order deep-link.
+     *
+     * @param array<string, mixed> $data
+     * @return string
+     */
+    public static function get_focus_banner_html(array $data) {
+        $user_id = isset($data['id']) ? absint($data['id']) : 0;
+        $name = isset($data['name']) ? (string) $data['name'] : '';
+        $email = isset($data['email']) ? (string) $data['email'] : '';
+        $balance = isset($data['balance']) ? (int) $data['balance'] : 0;
+
+        $html = '<div class="intersoccer-points-focus-banner">';
+        $html .= '<p><strong>' . esc_html(__('Viewing', 'intersoccer-referral')) . ':</strong> '
+            . esc_html($name) . ' (' . esc_html($email) . ')</p>';
+        $html .= '<p><strong>' . esc_html(__('Current points', 'intersoccer-referral')) . ':</strong> '
+            . esc_html((string) $balance) . '</p>';
+        $html .= '<p>';
+        $html .= '<button type="button" class="button button-primary adjust-points" data-user-id="'
+            . esc_attr((string) $user_id) . '" data-user-name="' . esc_attr($name) . '">'
+            . esc_html(__('Adjust points', 'intersoccer-referral')) . '</button> ';
+        $html .= '<button type="button" class="button view-history" data-user-id="'
+            . esc_attr((string) $user_id) . '" data-user-name="' . esc_attr($name) . '">'
+            . esc_html(__('History', 'intersoccer-referral')) . '</button>';
+        $html .= '</p></div>';
+
+        return $html;
+    }
+
+    public function render_points_page() {
+        if (!self::user_can_manage_points()) {
+            wp_die(__('You do not have sufficient permissions to access this page.', 'intersoccer-referral'));
+        }
+
+        $focus_data = self::get_request_focus_data();
+        ?>
+        <div class="wrap intersoccer-admin">
+            <h1 class="wp-heading-inline"><?php echo esc_html(__('Customer Points Management', 'intersoccer-referral')); ?></h1>
+            <?php
+            if ($focus_data) {
+                echo self::get_focus_banner_html($focus_data);
+            }
+            ?>
+
+            <div class="intersoccer-points-controls">
+                <button class="button button-primary" id="refresh-points-table">
+                    <span class="dashicons dashicons-update"></span>
+                    Refresh
+                </button>
+                <button class="button button-secondary" id="export-points-report">
+                    <span class="dashicons dashicons-download"></span>
+                    Export Report
+                </button>
+                <div class="points-summary">
+                    <span id="total-customers">Loading...</span> customers with points
+                </div>
+            </div>
+
+            <div class="intersoccer-points-filters">
+                <select id="points-filter">
+                    <option value="all">All Customers</option>
+                    <option value="with-points">With Points Only</option>
+                    <option value="zero-points">Zero Points</option>
+                </select>
+                <input type="text" id="points-search" placeholder="Search by name or email..." style="min-width: 250px;">
+                <button class="button" id="clear-filters">Clear Filters</button>
+            </div>
+
+            <div class="intersoccer-points-table-container">
+                <table class="wp-list-table widefat fixed striped" id="points-users-table">
+                    <thead>
+                        <tr>
+                            <th class="column-user">Customer</th>
+                            <th class="column-email">Email</th>
+                            <th class="column-points">Current Points</th>
+                            <th class="column-total-earned">Total Earned</th>
+                            <th class="column-total-spent">Total Spent</th>
+                            <th class="column-last-activity">Last Activity</th>
+                            <th class="column-actions">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="points-table-body">
+                        <tr>
+                            <td colspan="7" style="text-align: center; padding: 40px;">
+                                <div class="spinner is-active" style="float: none; margin: 0 auto;"></div>
+                                <p>Loading customer points data...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <?php echo $this->get_points_modals_html(); ?>
         </div>
 
         <?php
@@ -124,8 +387,9 @@ class InterSoccer_Admin_Points {
      */
     public function get_points_users_ajax() {
         check_ajax_referer('intersoccer_admin_nonce', 'nonce');
-        if (!current_user_can('manage_options')) {
+        if (!self::user_can_manage_points()) {
             wp_send_json_error(['message' => 'Unauthorized']);
+            return;
         }
 
         global $wpdb;
@@ -212,8 +476,9 @@ class InterSoccer_Admin_Points {
      */
     public function adjust_user_points_ajax() {
         check_ajax_referer('intersoccer_admin_nonce', 'nonce');
-        if (!current_user_can('manage_options')) {
+        if (!self::user_can_manage_points()) {
             wp_send_json_error(['message' => 'Unauthorized']);
+            return;
         }
 
         $user_id = intval($_POST['user_id']);
@@ -276,7 +541,7 @@ class InterSoccer_Admin_Points {
      */
     public function export_points_report_ajax() {
         check_ajax_referer('intersoccer_admin_nonce', 'nonce');
-        if (!current_user_can('manage_options')) {
+        if (!self::user_can_manage_points()) {
             wp_die('Unauthorized');
         }
 

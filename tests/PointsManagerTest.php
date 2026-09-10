@@ -1107,6 +1107,7 @@ class PointsManagerTest extends TestCase {
         global $mock_user_capabilities, $mock_wp_json_response;
 
         $mock_user_capabilities['manage_options'] = false;
+        $mock_user_capabilities['manage_woocommerce'] = false;
         $_POST = [
             'nonce' => 'test',
             'customer_id' => 44500,
