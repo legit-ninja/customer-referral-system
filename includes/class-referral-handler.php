@@ -678,6 +678,9 @@ class InterSoccer_Referral_Handler {
         if ($customer_bonus_points > 0 && $customer_id) {
             $customer_credits = (float) get_user_meta($customer_id, 'intersoccer_customer_credits', true);
             update_user_meta($customer_id, 'intersoccer_customer_credits', $customer_credits + $customer_bonus_points);
+            // Also update points_balance for consistency with checkout redemption system
+            $customer_points = (int) get_user_meta($customer_id, 'intersoccer_points_balance', true);
+            update_user_meta($customer_id, 'intersoccer_points_balance', $customer_points + $customer_bonus_points);
         }
 
         // Apply first-time customer benefits (email notification)

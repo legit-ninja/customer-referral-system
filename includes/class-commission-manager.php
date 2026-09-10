@@ -317,13 +317,7 @@ class InterSoccer_Commission_Manager {
         if ($referral_code && $referral_coach_id) {
             global $wpdb;
             $rewards_table = $wpdb->prefix . 'intersoccer_referral_rewards';
-            $existing_reward = $wpdb->get_var(
-                $wpdb->prepare("SELECT id FROM {$rewards_table} WHERE order_id = %d LIMIT 1", (int) $order_id)
-            );
-            if ($existing_reward) {
-                return;
-            }
-
+            
             // Check if this is the customer's first completed order
             $customer_orders = wc_get_orders([
                 'customer_id' => $customer_id,
@@ -340,26 +334,30 @@ class InterSoccer_Commission_Manager {
                     return;
                 }
 
+                // Use INSERT IGNORE to prevent duplicate rewards in case of concurrent processing
+                // This is safer than SELECT + INSERT which has a race condition window
+                $insert_result = $wpdb->query($wpdb->prepare(
+                    "INSERT IGNORE INTO {$rewards_table} 
+                     (coach_id, customer_id, order_id, referral_code, points_awarded, discount_amount, created_at)
+                     VALUES (%d, %d, %d, %s, %d, %f, %s)",
+                    (int) $referral_coach_id,
+                    (int) $customer_id,
+                    (int) $order_id,
+                    $referral_code,
+                    (int) $points_to_award,
+                    (float) $discount_amount,
+                    current_time('mysql')
+                ));
+
+                // If insert_result is 0, the row already existed (duplicate) - skip points award
+                if ($insert_result === 0 || $wpdb->insert_id === 0) {
+                    return;
+                }
+
                 // Get current coach points balance (note: this is different from commission credits)
-                $current_coach_points = get_user_meta($referral_coach_id, 'intersoccer_points_balance', true) ?: 0;
+                $current_coach_points = (int) (get_user_meta($referral_coach_id, 'intersoccer_points_balance', true) ?: 0);
                 $new_coach_points = $current_coach_points + $points_to_award;
                 update_user_meta($referral_coach_id, 'intersoccer_points_balance', $new_coach_points);
-
-                // Record the referral reward
-                global $wpdb;
-                $rewards_table = $wpdb->prefix . 'intersoccer_referral_rewards';
-                $wpdb->insert(
-                    $rewards_table,
-                    [
-                        'coach_id' => $referral_coach_id,
-                        'customer_id' => $customer_id,
-                        'order_id' => $order_id,
-                        'referral_code' => $referral_code,
-                        'points_awarded' => $points_to_award,
-                        'discount_amount' => $discount_amount,
-                        'created_at' => current_time('mysql')
-                    ]
-                );
 
                 // Add order note
                 $coach_info = get_userdata($referral_coach_id);
