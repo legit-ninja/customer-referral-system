@@ -992,6 +992,13 @@ class InterSoccer_Referral_System {
         if (function_exists('is_checkout') && is_checkout() && is_user_logged_in() && !get_option('intersoccer_passive_mode', false)) {
             $available_points = (int) get_user_meta(get_current_user_id(), 'intersoccer_points_balance', true);
 
+            wp_enqueue_style(
+                'intersoccer-checkout-css',
+                INTERSOCCER_REFERRAL_URL . 'assets/css/checkout.css',
+                [],
+                INTERSOCCER_REFERRAL_VERSION
+            );
+
             wp_enqueue_script(
                 'intersoccer-checkout-js',
                 INTERSOCCER_REFERRAL_URL . 'assets/js/checkout.js',
