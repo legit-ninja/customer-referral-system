@@ -240,6 +240,94 @@ class InterSoccer_Admin_Settings {
                             </td>
                         </tr>
                     </table>
+
+                    <?php
+                    $utm_enabled = (int) get_option('intersoccer_referral_utm_enabled', 0);
+                    $utm_source = (string) get_option('intersoccer_referral_utm_source', '');
+                    $utm_medium = (string) get_option('intersoccer_referral_utm_medium', '');
+                    $utm_campaign_customer = (string) get_option('intersoccer_referral_utm_campaign_customer', '');
+                    $utm_campaign_coach = (string) get_option('intersoccer_referral_utm_campaign_coach', '');
+                    $utm_content = (string) get_option('intersoccer_referral_utm_content', '');
+                    $example_customer_url = InterSoccer_Referral_Handler::append_utm_params(home_url('/?cust_ref=EXAMPLE'), 'customer');
+                    $example_coach_url = InterSoccer_Referral_Handler::append_utm_params(home_url('/?ref=EXAMPLE'), 'coach');
+                    ?>
+                    <h2><?php esc_html_e('Google Analytics campaign tracking (UTM)', 'intersoccer-referral'); ?></h2>
+                    <p class="description">
+                        <?php esc_html_e('These tags are added to customer and coach referral URLs (copy links, QR codes, shares, emails, and coach event links). They do not change commissions or referral attribution. Leave fields empty or turn tracking off to generate untagged URLs.', 'intersoccer-referral'); ?>
+                    </p>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row"><?php esc_html_e('Enable UTM tracking', 'intersoccer-referral'); ?></th>
+                            <td>
+                                <input type="hidden" name="intersoccer_referral_utm_enabled" value="0">
+                                <input type="checkbox" name="intersoccer_referral_utm_enabled" id="intersoccer_referral_utm_enabled" value="1" <?php checked($utm_enabled, 1); ?>>
+                                <p class="description">
+                                    <?php esc_html_e('When enabled, non-empty UTM fields below are appended to new referral URLs.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="intersoccer_referral_utm_source"><?php esc_html_e('Campaign source (utm_source)', 'intersoccer-referral'); ?></label>
+                            </th>
+                            <td>
+                                <input type="text" class="regular-text" name="intersoccer_referral_utm_source" id="intersoccer_referral_utm_source" value="<?php echo esc_attr($utm_source); ?>" maxlength="100">
+                                <p class="description"><?php esc_html_e('Shared by customer and coach links. Example: referral', 'intersoccer-referral'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="intersoccer_referral_utm_medium"><?php esc_html_e('Campaign medium (utm_medium)', 'intersoccer-referral'); ?></label>
+                            </th>
+                            <td>
+                                <input type="text" class="regular-text" name="intersoccer_referral_utm_medium" id="intersoccer_referral_utm_medium" value="<?php echo esc_attr($utm_medium); ?>" maxlength="100">
+                                <p class="description"><?php esc_html_e('Shared by customer and coach links. Example: share', 'intersoccer-referral'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="intersoccer_referral_utm_campaign_customer"><?php esc_html_e('Customer campaign (utm_campaign)', 'intersoccer-referral'); ?></label>
+                            </th>
+                            <td>
+                                <input type="text" class="regular-text" name="intersoccer_referral_utm_campaign_customer" id="intersoccer_referral_utm_campaign_customer" value="<?php echo esc_attr($utm_campaign_customer); ?>" maxlength="100">
+                                <p class="description"><?php esc_html_e('Used on customer referral links and QR codes.', 'intersoccer-referral'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="intersoccer_referral_utm_campaign_coach"><?php esc_html_e('Coach campaign (utm_campaign)', 'intersoccer-referral'); ?></label>
+                            </th>
+                            <td>
+                                <input type="text" class="regular-text" name="intersoccer_referral_utm_campaign_coach" id="intersoccer_referral_utm_campaign_coach" value="<?php echo esc_attr($utm_campaign_coach); ?>" maxlength="100">
+                                <p class="description"><?php esc_html_e('Used on coach referral links, QR codes, and event-share links.', 'intersoccer-referral'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="intersoccer_referral_utm_content"><?php esc_html_e('Campaign content (utm_content)', 'intersoccer-referral'); ?></label>
+                            </th>
+                            <td>
+                                <input type="text" class="regular-text" name="intersoccer_referral_utm_content" id="intersoccer_referral_utm_content" value="<?php echo esc_attr($utm_content); ?>" maxlength="100">
+                                <p class="description"><?php esc_html_e('Optional. Shared by customer and coach links.', 'intersoccer-referral'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php esc_html_e('Example URLs', 'intersoccer-referral'); ?></th>
+                            <td>
+                                <p>
+                                    <strong><?php esc_html_e('Customer:', 'intersoccer-referral'); ?></strong>
+                                    <code><?php echo esc_html($example_customer_url); ?></code>
+                                </p>
+                                <p>
+                                    <strong><?php esc_html_e('Coach:', 'intersoccer-referral'); ?></strong>
+                                    <code><?php echo esc_html($example_coach_url); ?></code>
+                                </p>
+                                <p class="description">
+                                    <?php esc_html_e('Previews use the last saved settings. Save to refresh.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
                     <?php submit_button('Save Settings'); ?>
                 </form>
                 
@@ -3747,6 +3835,42 @@ class InterSoccer_Admin_Settings {
             }
         ]);
 
+        register_setting('intersoccer_settings', 'intersoccer_referral_utm_enabled', [
+            'type' => 'integer',
+            'default' => 0,
+            'sanitize_callback' => [$this, 'sanitize_utm_enabled_option']
+        ]);
+
+        register_setting('intersoccer_settings', 'intersoccer_referral_utm_source', [
+            'type' => 'string',
+            'default' => '',
+            'sanitize_callback' => [$this, 'sanitize_utm_option']
+        ]);
+
+        register_setting('intersoccer_settings', 'intersoccer_referral_utm_medium', [
+            'type' => 'string',
+            'default' => '',
+            'sanitize_callback' => [$this, 'sanitize_utm_option']
+        ]);
+
+        register_setting('intersoccer_settings', 'intersoccer_referral_utm_campaign_customer', [
+            'type' => 'string',
+            'default' => '',
+            'sanitize_callback' => [$this, 'sanitize_utm_option']
+        ]);
+
+        register_setting('intersoccer_settings', 'intersoccer_referral_utm_campaign_coach', [
+            'type' => 'string',
+            'default' => '',
+            'sanitize_callback' => [$this, 'sanitize_utm_option']
+        ]);
+
+        register_setting('intersoccer_settings', 'intersoccer_referral_utm_content', [
+            'type' => 'string',
+            'default' => '',
+            'sanitize_callback' => [$this, 'sanitize_utm_option']
+        ]);
+
         // Commission bonus controls (loyalty, retention, network effect, seasonal, weekend)
         register_setting('intersoccer_commission_bonuses', 'intersoccer_loyalty_bonus_first', [
             'type' => 'number',
@@ -3976,6 +4100,26 @@ class InterSoccer_Admin_Settings {
         }
 
         return $value;
+    }
+
+    /**
+     * Persist the UTM enable checkbox as 1 or 0 (unchecked posts hidden 0).
+     *
+     * @param mixed $value
+     * @return int
+     */
+    public function sanitize_utm_enabled_option($value) {
+        return (int) (!empty($value));
+    }
+
+    /**
+     * Sanitize a UTM option string.
+     *
+     * @param mixed $value
+     * @return string
+     */
+    public function sanitize_utm_option($value) {
+        return InterSoccer_Referral_Handler::sanitize_utm_value($value);
     }
 
     /**

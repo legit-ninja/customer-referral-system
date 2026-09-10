@@ -17,6 +17,7 @@ class CoachEventsManagerTest extends TestCase {
     protected function setUp(): void {
         parent::setUp();
 
+        require_once __DIR__ . '/../includes/class-referral-handler.php';
         require_once __DIR__ . '/../includes/class-coach-events-manager.php';
 
         global $mock_user_meta, $mock_get_posts_results, $mock_wpdb_get_row_results, $mock_wpdb_get_results,
@@ -32,6 +33,17 @@ class CoachEventsManagerTest extends TestCase {
         $this->backup_wpdb_last_delete = $mock_wpdb_last_delete;
         $this->backup_wc_products = $mock_wc_products;
         $this->backup_wc_product_lookup = $mock_wc_product_lookup;
+
+        foreach ([
+            'intersoccer_referral_utm_enabled',
+            'intersoccer_referral_utm_source',
+            'intersoccer_referral_utm_medium',
+            'intersoccer_referral_utm_campaign_customer',
+            'intersoccer_referral_utm_campaign_coach',
+            'intersoccer_referral_utm_content',
+        ] as $key) {
+            delete_option($key);
+        }
 
         $mock_user_meta = [];
         $mock_get_posts_results = [];
@@ -60,6 +72,17 @@ class CoachEventsManagerTest extends TestCase {
         $mock_wpdb_last_delete = $this->backup_wpdb_last_delete;
         $mock_wc_products = $this->backup_wc_products;
         $mock_wc_product_lookup = $this->backup_wc_product_lookup;
+
+        foreach ([
+            'intersoccer_referral_utm_enabled',
+            'intersoccer_referral_utm_source',
+            'intersoccer_referral_utm_medium',
+            'intersoccer_referral_utm_campaign_customer',
+            'intersoccer_referral_utm_campaign_coach',
+            'intersoccer_referral_utm_content',
+        ] as $key) {
+            delete_option($key);
+        }
     }
 
     public function testAddEventCreatesNewAssignment(): void {
@@ -128,6 +151,35 @@ class CoachEventsManagerTest extends TestCase {
         $this->assertStringContainsString('ref=COACH12ABC', $link);
         $this->assertStringContainsString('coach_event=99', $link);
         $this->assertStringContainsString('event=345', $link);
+        $this->assertStringNotContainsString('utm_campaign=', $link);
+    }
+
+    public function testBuildEventShareLinkAppendsCoachUtmCampaign(): void {
+        update_user_meta(12, 'referral_code', 'COACH12ABC');
+        update_option('intersoccer_referral_utm_enabled', 1);
+        update_option('intersoccer_referral_utm_source', 'referral');
+        update_option('intersoccer_referral_utm_medium', 'share');
+        update_option('intersoccer_referral_utm_campaign_customer', 'customer-referral');
+        update_option('intersoccer_referral_utm_campaign_coach', 'coach-referral');
+
+        $assignment = (object) [
+            'id' => 99,
+            'coach_id' => 12,
+            'event_id' => 345,
+            'event_type' => 'product',
+            'event_permalink' => home_url('/events/summer-camp'),
+        ];
+
+        $link = InterSoccer_Coach_Events_Manager::build_event_share_link($assignment);
+        $query = [];
+        parse_str((string) parse_url($link, PHP_URL_QUERY), $query);
+
+        $this->assertSame('COACH12ABC', $query['ref'] ?? null);
+        $this->assertSame('99', (string) ($query['coach_event'] ?? ''));
+        $this->assertSame('345', (string) ($query['event'] ?? ''));
+        $this->assertSame('coach-referral', $query['utm_campaign'] ?? null);
+        $this->assertSame('referral', $query['utm_source'] ?? null);
+        $this->assertNotSame('customer-referral', $query['utm_campaign'] ?? null);
     }
 
     public function testGetCoachEventsReturnsEnrichedAssignments(): void {

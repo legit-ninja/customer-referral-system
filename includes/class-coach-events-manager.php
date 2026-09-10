@@ -366,7 +366,9 @@ class InterSoccer_Coach_Events_Manager {
         // Preserve event parameter for legacy tracking if needed
         $args['event'] = intval($assignment->event_id);
 
-        return add_query_arg($args, $event_permalink);
+        $link = add_query_arg($args, $event_permalink);
+
+        return InterSoccer_Referral_Handler::append_utm_params($link, 'coach');
     }
 
     /**
