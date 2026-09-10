@@ -973,9 +973,16 @@ class InterSoccer_Referral_System {
                 INTERSOCCER_REFERRAL_VERSION
             );
             wp_enqueue_script(
+                'intersoccer-qrcode',
+                INTERSOCCER_REFERRAL_URL . 'assets/js/qrcode.min.js',
+                [],
+                INTERSOCCER_REFERRAL_VERSION,
+                true
+            );
+            wp_enqueue_script(
                 'intersoccer-customer-dashboard-js',
                 INTERSOCCER_REFERRAL_URL . 'assets/js/customer-dashboard.js',
-                [],
+                ['intersoccer-qrcode'],
                 INTERSOCCER_REFERRAL_VERSION,
                 true
             );

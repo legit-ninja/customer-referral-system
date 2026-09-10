@@ -142,9 +142,10 @@ class CustomerDashboardTest extends TestCase {
     }
 
     public function testRenderCustomerDashboard_ZeroBalance() {
-        global $mock_points_balances;
+        global $mock_points_balances, $mock_user_meta;
 
         $mock_points_balances[123] = 0;
+        $mock_user_meta[123]['intersoccer_points_balance'] = 0;
         $output = $this->renderCustomerDashboardFresh();
 
         $this->assertStringContainsString('dashboard-stats', $output);
@@ -186,6 +187,29 @@ class CustomerDashboardTest extends TestCase {
 
         $this->assertStringContainsString('referral-link-container', $output);
         $this->assertStringContainsString('referral-code-container', $output);
+    }
+
+    public function testRenderCustomerDashboard_ContainsReferralQr() {
+        $output = $this->renderCustomerDashboardFresh();
+
+        $this->assertStringContainsString('referral-qr-container', $output);
+        $this->assertStringContainsString('id="referral-qr"', $output);
+        $this->assertStringContainsString('Let another parent scan this with their phone', $output);
+        $this->assertStringContainsString('QR code for your InterSoccer referral link', $output);
+        $this->assertStringNotContainsString('qrserver.com', $output);
+    }
+
+    public function testRenderCustomerDashboard_QrEncodesCustomerReferralLink() {
+        $output = $this->renderCustomerDashboardFresh();
+
+        $this->assertMatchesRegularExpression(
+            '/data-referral-link="[^"]*cust_ref=/',
+            $output
+        );
+        $this->assertMatchesRegularExpression(
+            '/data-referral-link="[^"]*CUST123TEST/',
+            $output
+        );
     }
 
     // =========================================================================

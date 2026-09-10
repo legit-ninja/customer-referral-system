@@ -311,6 +311,12 @@ msgstr ""
 msgid "Share QR Code"
 msgstr ""
 
+msgid "Let another parent scan this with their phone"
+msgstr ""
+
+msgid "QR code for your InterSoccer referral link"
+msgstr ""
+
 msgid "Are you sure you want to select %s as your coach partner?"
 msgstr ""
 

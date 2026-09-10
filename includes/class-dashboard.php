@@ -47,6 +47,8 @@ class InterSoccer_Referral_Dashboard {
             'customer_dashboard_email_body' => 'I thought you\'d love InterSoccer\'s soccer training programs! Use my referral code: %s or visit: %s',
             'customer_dashboard_current_balance' => 'Current Balance',
             'customer_dashboard_points_unit' => 'points',
+            'customer_dashboard_qr_caption' => 'Let another parent scan this with their phone',
+            'customer_dashboard_qr_alt' => 'QR code for your InterSoccer referral link',
         ];
         
         foreach ($strings as $name => $string) {
@@ -157,6 +159,8 @@ class InterSoccer_Referral_Dashboard {
         $string_name_email_body = 'customer_dashboard_email_body';
         $string_name_current_balance = 'customer_dashboard_current_balance';
         $string_name_points_unit = 'customer_dashboard_points_unit';
+        $string_name_qr_caption = 'customer_dashboard_qr_caption';
+        $string_name_qr_alt = 'customer_dashboard_qr_alt';
         
         // Define original English strings
         $original_share_earn = 'Share & Earn';
@@ -177,6 +181,8 @@ class InterSoccer_Referral_Dashboard {
         $original_email_body = 'I thought you\'d love InterSoccer\'s soccer training programs! Use my referral code: %s or visit: %s';
         $original_current_balance = 'Current Balance';
         $original_points_unit = 'points';
+        $original_qr_caption = 'Let another parent scan this with their phone';
+        $original_qr_alt = 'QR code for your InterSoccer referral link';
         
         // Get translated strings - use WordPress translation as fallback
         $share_earn_title = __('Share & Earn', 'intersoccer-referral');
@@ -197,6 +203,8 @@ class InterSoccer_Referral_Dashboard {
         $email_body_template = __('I thought you\'d love InterSoccer\'s soccer training programs! Use my referral code: %s or visit: %s', 'intersoccer-referral');
         $current_balance_label = __('Current Balance', 'intersoccer-referral');
         $points_unit_label = __('points', 'intersoccer-referral');
+        $qr_caption = __('Let another parent scan this with their phone', 'intersoccer-referral');
+        $qr_alt = __('QR code for your InterSoccer referral link', 'intersoccer-referral');
         
         // Apply WPML translations if available (strings are registered on init hook)
         if (defined('ICL_SITEPRESS_VERSION')) {
@@ -327,6 +335,14 @@ class InterSoccer_Referral_Dashboard {
             if ($t !== $original_points_unit) {
                 $points_unit_label = $t;
             }
+            $t = $get_translation($original_qr_caption, $string_name_qr_caption);
+            if ($t !== $original_qr_caption) {
+                $qr_caption = $t;
+            }
+            $t = $get_translation($original_qr_alt, $string_name_qr_alt);
+            if ($t !== $original_qr_alt) {
+                $qr_alt = $t;
+            }
         }
         
         // Build messages with referral code and link
@@ -391,6 +407,15 @@ class InterSoccer_Referral_Dashboard {
                             <span class="button-success">✅ <?php echo esc_html($copied_text); ?></span>
                         </button>
                     </div>
+                </div>
+
+                <div class="referral-qr-container">
+                    <div id="referral-qr"
+                         class="referral-qr"
+                         data-referral-link="<?php echo esc_url($referral_link); ?>"
+                         role="img"
+                         aria-label="<?php echo esc_attr($qr_alt); ?>"></div>
+                    <p class="referral-qr-caption"><?php echo esc_html($qr_caption); ?></p>
                 </div>
                 
                 <div class="social-share-buttons" style="margin-top: 20px;">
