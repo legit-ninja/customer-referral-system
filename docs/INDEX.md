@@ -43,6 +43,20 @@ Historical documentation and migration notes:
 - **[MULTILINGUAL-DEPLOYMENT-SUMMARY.md](archive/MULTILINGUAL-DEPLOYMENT-SUMMARY.md)** - Multilingual deployment notes
 - **[POINT-CONFIGURATION-UPDATE-LIST.md](archive/POINT-CONFIGURATION-UPDATE-LIST.md)** - Points configuration updates
 
+## ⚙️ Technical Quick Reference
+
+### Customer Balance Meta Keys
+- **`intersoccer_points_balance`** — canonical loyalty-points balance (redeemable at checkout)
+- **`intersoccer_customer_credits`** — legacy referral-credits key; kept in sync by older flows
+
+For details, see the README "Technical Notes" section or [INTERN-TUTORIAL.md](guides/INTERN-TUTORIAL.md).
+
+### Import / Export
+- **CSV only** in this plugin — see [CSV-IMPORT-FORMATS.md](guides/CSV-IMPORT-FORMATS.md)
+- **Excel/XLSX** exports live in the sibling `intersoccer-reports-rosters` plugin
+
+---
+
 ## 🚀 Quick Links
 
 ### For Developers
