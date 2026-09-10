@@ -1,0 +1,27 @@
+.intersoccer-referral-code-wrapper {
+    width: 100%;
+    clear: both;
+    margin-bottom: 1.5em;
+}
+
+.intersoccer-referral-code-inner {
+    margin-bottom: 12px;
+}
+
+.intersoccer-referral-code-inner label {
+    display: block;
+    margin-bottom: 0.5em;
+}
+
+.intersoccer-referral-code-inner input[type="text"] {
+    max-width: 300px;
+    width: 100%;
+    margin-right: 8px;
+    margin-bottom: 8px;
+    min-height: 44px;
+}
+
+.intersoccer-referral-code-inner .button {
+    min-height: 44px;
+    margin-bottom: 8px;
+}
