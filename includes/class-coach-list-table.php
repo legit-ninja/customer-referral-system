@@ -122,8 +122,14 @@ class InterSoccer_Coach_List_Table extends WP_List_Table {
         $total_items = $wpdb->get_var("SELECT COUNT(*) FROM ($query) as total");
         $this->set_pagination_args(['total_items' => $total_items, 'per_page' => $per_page]);
 
-        $orderby = !empty($_REQUEST['orderby']) ? sanitize_text_field($_REQUEST['orderby']) : 'display_name';
-        $order = !empty($_REQUEST['order']) ? sanitize_text_field($_REQUEST['order']) : 'asc';
+        $orderby_raw = !empty($_REQUEST['orderby']) ? sanitize_text_field($_REQUEST['orderby']) : 'display_name';
+        $order_raw = !empty($_REQUEST['order']) ? strtolower(sanitize_text_field($_REQUEST['order'])) : 'asc';
+        
+        // Whitelist allowed orderby columns to prevent SQL injection
+        $allowed_orderby = ['display_name', 'user_email', 'ID', 'user_registered'];
+        $orderby = in_array($orderby_raw, $allowed_orderby, true) ? $orderby_raw : 'display_name';
+        $order = in_array($order_raw, ['asc', 'desc'], true) ? $order_raw : 'asc';
+        
         $query .= " ORDER BY u.$orderby $order LIMIT " . ($current_page - 1) * $per_page . ", $per_page";
 
         $this->items = $wpdb->get_results($query);

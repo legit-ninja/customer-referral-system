@@ -545,7 +545,7 @@ class InterSoccer_Referral_Admin_Dashboard {
             wp_send_json_error(['message' => __('Credits value is required.', 'intersoccer-referral')]);
         }
 
-        $credits = (float) $_POST['credits'];
+        $credits = (int) $_POST['credits'];
         if ($credits < 0) {
             wp_send_json_error(['message' => __('Credits cannot be negative.', 'intersoccer-referral')]);
         }

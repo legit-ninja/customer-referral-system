@@ -1673,7 +1673,7 @@ function intersoccer_handle_gift_credits() {
     }
     
     $user_id = get_current_user_id();
-    $gift_amount = floatval($_POST['gift_amount']);
+    $gift_amount = (int) $_POST['gift_amount'];
     $recipient_email = sanitize_email($_POST['recipient_email']);
     
     // Validate inputs
@@ -1685,30 +1685,50 @@ function intersoccer_handle_gift_credits() {
         wp_send_json_error(['message' => 'Invalid email address']);
     }
     
-    $current_credits = get_user_meta($user_id, 'intersoccer_customer_credits', true) ?: 0;
+    // Find recipient user
+    $recipient = get_user_by('email', $recipient_email);
+    if (!$recipient) {
+        wp_send_json_error(['message' => 'Recipient not found. They must have an account first.']);
+    }
+    
+    // Prevent self-gifting
+    if ((int) $recipient->ID === $user_id) {
+        wp_send_json_error(['message' => 'Cannot gift credits to yourself']);
+    }
+    
+    $current_credits = (int) (get_user_meta($user_id, 'intersoccer_customer_credits', true) ?: 0);
     if ($current_credits < $gift_amount) {
         wp_send_json_error(['message' => 'Insufficient credits']);
     }
     
-    // Process gift
-    $new_credits = $current_credits - $gift_amount + 20; // 20 CHF back for gifting
-    update_user_meta($user_id, 'intersoccer_customer_credits', $new_credits);
+    // Process gift - deduct from sender, add bonus back
+    $sender_new_credits = $current_credits - $gift_amount + 20; // 20 CHF back for gifting
+    update_user_meta($user_id, 'intersoccer_customer_credits', $sender_new_credits);
+    update_user_meta($user_id, 'intersoccer_points_balance', $sender_new_credits);
+    
+    // Credit the recipient
+    $recipient_current = (int) (get_user_meta($recipient->ID, 'intersoccer_customer_credits', true) ?: 0);
+    $recipient_new = $recipient_current + $gift_amount;
+    update_user_meta($recipient->ID, 'intersoccer_customer_credits', $recipient_new);
+    update_user_meta($recipient->ID, 'intersoccer_points_balance', $recipient_new);
     
     // Send gift notification email
     $user = wp_get_current_user();
-    $subject = sprintf('You received %s CHF credit gift from %s', $gift_amount, $user->display_name);
+    $subject = sprintf('You received %d CHF credit gift from %s', $gift_amount, $user->display_name);
     $message = sprintf(
-        'Hi there!\n\n%s has gifted you %s CHF in InterSoccer credits!\n\nUse this link to claim: %s\n\nBest regards,\nInterSoccer Team',
+        "Hi %s!\n\n%s has gifted you %d CHF in InterSoccer credits!\n\nYour new balance: %d CHF\n\nLog in to your account to use them: %s\n\nBest regards,\nThe InterSoccer Team",
+        $recipient->display_name,
         $user->display_name,
         $gift_amount,
-        home_url('/claim-gift/?token=' . wp_generate_password(32, false))
+        $recipient_new,
+        home_url('/my-account/')
     );
     
     wp_mail($recipient_email, $subject, $message);
     
     wp_send_json_success([
         'message' => 'Gift sent successfully! You earned 20 CHF back as a thank you.',
-        'new_credits' => $new_credits
+        'new_credits' => $sender_new_credits
     ]);
 }
 

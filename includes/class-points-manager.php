@@ -556,39 +556,74 @@ class InterSoccer_Points_Manager {
 
     /**
      * Add a points transaction to the ledger
+     *
+     * Uses row-level locking via SELECT ... FOR UPDATE to prevent race conditions
+     * when multiple concurrent transactions modify the same customer's balance.
      */
     public function add_points_transaction($customer_id, $transaction_type, $points_amount, $order_id = null, $description = '', $metadata = []) {
         global $wpdb;
 
-        // Get current balance before this transaction
-        $current_balance = $this->get_points_balance($customer_id);
+        $customer_id = (int) $customer_id;
+        $points_amount = (int) $points_amount;
 
-        // Calculate new balance
-        $new_balance = $current_balance + $points_amount;
+        // Start transaction to ensure atomic balance update
+        $wpdb->query('START TRANSACTION');
 
-        $result = $wpdb->insert(
-            $this->points_log_table,
-            [
-                'customer_id' => $customer_id,
-                'order_id' => $order_id,
-                'transaction_type' => $transaction_type,
-                'points_amount' => $points_amount,
-                'points_balance' => $new_balance,
-                'description' => $description,
-                'metadata' => json_encode($metadata),
-                'created_at' => current_time('mysql')
-            ],
-            ['%d', '%d', '%s', '%f', '%f', '%s', '%s', '%s']
-        );
+        try {
+            // Lock and get the latest balance from the ledger to prevent race conditions
+            $current_balance = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT points_balance FROM {$this->points_log_table}
+                 WHERE customer_id = %d
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT 1
+                 FOR UPDATE",
+                $customer_id
+            ));
 
-        if ($result === false) {
-            intersoccer_referral_log("InterSoccer: Failed to insert points transaction: " . $wpdb->last_error);
+            // If no ledger entry exists, fall back to user meta
+            if ($current_balance === null || $wpdb->num_rows === 0) {
+                $meta_balance = get_user_meta($customer_id, 'intersoccer_points_balance', true);
+                $current_balance = ($meta_balance !== '' && $meta_balance !== false) ? (int) $meta_balance : 0;
+            }
+
+            // Calculate new balance
+            $new_balance = $current_balance + $points_amount;
+
+            $result = $wpdb->insert(
+                $this->points_log_table,
+                [
+                    'customer_id' => $customer_id,
+                    'order_id' => $order_id,
+                    'transaction_type' => $transaction_type,
+                    'points_amount' => $points_amount,
+                    'points_balance' => $new_balance,
+                    'description' => $description,
+                    'metadata' => json_encode($metadata),
+                    'created_at' => current_time('mysql')
+                ],
+                ['%d', '%d', '%s', '%d', '%d', '%s', '%s', '%s']
+            );
+
+            if ($result === false) {
+                $wpdb->query('ROLLBACK');
+                intersoccer_referral_log("InterSoccer: Failed to insert points transaction: " . $wpdb->last_error);
+                return false;
+            }
+
+            $insert_id = $wpdb->insert_id;
+
+            // Update user meta with new balance
+            update_user_meta($customer_id, 'intersoccer_points_balance', $new_balance);
+
+            $wpdb->query('COMMIT');
+
+            return $insert_id;
+
+        } catch (Exception $e) {
+            $wpdb->query('ROLLBACK');
+            intersoccer_referral_log("InterSoccer: Points transaction failed: " . $e->getMessage());
             return false;
         }
-
-        update_user_meta($customer_id, 'intersoccer_points_balance', (int) $new_balance);
-
-        return $wpdb->insert_id;
     }
 
     /**
