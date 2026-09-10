@@ -326,7 +326,7 @@ The plugin uses two user-meta keys for customer balances:
 
 This plugin supports **CSV** for all data imports and exports (see [CSV-IMPORT-FORMATS.md](docs/guides/CSV-IMPORT-FORMATS.md)).
 
-**Excel / XLSX exports are not provided here.** Excel export functionality lives in the sibling plugin `intersoccer-reports-rosters`. Do not add PhpSpreadsheet or XLSX generation to this plugin; keep the export surface intentionally small and CSV-only.
+**Excel / XLSX exports are not provided here.** Excel export functionality lives in the sibling plugin `intersoccer-reports-rosters` (GitHub: `legit-ninja/reports-rosters`). Do not add PhpSpreadsheet or XLSX generation to this plugin; keep the export surface intentionally small and CSV-only.
 
 ---
 

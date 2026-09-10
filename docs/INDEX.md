@@ -53,7 +53,7 @@ For details, see the README "Technical Notes" section or [INTERN-TUTORIAL.md](gu
 
 ### Import / Export
 - **CSV only** in this plugin — see [CSV-IMPORT-FORMATS.md](guides/CSV-IMPORT-FORMATS.md)
-- **Excel/XLSX** exports live in the sibling `intersoccer-reports-rosters` plugin
+- **Excel/XLSX** exports live in the sibling plugin `intersoccer-reports-rosters` (GitHub: `legit-ninja/reports-rosters`)
 
 ---
 
