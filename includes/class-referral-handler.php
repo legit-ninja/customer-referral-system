@@ -29,7 +29,7 @@ class InterSoccer_Referral_Handler {
             $code = 'CUST' . $user_id . strtoupper(str_replace('_', '', wp_generate_password(6, false)));
             update_user_meta($user_id, 'intersoccer_customer_referral_code', $code);
         }
-        return home_url('/?cust_ref=' . $code);
+        return self::append_utm_params(home_url('/?cust_ref=' . $code), 'customer');
     }
 
     /**
@@ -148,7 +148,73 @@ class InterSoccer_Referral_Handler {
             return '';
         }
 
-        return home_url('/?ref=' . $code);
+        return self::append_utm_params(home_url('/?ref=' . $code), 'coach');
+    }
+
+    /**
+     * Sanitize a Google Analytics UTM parameter value.
+     *
+     * @param mixed $value Raw option or form value.
+     * @return string Lowercase [a-z0-9_-] only, max 100 characters (empty if none remain).
+     */
+    public static function sanitize_utm_value($value) {
+        $value = strtolower(trim((string) $value));
+        $value = preg_replace('/\s+/', '-', $value);
+        $value = preg_replace('/[^a-z0-9_-]/', '', (string) $value);
+        $value = is_string($value) ? $value : '';
+
+        if (strlen($value) > 100) {
+            $value = substr($value, 0, 100);
+        }
+
+        return $value;
+    }
+
+    /**
+     * Append configured UTM query params to a referral URL.
+     *
+     * Does not overwrite ref or cust_ref. Returns the URL unchanged when tracking
+     * is disabled, the URL is empty, or no UTM values are set.
+     *
+     * @param string $url      Referral URL.
+     * @param string $audience customer or coach (selects which utm_campaign option to use).
+     * @return string
+     */
+    public static function append_utm_params($url, $audience = 'customer') {
+        $url = (string) $url;
+        if ($url === '') {
+            return $url;
+        }
+
+        if (!(int) get_option('intersoccer_referral_utm_enabled', 0)) {
+            return $url;
+        }
+
+        $audience = ($audience === 'coach') ? 'coach' : 'customer';
+        $campaign_option = ($audience === 'coach')
+            ? 'intersoccer_referral_utm_campaign_coach'
+            : 'intersoccer_referral_utm_campaign_customer';
+
+        $params = [];
+        $map = [
+            'utm_source' => get_option('intersoccer_referral_utm_source', ''),
+            'utm_medium' => get_option('intersoccer_referral_utm_medium', ''),
+            'utm_campaign' => get_option($campaign_option, ''),
+            'utm_content' => get_option('intersoccer_referral_utm_content', ''),
+        ];
+
+        foreach ($map as $key => $value) {
+            $sanitized = self::sanitize_utm_value($value);
+            if ($sanitized !== '') {
+                $params[$key] = $sanitized;
+            }
+        }
+
+        if (empty($params)) {
+            return $url;
+        }
+
+        return add_query_arg($params, $url);
     }
 
     /**

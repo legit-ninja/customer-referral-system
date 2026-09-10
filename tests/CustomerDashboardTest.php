@@ -45,6 +45,16 @@ class CustomerDashboardTest extends TestCase {
         $mock_current_user_id = 1;
         $mock_user_meta = [];
         $mock_points_balances = [];
+        foreach ([
+            'intersoccer_referral_utm_enabled',
+            'intersoccer_referral_utm_source',
+            'intersoccer_referral_utm_medium',
+            'intersoccer_referral_utm_campaign_customer',
+            'intersoccer_referral_utm_campaign_coach',
+            'intersoccer_referral_utm_content',
+        ] as $key) {
+            delete_option($key);
+        }
         $this->resetPointsManagerSingleton();
         $this->resetCustomerDashboardRenderState();
 
@@ -210,6 +220,26 @@ class CustomerDashboardTest extends TestCase {
             '/data-referral-link="[^"]*CUST123TEST/',
             $output
         );
+    }
+
+    public function testRenderCustomerDashboard_QrIncludesUtmCampaignWhenEnabled() {
+        update_option('intersoccer_referral_utm_enabled', 1);
+        update_option('intersoccer_referral_utm_source', 'referral');
+        update_option('intersoccer_referral_utm_medium', 'share');
+        update_option('intersoccer_referral_utm_campaign_customer', 'customer-referral');
+        update_option('intersoccer_referral_utm_campaign_coach', 'coach-referral');
+
+        $output = $this->renderCustomerDashboardFresh();
+
+        $this->assertMatchesRegularExpression(
+            '/data-referral-link="[^"]*cust_ref=/',
+            $output
+        );
+        $this->assertMatchesRegularExpression(
+            '/data-referral-link="[^"]*utm_campaign=customer-referral/',
+            $output
+        );
+        $this->assertStringNotContainsString('utm_campaign=coach-referral', $output);
     }
 
     // =========================================================================

@@ -375,6 +375,12 @@ Navigate to **Referrals > Settings** to view and change these values. Changes ta
 | **Referral Eligibility Window** | How many months of inactivity makes a returning customer eligible for a referral commission | 18 months |
 | **Cookie Duration** | How long the referral tracking cookie lasts | 30 days |
 | **Email Notifications** | Enables or disables all system emails | Enabled |
+| **Enable UTM tracking** | When on, appends Google Analytics UTM tags to customer and coach referral URLs (copy links, QR codes, shares, emails, and coach event links). Does not change commissions. | Off |
+| **Campaign source (utm_source)** | Shared UTM source on those URLs | Empty |
+| **Campaign medium (utm_medium)** | Shared UTM medium on those URLs | Empty |
+| **Customer campaign (utm_campaign)** | Campaign name on customer referral links and QR codes | Empty |
+| **Coach campaign (utm_campaign)** | Campaign name on coach referral links, QR codes, and event-share links | Empty |
+| **Campaign content (utm_content)** | Optional shared UTM content | Empty |
 | **Points Allocation Method** | `instant` (points given immediately on completion) or `deferred` (weekly batch) | instant |
 
 > **Do not change settings without manager approval.** Changes to commission rates or the points rate will affect how future orders are processed and can create discrepancies if customers are expecting the old rates.

@@ -3,6 +3,7 @@
 use PHPUnit\Framework\TestCase;
 
 require_once __DIR__ . '/../includes/class-simulator.php';
+require_once __DIR__ . '/../includes/class-referral-handler.php';
 require_once __DIR__ . '/../includes/class-admin-settings.php';
 
 /**
@@ -585,6 +586,26 @@ class AdminSettingsTest extends TestCase {
         
         $is_consistent = ($points_meta === $points_log_sum);
         $this->assertTrue($is_consistent);
+    }
+
+    public function testSanitizeUtmOption_NormalizesValues() {
+        $settings = InterSoccer_Admin_Settings::get_instance();
+
+        $this->assertSame('summer-2026', $settings->sanitize_utm_option('Summer 2026!'));
+        $this->assertSame('coach_qr', $settings->sanitize_utm_option(' Coach_QR '));
+        $this->assertSame('', $settings->sanitize_utm_option('@@@'));
+        $this->assertSame('', $settings->sanitize_utm_option('   '));
+        $this->assertSame(100, strlen($settings->sanitize_utm_option(str_repeat('B', 150))));
+    }
+
+    public function testSanitizeUtmEnabledOption_PersistsUncheckedAsZero() {
+        $settings = InterSoccer_Admin_Settings::get_instance();
+
+        $this->assertSame(0, $settings->sanitize_utm_enabled_option('0'));
+        $this->assertSame(0, $settings->sanitize_utm_enabled_option(''));
+        $this->assertSame(0, $settings->sanitize_utm_enabled_option(null));
+        $this->assertSame(1, $settings->sanitize_utm_enabled_option('1'));
+        $this->assertSame(1, $settings->sanitize_utm_enabled_option(true));
     }
 }
 

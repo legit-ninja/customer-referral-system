@@ -10,6 +10,48 @@ class ReferralHandlerTest extends TestCase {
     protected function setUp(): void {
         // Include the referral handler class
         require_once __DIR__ . '/../includes/class-referral-handler.php';
+        $this->clearUtmOptions();
+    }
+
+    protected function tearDown(): void {
+        $this->clearUtmOptions();
+        parent::tearDown();
+    }
+
+    private function clearUtmOptions() {
+        foreach ([
+            'intersoccer_referral_utm_enabled',
+            'intersoccer_referral_utm_source',
+            'intersoccer_referral_utm_medium',
+            'intersoccer_referral_utm_campaign_customer',
+            'intersoccer_referral_utm_campaign_coach',
+            'intersoccer_referral_utm_content',
+        ] as $key) {
+            delete_option($key);
+        }
+    }
+
+    private function enableUtmOptions(array $overrides = []) {
+        $defaults = [
+            'intersoccer_referral_utm_enabled' => 1,
+            'intersoccer_referral_utm_source' => 'referral',
+            'intersoccer_referral_utm_medium' => 'share',
+            'intersoccer_referral_utm_campaign_customer' => 'customer-referral',
+            'intersoccer_referral_utm_campaign_coach' => 'coach-referral',
+            'intersoccer_referral_utm_content' => 'dashboard',
+        ];
+        foreach (array_merge($defaults, $overrides) as $key => $value) {
+            update_option($key, $value);
+        }
+    }
+
+    private function queryParamsFromUrl($url) {
+        $query = parse_url((string) $url, PHP_URL_QUERY);
+        $params = [];
+        if (is_string($query) && $query !== '') {
+            parse_str($query, $params);
+        }
+        return $params;
     }
 
     /**
@@ -269,6 +311,8 @@ class ReferralHandlerTest extends TestCase {
 
         $customer_link = InterSoccer_Referral_Handler::generate_customer_referral_link(1);
         $this->assertStringContainsString('cust_ref=', $customer_link);
+        $this->assertArrayNotHasKey('utm_source', $this->queryParamsFromUrl($coach_link));
+        $this->assertArrayNotHasKey('utm_source', $this->queryParamsFromUrl($customer_link));
     }
 
     /**
@@ -468,14 +512,78 @@ class ReferralHandlerTest extends TestCase {
         $this->assertEquals('CUSTOMER456', $customer_code);
     }
 
-    /**
-     * Test referral tracking with UTM parameters
-     */
-    public function testReferralTrackingUTM() {
-        $referral_link = 'https://example.com/?ref=COACH123&utm_source=coach&utm_medium=referral';
-        
-        $this->assertStringContainsString('utm_source=', $referral_link);
-        $this->assertStringContainsString('utm_medium=', $referral_link);
+    public function testReferralLinksUntaggedWhenUtmDisabled() {
+        update_user_meta(1, InterSoccer_Referral_Handler::COACH_REFERRAL_CODE_META, 'COACH1TEST');
+        update_user_meta(1, 'intersoccer_customer_referral_code', 'CUST1TEST');
+        $this->enableUtmOptions(['intersoccer_referral_utm_enabled' => 0]);
+
+        $coach_link = InterSoccer_Referral_Handler::generate_coach_referral_link(1);
+        $customer_link = InterSoccer_Referral_Handler::generate_customer_referral_link(1);
+
+        $this->assertArrayNotHasKey('utm_campaign', $this->queryParamsFromUrl($coach_link));
+        $this->assertArrayNotHasKey('utm_campaign', $this->queryParamsFromUrl($customer_link));
+    }
+
+    public function testReferralLinksUntaggedWhenUtmFieldsEmpty() {
+        update_user_meta(1, InterSoccer_Referral_Handler::COACH_REFERRAL_CODE_META, 'COACH1TEST');
+        update_user_meta(1, 'intersoccer_customer_referral_code', 'CUST1TEST');
+        $this->enableUtmOptions([
+            'intersoccer_referral_utm_source' => '',
+            'intersoccer_referral_utm_medium' => '',
+            'intersoccer_referral_utm_campaign_customer' => '',
+            'intersoccer_referral_utm_campaign_coach' => '',
+            'intersoccer_referral_utm_content' => '',
+        ]);
+
+        $coach_link = InterSoccer_Referral_Handler::generate_coach_referral_link(1);
+        $customer_link = InterSoccer_Referral_Handler::generate_customer_referral_link(1);
+
+        $this->assertArrayNotHasKey('utm_source', $this->queryParamsFromUrl($coach_link));
+        $this->assertArrayNotHasKey('utm_source', $this->queryParamsFromUrl($customer_link));
+    }
+
+    public function testReferralLinksUseSeparateCampaignsWhenUtmEnabled() {
+        update_user_meta(1, InterSoccer_Referral_Handler::COACH_REFERRAL_CODE_META, 'COACH1TEST');
+        update_user_meta(1, 'intersoccer_customer_referral_code', 'CUST1TEST');
+        $this->enableUtmOptions();
+
+        $coach_params = $this->queryParamsFromUrl(InterSoccer_Referral_Handler::generate_coach_referral_link(1));
+        $customer_params = $this->queryParamsFromUrl(InterSoccer_Referral_Handler::generate_customer_referral_link(1));
+
+        $this->assertSame('COACH1TEST', $coach_params['ref'] ?? null);
+        $this->assertSame('CUST1TEST', $customer_params['cust_ref'] ?? null);
+        $this->assertSame('referral', $coach_params['utm_source'] ?? null);
+        $this->assertSame('referral', $customer_params['utm_source'] ?? null);
+        $this->assertSame('share', $coach_params['utm_medium'] ?? null);
+        $this->assertSame('share', $customer_params['utm_medium'] ?? null);
+        $this->assertSame('coach-referral', $coach_params['utm_campaign'] ?? null);
+        $this->assertSame('customer-referral', $customer_params['utm_campaign'] ?? null);
+        $this->assertSame('dashboard', $coach_params['utm_content'] ?? null);
+        $this->assertSame('dashboard', $customer_params['utm_content'] ?? null);
+        $this->assertArrayNotHasKey('cust_ref', $coach_params);
+        $this->assertArrayNotHasKey('ref', $customer_params);
+    }
+
+    public function testSanitizeUtmValueNormalizesInput() {
+        $this->assertSame('summer-2026', InterSoccer_Referral_Handler::sanitize_utm_value('Summer 2026!'));
+        $this->assertSame('coach_qr', InterSoccer_Referral_Handler::sanitize_utm_value(' Coach_QR '));
+        $this->assertSame('', InterSoccer_Referral_Handler::sanitize_utm_value('@@@'));
+        $this->assertSame(100, strlen(InterSoccer_Referral_Handler::sanitize_utm_value(str_repeat('A', 120))));
+    }
+
+    public function testAppendUtmParamsPreservesRefAndCustRef() {
+        $this->enableUtmOptions();
+
+        $coach = InterSoccer_Referral_Handler::append_utm_params('https://example.com/?ref=COACHKEEP', 'coach');
+        $customer = InterSoccer_Referral_Handler::append_utm_params('https://example.com/?cust_ref=CUSTKEEP', 'customer');
+
+        $coach_params = $this->queryParamsFromUrl($coach);
+        $customer_params = $this->queryParamsFromUrl($customer);
+
+        $this->assertSame('COACHKEEP', $coach_params['ref'] ?? null);
+        $this->assertSame('CUSTKEEP', $customer_params['cust_ref'] ?? null);
+        $this->assertSame('coach-referral', $coach_params['utm_campaign'] ?? null);
+        $this->assertSame('customer-referral', $customer_params['utm_campaign'] ?? null);
     }
 
     /**
