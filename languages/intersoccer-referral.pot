@@ -323,3 +323,30 @@ msgstr ""
 msgid "points"
 msgstr ""
 
+msgid "Loyalty points"
+msgstr ""
+
+msgid "Adjust points"
+msgstr ""
+
+msgid "History"
+msgstr ""
+
+msgid "Redeemed on this order: %d"
+msgstr ""
+
+msgid "This order has no linked customer account, so there is no loyalty points balance."
+msgstr ""
+
+msgid "Viewing"
+msgstr ""
+
+msgid "Current points"
+msgstr ""
+
+msgid "Customer Points"
+msgstr ""
+
+msgid "Customer Points Management"
+msgstr ""
+

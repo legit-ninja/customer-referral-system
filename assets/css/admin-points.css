@@ -179,6 +179,43 @@
     margin-top: 20px;
 }
 
+.intersoccer-order-loyalty-points {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    background: #f8f9fa;
+    border: 1px solid #e1e5e9;
+    border-radius: 6px;
+}
+
+.intersoccer-order-loyalty-points p {
+    margin: 0 0 6px;
+}
+
+.intersoccer-order-loyalty-points p:last-child {
+    margin-bottom: 0;
+}
+
+.intersoccer-order-loyalty-points__actions .button {
+    margin-right: 6px;
+}
+
+.intersoccer-points-focus-banner {
+    margin: 16px 0;
+    padding: 16px;
+    background: #fff;
+    border: 1px solid #2271b1;
+    border-left-width: 4px;
+    border-radius: 4px;
+}
+
+.intersoccer-points-focus-banner p {
+    margin: 0 0 8px;
+}
+
+.intersoccer-points-focus-banner p:last-child {
+    margin-bottom: 0;
+}
+
 @media (max-width: 768px) {
     .intersoccer-points-controls {
         flex-direction: column;

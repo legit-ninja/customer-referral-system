@@ -410,3 +410,30 @@ msgstr "Solde actuel"
 msgid "points"
 msgstr "points"
 
+msgid "Loyalty points"
+msgstr "Points de fidélité"
+
+msgid "Adjust points"
+msgstr "Ajuster les points"
+
+msgid "History"
+msgstr "Historique"
+
+msgid "Redeemed on this order: %d"
+msgstr "Utilisés sur cette commande : %d"
+
+msgid "This order has no linked customer account, so there is no loyalty points balance."
+msgstr "Cette commande n'est pas liée à un compte client, il n'y a donc pas de solde de points de fidélité."
+
+msgid "Viewing"
+msgstr "Affichage"
+
+msgid "Current points"
+msgstr "Points actuels"
+
+msgid "Customer Points"
+msgstr "Points clients"
+
+msgid "Customer Points Management"
+msgstr "Gestion des points clients"
+

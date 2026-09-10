@@ -410,3 +410,30 @@ msgstr "Aktuelles Guthaben"
 msgid "points"
 msgstr "Punkte"
 
+msgid "Loyalty points"
+msgstr "Treuepunkte"
+
+msgid "Adjust points"
+msgstr "Punkte anpassen"
+
+msgid "History"
+msgstr "Verlauf"
+
+msgid "Redeemed on this order: %d"
+msgstr "Auf dieser Bestellung eingelöst: %d"
+
+msgid "This order has no linked customer account, so there is no loyalty points balance."
+msgstr "Diese Bestellung ist keinem Kundenkonto zugeordnet, daher gibt es keinen Treuepunkte-Saldo."
+
+msgid "Viewing"
+msgstr "Anzeige"
+
+msgid "Current points"
+msgstr "Aktuelle Punkte"
+
+msgid "Customer Points"
+msgstr "Kundenpunkte"
+
+msgid "Customer Points Management"
+msgstr "Kundenpunkte-Verwaltung"
+
