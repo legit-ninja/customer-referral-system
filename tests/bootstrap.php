@@ -391,6 +391,10 @@ if (!class_exists('WC_Order')) {
     class WC_Order {
         private $total = 100;
         private $tax = 10;
+        private $subtotal = 90;
+        private $shipping_total = 10;
+        private $total_discount = 0;
+        private $fees = [];
         private $created_at = '2025-01-01 12:00:00';
         private $status = 'pending';
         private $id = 0;
@@ -408,6 +412,22 @@ if (!class_exists('WC_Order')) {
             return $this->tax;
         }
 
+        public function get_subtotal() {
+            return $this->subtotal;
+        }
+
+        public function get_shipping_total() {
+            return $this->shipping_total;
+        }
+
+        public function get_total_discount() {
+            return $this->total_discount;
+        }
+
+        public function get_fees() {
+            return $this->fees;
+        }
+
         public function get_customer_id() {
             return $this->customer_id;
         }
@@ -418,10 +438,30 @@ if (!class_exists('WC_Order')) {
 
         public function set_total($total) {
             $this->total = $total;
+            // By default, set subtotal to total - tax for backward compatibility
+            $this->subtotal = $total - $this->tax;
         }
 
         public function set_tax_total($tax) {
             $this->tax = $tax;
+            // Update subtotal when tax changes
+            $this->subtotal = $this->total - $tax;
+        }
+
+        public function set_subtotal($subtotal) {
+            $this->subtotal = $subtotal;
+        }
+
+        public function set_shipping_total($shipping) {
+            $this->shipping_total = $shipping;
+        }
+
+        public function set_total_discount($discount) {
+            $this->total_discount = $discount;
+        }
+
+        public function add_fee($fee) {
+            $this->fees[] = $fee;
         }
 
         public function set_customer_id($customer_id) {
@@ -494,6 +534,35 @@ if (!class_exists('WC_Order')) {
 
         public function get_currency() {
             return 'CHF';
+        }
+    }
+}
+
+// Mock WC_Order_Item_Fee for fee handling
+if (!class_exists('WC_Order_Item_Fee')) {
+    class WC_Order_Item_Fee {
+        private $name = '';
+        private $total = 0;
+
+        public function __construct($name = '', $total = 0) {
+            $this->name = $name;
+            $this->total = $total;
+        }
+
+        public function get_name() {
+            return $this->name;
+        }
+
+        public function get_total() {
+            return $this->total;
+        }
+
+        public function set_name($name) {
+            $this->name = $name;
+        }
+
+        public function set_total($total) {
+            $this->total = $total;
         }
     }
 }

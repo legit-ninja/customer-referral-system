@@ -162,27 +162,58 @@ class InterSoccer_Commission_Manager {
     }
 
     /**
-     * Determine the commissionable order total, resilient to discounts applied at checkout.
+     * Determine the commissionable order total.
+     *
+     * Per §9.7 oracle: Commission is based on goods subtotal + shipping, BEFORE
+     * loyalty-points redemption discount, excluding tax.
      *
      * @param WC_Order|object $order
      * @return float
      */
     private static function get_commissionable_amount($order) {
-        $net_total = 0.0;
+        $commissionable = 0.0;
 
-        if (is_object($order) && method_exists($order, 'get_total')) {
-            $net_total = (float) $order->get_total();
+        if (!is_object($order)) {
+            return $commissionable;
         }
 
-        if (is_object($order) && method_exists($order, 'get_total_tax')) {
-            $net_total -= (float) $order->get_total_tax();
+        // Start with goods subtotal (before any discounts/fees)
+        if (method_exists($order, 'get_subtotal')) {
+            $commissionable = (float) $order->get_subtotal();
         }
 
-        if ($net_total < 0) {
-            $net_total = 0.0;
+        // Add shipping (if included in commission base)
+        if (method_exists($order, 'get_shipping_total')) {
+            $commissionable += (float) $order->get_shipping_total();
         }
 
-        return $net_total;
+        // Exclude tax (shipping tax is already excluded since get_shipping_total is pre-tax)
+        // Note: get_subtotal() returns pre-tax subtotal in most WooCommerce configurations
+
+        // Subtract non-points discounts (coupons, referral discounts) but NOT points redemption
+        // Points redemption is a fee with name 'Referral Credits Discount'
+        if (method_exists($order, 'get_fees')) {
+            foreach ($order->get_fees() as $fee) {
+                $fee_name = $fee->get_name();
+                // Skip points redemption fee - commission is calculated BEFORE points redeem
+                if (strpos($fee_name, 'Referral Credits Discount') !== false) {
+                    continue;
+                }
+                // Include other negative fees (discounts) in commission calculation
+                $commissionable += (float) $fee->get_total();
+            }
+        }
+
+        // Apply coupon discounts
+        if (method_exists($order, 'get_total_discount')) {
+            $commissionable -= (float) $order->get_total_discount();
+        }
+
+        if ($commissionable < 0) {
+            $commissionable = 0.0;
+        }
+
+        return $commissionable;
     }
 
     /**
