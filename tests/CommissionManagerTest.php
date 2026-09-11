@@ -20,6 +20,8 @@ class CommissionManagerTest extends TestCase {
         update_option('intersoccer_commission_tiers_partner', $default_tiers);
         update_option('intersoccer_commission_tiers_social_influencer', $default_tiers);
         update_option('intersoccer_enable_email_notifications', 0);
+        // Default referral code commission rate (Issue #30)
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
     }
 
     protected function tearDown(): void {
@@ -34,6 +36,7 @@ class CommissionManagerTest extends TestCase {
         delete_option('intersoccer_seasonal_bonus_mar_apr');
         delete_option('intersoccer_weekend_bonus');
         delete_option('intersoccer_enable_email_notifications');
+        delete_option('intersoccer_coach_referral_code_commission_rate');
 
         $mock_wpdb_get_var_results = [];
         $mock_users = [];
@@ -972,5 +975,123 @@ class CommissionManagerTest extends TestCase {
         $this->assertNotNull($mock_wpdb_last_insert, 'wpdb->insert into referral_credits should succeed');
         $this->assertSame('wp_intersoccer_referral_credits', $mock_wpdb_last_insert['table']);
         $this->assertArrayHasKey('order_id', $mock_wpdb_last_insert['data']);
+    }
+
+    // =========================================================================
+    // REFERRAL CODE COMMISSION RATE TESTS (Issue #30)
+    // =========================================================================
+
+    /**
+     * Test get_referral_code_commission_rate returns default 10%
+     */
+    public function testGetReferralCodeCommissionRate_Default() {
+        $rate = InterSoccer_Commission_Manager::get_referral_code_commission_rate();
+        $this->assertEquals(0.10, $rate, 'Default referral code commission rate should be 10%');
+    }
+
+    /**
+     * Test get_referral_code_commission_rate with custom value
+     */
+    public function testGetReferralCodeCommissionRate_CustomValue() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 15);
+        $rate = InterSoccer_Commission_Manager::get_referral_code_commission_rate();
+        $this->assertEquals(0.15, $rate, 'Custom referral code commission rate should be 15%');
+    }
+
+    /**
+     * Test get_referral_code_commission_rate clamps to 0-100 range
+     */
+    public function testGetReferralCodeCommissionRate_ClampsRange() {
+        // Test below 0
+        update_option('intersoccer_coach_referral_code_commission_rate', -5);
+        $rate = InterSoccer_Commission_Manager::get_referral_code_commission_rate();
+        $this->assertEquals(0.0, $rate, 'Negative rate should clamp to 0');
+
+        // Test above 100
+        update_option('intersoccer_coach_referral_code_commission_rate', 150);
+        $rate = InterSoccer_Commission_Manager::get_referral_code_commission_rate();
+        $this->assertEquals(1.0, $rate, 'Rate above 100% should clamp to 100%');
+    }
+
+    /**
+     * Test calculate_referral_code_commission
+     */
+    public function testCalculateReferralCodeCommission() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+
+        $order = new WC_Order();
+        $order->set_total(500);
+        $order->set_tax_total(0);
+
+        $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(50.0, $commission, 'CHF 500 order at 10% should yield CHF 50 commission');
+    }
+
+    /**
+     * Test calculate_referral_code_commission excludes tax
+     */
+    public function testCalculateReferralCodeCommission_ExcludesTax() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+
+        $order = new WC_Order();
+        $order->set_total(110);
+        $order->set_tax_total(10);
+
+        $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(10.0, $commission, 'Commission should be 10% of (110 - 10) = 10');
+    }
+
+    /**
+     * Test calculate_total_commission uses referral code rate when flag is true
+     */
+    public function testCalculateTotalCommission_UsesReferralCodeRate() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+        $this->mockCoachCustomerCount(5); // Would give tiered rate of 10% anyway
+
+        $order = new WC_Order();
+        $order->set_total(100);
+        $order->set_tax_total(0);
+
+        // With use_referral_code_rate = true
+        $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 1, true);
+        $this->assertTrue($commission['referral_code_rate_used'], 'Flag should indicate referral code rate was used');
+        $this->assertEquals(10.0, $commission['base_commission'], 'Should use referral code commission rate');
+    }
+
+    /**
+     * Test calculate_total_commission uses tiered rate when flag is false
+     */
+    public function testCalculateTotalCommission_UsesTieredRate() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 15);
+        $this->mockCoachCustomerCount(15); // Tier 2: 15%
+
+        $order = new WC_Order();
+        $order->set_total(100);
+        $order->set_tax_total(10);
+
+        // With use_referral_code_rate = false (default)
+        $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 1, false);
+        $this->assertFalse($commission['referral_code_rate_used'], 'Flag should indicate tiered rate was used');
+        $this->assertEquals(13.5, $commission['base_commission'], 'Should use tiered commission rate (15% of 90)');
+    }
+
+    /**
+     * Test referral code commission rate distinction from partnership rate
+     */
+    public function testReferralCodeCommission_DifferentFromPartnership() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+        $this->mockCoachCustomerCount(25); // Platinum tier: 20%
+
+        $order = new WC_Order();
+        $order->set_total(100);
+        $order->set_tax_total(0);
+
+        // Partnership commission uses tiered rates
+        $partnership = InterSoccer_Commission_Manager::calculate_partnership_commission($order, 1);
+        $this->assertEquals(20.0, $partnership['base_commission'], 'Partnership should use tiered rate (20%)');
+
+        // Referral code commission uses flat rate
+        $referral_code = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(10.0, $referral_code, 'Referral code commission should use flat 10% rate');
     }
 }

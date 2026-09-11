@@ -760,6 +760,54 @@ class InterSoccer_Admin_Settings {
                 </div>
             </div>
 
+            <!-- Referral Code Commission Rate (Issue #30) -->
+            <div class="intersoccer-settings-section" style="margin-top: 40px;">
+                <h2><?php esc_html_e('Referral Code Commission', 'intersoccer-referral'); ?></h2>
+                <p class="description">
+                    <?php esc_html_e('When a customer uses a coach\'s referral code during checkout, the coach earns this flat percentage commission on the order. This rate is separate from the tiered commission rates above.', 'intersoccer-referral'); ?>
+                </p>
+
+                <form method="post" action="options.php" id="referral-code-commission-form">
+                    <?php
+                    settings_fields('intersoccer_referral_code_commission');
+                    $referral_code_commission_rate = get_option('intersoccer_coach_referral_code_commission_rate', 10);
+                    ?>
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row">
+                                <label for="intersoccer_coach_referral_code_commission_rate"><?php esc_html_e('Referral Code Commission Rate (%)', 'intersoccer-referral'); ?></label>
+                            </th>
+                            <td>
+                                <input type="number"
+                                       name="intersoccer_coach_referral_code_commission_rate"
+                                       id="intersoccer_coach_referral_code_commission_rate"
+                                       value="<?php echo esc_attr($referral_code_commission_rate); ?>"
+                                       min="0"
+                                       max="100"
+                                       step="0.1"
+                                       class="small-text">
+                                <span>%</span>
+                                <p class="description">
+                                    <?php esc_html_e('Default: 10%. This is the commission rate for purchases made using a coach\'s referral code.', 'intersoccer-referral'); ?>
+                                    <br>
+                                    <strong><?php esc_html_e('Example:', 'intersoccer-referral'); ?></strong>
+                                    <?php 
+                                    $example_order = 500;
+                                    $example_commission = ($example_order * floatval($referral_code_commission_rate)) / 100;
+                                    printf(
+                                        esc_html__('CHF %s commission on a CHF %s order', 'intersoccer-referral'),
+                                        number_format($example_commission, 2),
+                                        number_format($example_order, 0)
+                                    );
+                                    ?>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                    <?php submit_button(__('Save Referral Code Commission Rate', 'intersoccer-referral')); ?>
+                </form>
+            </div>
+
             <!-- Commission Bonuses (Loyalty, Retention, Network Effect) -->
             <div class="intersoccer-settings-section" style="margin-top: 40px;">
                 <h2><?php esc_html_e('Commission Bonuses', 'intersoccer-referral'); ?></h2>
@@ -3962,6 +4010,13 @@ class InterSoccer_Admin_Settings {
         register_setting('intersoccer_commission_bonuses', 'intersoccer_weekend_bonus', [
             'type' => 'number',
             'default' => 0,
+            'sanitize_callback' => [$this, 'sanitize_percentage_option']
+        ]);
+
+        // Referral code commission rate (Issue #30)
+        register_setting('intersoccer_referral_code_commission', 'intersoccer_coach_referral_code_commission_rate', [
+            'type' => 'number',
+            'default' => 10,
             'sanitize_callback' => [$this, 'sanitize_percentage_option']
         ]);
     }

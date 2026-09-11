@@ -60,6 +60,36 @@ class InterSoccer_Commission_Manager {
     }
 
     /**
+     * Get the configured commission rate for coach referral code purchases.
+     *
+     * This rate is applied when a purchase is made using a coach's referral code.
+     * Default is 10% (admin-configurable in WP Admin > InterSoccer > Settings).
+     *
+     * @return float Commission rate as decimal (e.g., 0.10 for 10%)
+     */
+    public static function get_referral_code_commission_rate() {
+        $rate = get_option('intersoccer_coach_referral_code_commission_rate', 10);
+        $rate = max(0, min(100, floatval($rate)));
+        return $rate / 100;
+    }
+
+    /**
+     * Calculate commission for a purchase made using a coach's referral code.
+     *
+     * This is the flat rate commission (default 10%) applied when a customer
+     * uses a coach's referral code during checkout, as specified in issue #30.
+     *
+     * @param WC_Order|object $order The WooCommerce order
+     * @param int $coach_id The coach user ID
+     * @return float Commission amount in CHF
+     */
+    public static function calculate_referral_code_commission($order, $coach_id) {
+        $commissionable = self::get_commissionable_amount($order);
+        $commission_rate = self::get_referral_code_commission_rate();
+        return round($commissionable * $commission_rate, 2);
+    }
+
+    /**
      * Get user role for commission calculation (coach, partner, or social_influencer)
      * 
      * @param int $user_id User ID
@@ -228,11 +258,19 @@ class InterSoccer_Commission_Manager {
         ));
 
         if ($referral && (int) $referral->coach_id > 0) {
+            // Determine if this order used a coach referral code (not a partnership)
+            // Partnership referrals have codes like "PARTNERSHIP_123" - these use tiered rates
+            // Coach referral codes trigger flat referral code commission rate (issue #30)
+            $referral_code = isset($referral->referral_code) ? (string) $referral->referral_code : '';
+            $is_partnership_referral = strpos($referral_code, 'PARTNERSHIP_') === 0;
+            $use_referral_code_rate = !empty($referral_code) && !$is_partnership_referral;
+
             $commission_data = self::calculate_total_commission(
                 $order,
                 $referral->coach_id,
                 $customer_id,
-                $referral->purchase_count
+                $referral->purchase_count,
+                $use_referral_code_rate
             );
 
             if (!$order->has_status(['completed', 'wc-completed'])) {
@@ -639,9 +677,20 @@ class InterSoccer_Commission_Manager {
      *
      * Base commission comes from Commission Tiers; all bonus components are
      * configurable and default to 0 so they are opt-in.
+     *
+     * @param WC_Order|object $order WooCommerce order
+     * @param int $coach_id Coach user ID
+     * @param int $customer_id Customer user ID
+     * @param int $purchase_count Customer's purchase count
+     * @param bool $use_referral_code_rate If true, use flat referral code commission rate (issue #30)
+     * @return array Commission breakdown
      */
-    public static function calculate_total_commission($order, $coach_id, $customer_id, $purchase_count) {
-        $base_commission = self::calculate_base_commission($order, $coach_id);
+    public static function calculate_total_commission($order, $coach_id, $customer_id, $purchase_count, $use_referral_code_rate = false) {
+        if ($use_referral_code_rate) {
+            $base_commission = self::calculate_referral_code_commission($order, $coach_id);
+        } else {
+            $base_commission = self::calculate_base_commission($order, $coach_id);
+        }
 
         $loyalty_bonus   = self::calculate_loyalty_bonus($order, $purchase_count);
         $retention_bonus = self::calculate_retention_bonus($customer_id, date('Y'));
@@ -669,7 +718,8 @@ class InterSoccer_Commission_Manager {
             'tier_bonus'       => 0.0, // Deprecated - Commission Tiers handle tiering
             'seasonal_bonus'   => round($seasonal_bonus, 2),
             'weekend_bonus'    => round($weekend_bonus, 2),
-            'total_amount'     => $total_amount
+            'total_amount'     => $total_amount,
+            'referral_code_rate_used' => $use_referral_code_rate,
         ];
     }
 
