@@ -387,6 +387,86 @@
     gap: 1rem;
 }
 
+/* Referral Code Container */
+.referral-code-container {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05), rgba(118, 75, 162, 0.05));
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-top: 1rem;
+    border: 1px solid rgba(102, 126, 234, 0.15);
+}
+
+.referral-code-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.referral-code-header .code-icon {
+    font-size: 1.5rem;
+    line-height: 1;
+}
+
+.referral-code-header h4 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.referral-code-header .code-subtitle {
+    margin: 0;
+    font-size: 0.875rem;
+    color: #64748b;
+}
+
+.referral-code-body {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.referral-code-body .code-value {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    background: white;
+    border: 2px solid #667eea;
+    border-radius: 8px;
+    font-family: 'Monaco', 'Menlo', monospace;
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-align: center;
+    color: #667eea;
+}
+
+.btn-tertiary {
+    padding: 0.75rem 1.25rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: white;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    color: #475569;
+}
+
+.btn-tertiary:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+}
+
+.btn-tertiary.share-cta {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    border: none;
+}
+
+.btn-tertiary.share-cta:hover {
+    background: linear-gradient(135deg, #5a6fd8, #6b4190);
+}
+
 .btn-primary, .btn-secondary {
     padding: 0.75rem 1.5rem;
     border: none;
@@ -404,6 +484,31 @@
 .btn-primary:hover {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+/* Share CTA - consistent purple gradient styling */
+.share-cta {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    font-weight: 600;
+    border: none;
+    transition: all 0.2s ease;
+}
+
+.share-cta:hover {
+    background: linear-gradient(135deg, #5a6fd8, #6b4190);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+/* Share Link header button - consistent with CTA styling */
+.action-btn.share-cta {
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+}
+
+.action-btn.share-cta:hover {
+    background: rgba(255, 255, 255, 0.35);
 }
 
 .btn-secondary {

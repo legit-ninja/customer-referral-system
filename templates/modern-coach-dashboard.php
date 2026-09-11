@@ -97,7 +97,7 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
             </div>
 
             <div class="header-actions" id="tour-actions">
-                <button class="action-btn primary" id="share-link-btn" data-tooltip="<?php echo esc_attr__('Share your referral link', 'intersoccer-referral'); ?>">
+                <button class="action-btn primary share-cta" id="share-link-btn" data-tooltip="<?php echo esc_attr__('Share your referral link', 'intersoccer-referral'); ?>" data-referral-link="<?php echo esc_attr($referral_link); ?>">
                     <i class="icon-share"></i>
                     <span><?php esc_html_e('Share Link', 'intersoccer-referral'); ?></span>
                 </button>
@@ -265,9 +265,9 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
             </div>
 
             <div class="referral-link-container">
-                <input type="text" id="referral-link-input" value="<?php echo esc_attr($referral_link); ?>" readonly>
+                <input type="text" id="referral-link" value="<?php echo esc_attr($referral_link); ?>" readonly data-field="share_url">
                 <div class="link-actions">
-                    <button class="btn-primary" id="copy-link-text"><?php esc_html_e('Copy Link', 'intersoccer-referral'); ?></button>
+                    <button class="btn-primary share-cta" id="copy-link-text"><?php esc_html_e('Copy Link', 'intersoccer-referral'); ?></button>
                     <button class="btn-secondary" id="customize-link"><?php esc_html_e('Customize', 'intersoccer-referral'); ?></button>
                 </div>
             </div>
@@ -281,7 +281,7 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                     </div>
                 </div>
                 <div class="referral-code-body">
-                    <span class="code-value" id="referral-code-value"><?php echo esc_html($referral_code); ?></span>
+                    <span class="code-value" id="referral-code" data-field="referral_code"><?php echo esc_html($referral_code); ?></span>
                     <button class="btn-tertiary" id="copy-code"><?php esc_html_e('Copy Code', 'intersoccer-referral'); ?></button>
                 </div>
             </div>

@@ -100,6 +100,12 @@ class ModernCoachDashboard {
             shareLinkBtn.addEventListener('click', () => this.copyReferralLink());
         }
 
+        // Copy code button
+        const copyCodeBtn = document.getElementById('copy-code');
+        if (copyCodeBtn) {
+            copyCodeBtn.addEventListener('click', () => this.copyReferralCode());
+        }
+
         // QR Code modal
         const showQrBtn = document.getElementById('show-qr');
         if (showQrBtn) {
@@ -421,11 +427,28 @@ class ModernCoachDashboard {
     }
 
     copyReferralLink() {
-        const linkInput = document.getElementById('referral-link-input');
+        const linkInput = document.getElementById('referral-link');
         if (linkInput) {
-            linkInput.select();
-            document.execCommand('copy');
+            if (linkInput.select) {
+                linkInput.select();
+            }
+            this.copyToClipboard(linkInput.value);
             this.showNotification(this.getLabel('referral_link_copied'), 'success');
+        } else {
+            const shareLinkBtn = document.getElementById('share-link-btn');
+            if (shareLinkBtn && shareLinkBtn.dataset.referralLink) {
+                this.copyToClipboard(shareLinkBtn.dataset.referralLink);
+                this.showNotification(this.getLabel('referral_link_copied'), 'success');
+            }
+        }
+    }
+
+    copyReferralCode() {
+        const codeElement = document.getElementById('referral-code');
+        if (codeElement) {
+            const code = codeElement.textContent || codeElement.value;
+            this.copyToClipboard(code);
+            this.showNotification('Referral code copied!', 'success');
         }
     }
 

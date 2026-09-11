@@ -182,7 +182,8 @@ jQuery(document).ready(function($) {
     
     // Copy referral link functionality
     function initializeCopyFunctionality() {
-        $(document).on('click', '#copy-link-btn, .copy-referral-link', function(e) {
+        // Support both #share-link-btn (new) and #copy-link-btn (legacy) for backward compatibility
+        $(document).on('click', '#share-link-btn, #copy-link-btn, .copy-referral-link', function(e) {
             e.preventDefault();
             copyReferralLink(this);
         });
@@ -191,10 +192,11 @@ jQuery(document).ready(function($) {
     window.copyReferralLink = function(button) {
         const linkInput = document.getElementById('referral-link') || 
                          button.parentElement.querySelector('input[readonly]');
-        const copyBtn = button || document.getElementById('copy-link-btn');
+        // Support both #share-link-btn (new) and #copy-link-btn (legacy) for backward compatibility
+        const copyBtn = button || document.getElementById('share-link-btn') || document.getElementById('copy-link-btn');
         
-        if (!linkInput || !copyBtn) {
-            console.error('Required elements not found for copy functionality');
+        if (!linkInput) {
+            console.error('Referral link input not found for copy functionality');
             return;
         }
         
