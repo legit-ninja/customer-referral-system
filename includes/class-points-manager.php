@@ -571,7 +571,7 @@ class InterSoccer_Points_Manager {
 
         try {
             // Lock and get the latest balance from the ledger to prevent race conditions
-            $current_balance = (int) $wpdb->get_var($wpdb->prepare(
+            $ledger_balance = $wpdb->get_var($wpdb->prepare(
                 "SELECT points_balance FROM {$this->points_log_table}
                  WHERE customer_id = %d
                  ORDER BY created_at DESC, id DESC
@@ -579,12 +579,17 @@ class InterSoccer_Points_Manager {
                  FOR UPDATE",
                 $customer_id
             ));
+            $has_ledger_entry = ($wpdb->num_rows > 0);
+            $ledger_balance = $has_ledger_entry ? (int) $ledger_balance : null;
 
-            // If no ledger entry exists, fall back to user meta
-            if ($current_balance === null || $wpdb->num_rows === 0) {
-                $meta_balance = get_user_meta($customer_id, 'intersoccer_points_balance', true);
-                $current_balance = ($meta_balance !== '' && $meta_balance !== false) ? (int) $meta_balance : 0;
-            }
+            // Get user meta balance (the displayed/authoritative balance)
+            $meta_value = get_user_meta($customer_id, 'intersoccer_points_balance', true);
+            $meta_balance = ($meta_value !== '' && $meta_value !== false) ? (int) $meta_value : 0;
+
+            // Use meta balance as the authoritative starting point.
+            // This ensures admin adjustments and other transactions use the displayed balance,
+            // which is correct when ledger and meta have diverged (e.g., checkout redeemed from meta only).
+            $current_balance = $meta_balance;
 
             // Calculate new balance
             $new_balance = $current_balance + $points_amount;

@@ -529,6 +529,7 @@ if (!class_exists('Mock_WPDB')) {
         public $usermeta = 'wp_usermeta';
         public $insert_id = 0;
         public $last_error = '';
+        public $num_rows = 0;
 
         public function prepare($query, ...$args) {
             if (empty($args)) {
@@ -577,7 +578,12 @@ if (!class_exists('Mock_WPDB')) {
 
             if (strpos($query, 'points_balance') !== false && preg_match('/customer_id\s*=\s*(\d+)/', $query, $matches)) {
                 $customer_id = (int) $matches[1];
-                return $mock_points_balances[$customer_id] ?? 0;
+                if (array_key_exists($customer_id, $mock_points_balances)) {
+                    $this->num_rows = 1;
+                    return $mock_points_balances[$customer_id];
+                }
+                $this->num_rows = 0;
+                return null;
             }
 
             if (strpos($query, 'COUNT(*)') !== false) {
