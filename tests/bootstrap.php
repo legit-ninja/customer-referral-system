@@ -543,6 +543,7 @@ if (!class_exists('WC_Order_Item_Fee')) {
     class WC_Order_Item_Fee {
         private $name = '';
         private $total = 0;
+        private $meta_data = [];
 
         public function __construct($name = '', $total = 0) {
             $this->name = $name;
@@ -563,6 +564,18 @@ if (!class_exists('WC_Order_Item_Fee')) {
 
         public function set_total($total) {
             $this->total = $total;
+        }
+
+        public function add_meta_data($key, $value, $unique = false) {
+            $this->meta_data[$key] = $value;
+        }
+
+        public function get_meta($key, $single = true) {
+            return $this->meta_data[$key] ?? ($single ? '' : []);
+        }
+
+        public function save_meta_data() {
+            // Mock - no-op in test environment
         }
     }
 }

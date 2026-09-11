@@ -318,9 +318,34 @@ The plugin uses two user-meta keys for customer balances:
 | Meta Key | Purpose | Status |
 |----------|---------|--------|
 | `intersoccer_points_balance` | **Canonical.** The redeemable loyalty-points balance shown to customers and used at checkout. Managed by `InterSoccer_Points_Manager`. | Active |
-| `intersoccer_customer_credits` | Legacy/parallel key used by referral-credit flows (customer-to-customer transfers, referral bonuses via `InterSoccer_Referral_Handler`). Kept in sync with points in most paths but written separately by older credit logic. | Legacy — read for compatibility; new code should use `intersoccer_points_balance`. |
+| `intersoccer_customer_credits` | Legacy key formerly used by referral-credit flows. **Dual-write stopped as of issue #36.** Existing values remain for historical reference but are no longer updated. | Deprecated — read-only for migration purposes. |
 
-**Guideline:** When adjusting balances, use the **Referrals > Customer Points** admin page — it updates `intersoccer_points_balance` and logs changes. Direct writes to `intersoccer_customer_credits` should only occur in the existing referral-credit code paths.
+**Guideline:** When adjusting balances, use the **Referrals > Customer Points** admin page — it updates `intersoccer_points_balance` and logs changes.
+
+#### Migration from `intersoccer_customer_credits` (Issue #36)
+
+As of PR #43 (issue #36), all earn/redeem operations write exclusively to `intersoccer_points_balance`:
+
+1. **Referrer reward points** — now credited only to `intersoccer_points_balance`
+2. **New customer bonus points** — now credited only to `intersoccer_points_balance`
+3. **Gift points** — now uses `intersoccer_points_balance` instead of `intersoccer_customer_credits`
+
+**Legacy data migration:** Existing `intersoccer_customer_credits` values are **not automatically migrated**. If a customer's `intersoccer_points_balance` is 0 but `intersoccer_customer_credits` has a non-zero value, an admin can manually reconcile via the Customer Points page. For bulk migration, use WP-CLI or a custom script:
+
+```php
+// Example: One-time migration script (run via WP-CLI or custom admin action)
+$users = get_users(['meta_key' => 'intersoccer_customer_credits', 'meta_compare' => '>', 'meta_value' => 0]);
+foreach ($users as $user) {
+    $legacy = (int) get_user_meta($user->ID, 'intersoccer_customer_credits', true);
+    $current = (int) get_user_meta($user->ID, 'intersoccer_points_balance', true);
+    if ($legacy > 0 && $current === 0) {
+        update_user_meta($user->ID, 'intersoccer_points_balance', $legacy);
+        // Optionally log: intersoccer_referral_log("Migrated {$legacy} credits to points for user {$user->ID}");
+    }
+}
+```
+
+**Note:** The `intersoccer_customer_credits` key is retained read-only for backward compatibility with any external integrations. New code must not write to it.
 
 ### Import / Export Policy
 

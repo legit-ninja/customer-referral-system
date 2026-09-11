@@ -1696,20 +1696,19 @@ function intersoccer_handle_gift_credits() {
         wp_send_json_error(['message' => 'Cannot gift credits to yourself']);
     }
     
-    $current_credits = (int) (get_user_meta($user_id, 'intersoccer_customer_credits', true) ?: 0);
+    // Issue #36: Read from and write only to intersoccer_points_balance
+    $current_credits = (int) (get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0);
     if ($current_credits < $gift_amount) {
         wp_send_json_error(['message' => 'Insufficient credits']);
     }
     
     // Process gift - deduct from sender, add bonus back
     $sender_new_credits = $current_credits - $gift_amount + 20; // 20 CHF back for gifting
-    update_user_meta($user_id, 'intersoccer_customer_credits', $sender_new_credits);
     update_user_meta($user_id, 'intersoccer_points_balance', $sender_new_credits);
     
-    // Credit the recipient
-    $recipient_current = (int) (get_user_meta($recipient->ID, 'intersoccer_customer_credits', true) ?: 0);
+    // Credit the recipient (write only to intersoccer_points_balance)
+    $recipient_current = (int) (get_user_meta($recipient->ID, 'intersoccer_points_balance', true) ?: 0);
     $recipient_new = $recipient_current + $gift_amount;
-    update_user_meta($recipient->ID, 'intersoccer_customer_credits', $recipient_new);
     update_user_meta($recipient->ID, 'intersoccer_points_balance', $recipient_new);
     
     // Send gift notification email
