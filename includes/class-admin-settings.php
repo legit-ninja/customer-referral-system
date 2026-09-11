@@ -365,22 +365,14 @@ class InterSoccer_Admin_Settings {
             <?php endif; ?>
 
             <?php if ($current_tab === 'points'): ?>
-            <!-- Phase 0: Points & Earning Rules (Role-Specific Point Acquisition Rates) -->
+            <!-- Points & Earning Rules -->
             <div class="intersoccer-settings-section">
                 <h2>⭐ <?php esc_html_e('Customer Points Earning Rates', 'intersoccer-referral'); ?></h2>
-                <div class="settings-notice">
-                    <div class="notice notice-info">
-                        <p><strong>💡 <?php esc_html_e('Configure how customers earn loyalty points', 'intersoccer-referral'); ?></strong></p>
-                        <p><strong><?php esc_html_e('How customer points work:', 'intersoccer-referral'); ?></strong></p>
-                        <ul>
-                            <li><?php esc_html_e('Set the CHF amount customers spend to earn 1 point (default: CHF 10 = 1 point)', 'intersoccer-referral'); ?></li>
-                            <li><?php esc_html_e('Lower values mean faster point earning (e.g., CHF 5 = 1 point is more generous than CHF 10 = 1 point)', 'intersoccer-referral'); ?></li>
-                            <li><strong><?php esc_html_e('Example:', 'intersoccer-referral'); ?></strong> <?php esc_html_e('At CHF 10 = 1 point, a CHF 500 purchase earns 50 points', 'intersoccer-referral'); ?></li>
-                            <li><strong><?php esc_html_e('Important:', 'intersoccer-referral'); ?></strong> <?php esc_html_e('Coaches, Partners, and Influencers earn commission on referred purchases (see Commission Tiers below) — they do not earn points differently from customers.', 'intersoccer-referral'); ?></li>
-                        </ul>
-                        <p><strong><?php esc_html_e('Redemption:', 'intersoccer-referral'); ?></strong> <?php esc_html_e('Customers redeem points at checkout only. Point value at checkout is configured in General Settings.', 'intersoccer-referral'); ?></p>
-                    </div>
-                </div>
+                <p class="description">
+                    <?php esc_html_e('Set how many CHF customers spend to earn 1 point. Lower values = faster earning.', 'intersoccer-referral'); ?>
+                    <strong><?php esc_html_e('Example: CHF 10 = 1 pt, so CHF 500 purchase → 50 pts.', 'intersoccer-referral'); ?></strong>
+                    <?php esc_html_e('Coaches earn commission (see Tiered Commission Rates below), not points.', 'intersoccer-referral'); ?>
+                </p>
 
                 <?php
                 // Configuration - default to fixed-rate (ratio mode)
@@ -444,7 +436,7 @@ class InterSoccer_Admin_Settings {
                     <div class="rates-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 20px;">
                         
                         <!-- Customer Purchase Rate -->
-                        <div class="rate-card" style="background: #fff; border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px;">
+                        <div class="rate-card" style="background: #fff; border: 1px solid #e1e1e1; border-radius: 8px; padding: 20px;">
                             <h3 style="margin: 0 0 15px 0; color: #2563eb;">🛒 <?php esc_html_e('Customer Purchase Earn Rate', 'intersoccer-referral'); ?></h3>
                             <div class="rate-input-group">
                                 <label for="rate_customer_purchase" style="display: block; margin-bottom: 8px; font-weight: 600;">
@@ -471,18 +463,15 @@ class InterSoccer_Admin_Settings {
                                         ?>%)
                                     </span>
                                 </div>
-                                <p class="description" style="margin-top: 8px;">
-                                    <?php esc_html_e('Points customers earn on their own purchases.', 'intersoccer-referral'); ?><br/>
-                                    <strong><?php esc_html_e('Example:', 'intersoccer-referral'); ?></strong> <?php esc_html_e('CHF 500 purchase =', 'intersoccer-referral'); ?> 
-                                    <span class="preview-points" data-role="customer_purchase">
-                                        <?php echo floor(500 / max(1, get_option('intersoccer_points_rate_customer_purchase', 10))); ?>
-                                    </span> <?php esc_html_e('points', 'intersoccer-referral'); ?>
+                                <p class="description">
+                                    <?php esc_html_e('Points customers earn on their own purchases.', 'intersoccer-referral'); ?>
+                                    <strong><?php esc_html_e('CHF 10 = 1 pt → CHF 500 purchase = 50 pts.', 'intersoccer-referral'); ?></strong>
                                 </p>
                             </div>
                         </div>
 
                         <!-- Customer Referral Rate -->
-                        <div class="rate-card" style="background: #fff; border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px;">
+                        <div class="rate-card" style="background: #fff; border: 1px solid #e1e1e1; border-radius: 8px; padding: 20px;">
                             <h3 style="margin: 0 0 15px 0; color: #2563eb;">👥 <?php esc_html_e('Customer-to-Customer Referral Bonus', 'intersoccer-referral'); ?></h3>
                             <div class="rate-input-group">
                                 <label for="rate_customer_referral" style="display: block; margin-bottom: 8px; font-weight: 600;">
@@ -509,18 +498,15 @@ class InterSoccer_Admin_Settings {
                                         ?>%)
                                     </span>
                                 </div>
-                                <p class="description" style="margin-top: 8px;">
-                                    <?php esc_html_e('Bonus points the referring customer earns when a friend they referred makes a purchase.', 'intersoccer-referral'); ?><br/>
-                                    <strong><?php esc_html_e('Example:', 'intersoccer-referral'); ?></strong> <?php esc_html_e("Friend's CHF 500 purchase =", 'intersoccer-referral'); ?> 
-                                    <span class="preview-points" data-role="customer_referral">
-                                        <?php echo floor(500 / max(1, get_option('intersoccer_points_rate_customer_referral', 10))); ?>
-                                    </span> <?php esc_html_e('bonus points for the referrer', 'intersoccer-referral'); ?>
+                                <p class="description">
+                                    <?php esc_html_e('Bonus points the referring customer earns when their friend makes a purchase.', 'intersoccer-referral'); ?>
+                                    <strong><?php esc_html_e("Friend's CHF 500 purchase = 50 bonus pts for the referrer.", 'intersoccer-referral'); ?></strong>
                                 </p>
                             </div>
                         </div>
 
                         <!-- First Time Customer Rate -->
-                        <div class="rate-card" style="background: #fff; border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px;">
+                        <div class="rate-card" style="background: #fff; border: 1px solid #e1e1e1; border-radius: 8px; padding: 20px;">
                             <h3 style="margin: 0 0 15px 0; color: #f59e0b;">⭐ <?php esc_html_e('First-Time Customer Earn Rate', 'intersoccer-referral'); ?></h3>
                             <div class="rate-input-group">
                                 <label for="rate_first_time_customer" style="display: block; margin-bottom: 8px; font-weight: 600;">
@@ -547,12 +533,9 @@ class InterSoccer_Admin_Settings {
                                         ?>%)
                                     </span>
                                 </div>
-                                <p class="description" style="margin-top: 8px;">
-                                    <?php esc_html_e('Points earned by new customers on their very first purchase.', 'intersoccer-referral'); ?><br/>
-                                    <strong><?php esc_html_e('Example:', 'intersoccer-referral'); ?></strong> <?php esc_html_e('CHF 500 first purchase =', 'intersoccer-referral'); ?> 
-                                    <span class="preview-points" data-role="first_time_customer">
-                                        <?php echo floor(500 / max(1, get_option('intersoccer_points_rate_first_time_customer', 10))); ?>
-                                    </span> <?php esc_html_e('points', 'intersoccer-referral'); ?>
+                                <p class="description">
+                                    <?php esc_html_e('Points earned by new customers on their very first purchase.', 'intersoccer-referral'); ?>
+                                    <strong><?php esc_html_e('CHF 500 first purchase = 50 pts.', 'intersoccer-referral'); ?></strong>
                                 </p>
                             </div>
                         </div>
@@ -578,22 +561,18 @@ class InterSoccer_Admin_Settings {
 
                 <!-- Tiered Commission Rates Section -->
                 <div class="intersoccer-settings-section" style="margin-top: 40px;">
-                    <h2><?php esc_html_e('Coach & Partner Commission Rates', 'intersoccer-referral'); ?></h2>
-                    <div class="notice notice-info" style="margin: 15px 0;">
-                        <p><strong>💡 <?php esc_html_e('How coach/partner commission works:', 'intersoccer-referral'); ?></strong></p>
-                        <p><?php esc_html_e('When a customer makes a purchase using a coach\'s (or partner\'s) referral code, the coach earns a percentage of that order as commission.', 'intersoccer-referral'); ?></p>
-                        <p><strong><?php esc_html_e('Example:', 'intersoccer-referral'); ?></strong> <?php esc_html_e('With a 10% commission rate, a CHF 500 order using the coach\'s referral code earns the coach CHF 50 commission.', 'intersoccer-referral'); ?></p>
-                        <p><em><?php esc_html_e('Note: Coach commission is separate from customer loyalty points. Coaches do not earn points — they earn commission.', 'intersoccer-referral'); ?></em></p>
-                    </div>
+                    <h2><?php esc_html_e('Tiered Commission Rates (%)', 'intersoccer-referral'); ?></h2>
                     <p class="description">
-                        <?php esc_html_e('Configure tiered commission rates based on how many customers each coach/partner has referred. Higher tiers reward coaches who recruit more customers with better commission rates.', 'intersoccer-referral'); ?>
+                        <?php esc_html_e('Commission % that coaches, partners, and influencers earn on purchases made using their referral code.', 'intersoccer-referral'); ?>
+                        <strong><?php esc_html_e('Example: 10% on a CHF 500 order = CHF 50 commission.', 'intersoccer-referral'); ?></strong>
+                        <?php esc_html_e('This is not customer points — coaches earn commission, not loyalty points.', 'intersoccer-referral'); ?>
                     </p>
 
                     <!-- Coach Commission Tiers -->
-                    <div style="background: #fff; border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-top: 20px;">
+                    <div style="background: #fff; border: 1px solid #e1e1e1; border-radius: 8px; padding: 20px; margin-top: 20px;">
                         <h3 style="margin: 0 0 15px 0; color: #16a34a;">⚽ <?php esc_html_e('Coach Commission Tiers', 'intersoccer-referral'); ?></h3>
-                        <p class="description" style="margin-bottom: 15px;">
-                            <?php esc_html_e('Commission % coaches earn on each purchase made using their referral code. Default: 10% (CHF 500 order = CHF 50 commission).', 'intersoccer-referral'); ?>
+                        <p class="description">
+                            <?php esc_html_e('Commission % coaches earn on purchases using their referral code. Tiers reward higher-volume coaches.', 'intersoccer-referral'); ?>
                         </p>
                         <div id="coach-commission-tiers-container">
                             <?php
@@ -652,10 +631,10 @@ class InterSoccer_Admin_Settings {
                     </div>
 
                     <!-- Partner Commission Tiers -->
-                    <div style="background: #fff; border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-top: 20px;">
+                    <div style="background: #fff; border: 1px solid #e1e1e1; border-radius: 8px; padding: 20px; margin-top: 20px;">
                         <h3 style="margin: 0 0 15px 0; color: #dc2626;">🤝 <?php esc_html_e('Partner Commission Tiers', 'intersoccer-referral'); ?></h3>
-                        <p class="description" style="margin-bottom: 15px;">
-                            <?php esc_html_e('Commission % partners earn on each purchase made using their referral code.', 'intersoccer-referral'); ?>
+                        <p class="description">
+                            <?php esc_html_e('Commission % partners earn on purchases using their referral code.', 'intersoccer-referral'); ?>
                         </p>
                         <div id="partner-commission-tiers-container">
                             <?php
@@ -714,10 +693,10 @@ class InterSoccer_Admin_Settings {
                     </div>
 
                     <!-- Social Influencer Commission Tiers -->
-                    <div style="background: #fff; border: 2px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-top: 20px;">
+                    <div style="background: #fff; border: 1px solid #e1e1e1; border-radius: 8px; padding: 20px; margin-top: 20px;">
                         <h3 style="margin: 0 0 15px 0; color: #9333ea;">📱 <?php esc_html_e('Social Influencer Commission Tiers', 'intersoccer-referral'); ?></h3>
-                        <p class="description" style="margin-bottom: 15px;">
-                            <?php esc_html_e('Commission % influencers earn on each purchase made using their referral code.', 'intersoccer-referral'); ?>
+                        <p class="description">
+                            <?php esc_html_e('Commission % influencers earn on purchases using their referral code.', 'intersoccer-referral'); ?>
                         </p>
                         <div id="social_influencer-commission-tiers-container">
                             <?php
