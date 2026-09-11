@@ -192,6 +192,59 @@ class PointsManagerTest extends TestCase {
     }
 
     /**
+     * Test §9.4 Oracle: Points allocate on PROCESSING or COMPLETED status
+     * 
+     * Per Piper oracle, points should be allocated when order reaches
+     * 'processing' OR 'completed' status (not pending/failed).
+     * Both statuses trigger allocation, but duplicate allocation is prevented
+     * by the order_has_points_allocated() check.
+     */
+    public function testAllocatePointsOnProcessingOrCompleted() {
+        $points_manager = new InterSoccer_Points_Manager();
+
+        // Create order 1 - simulate processing status allocation
+        $order1 = $this->registerWcOrder(new WC_Order(), 201);
+        $order1->set_total(100);
+        $order1->set_status('processing');
+        
+        // Allocate on processing
+        $points_manager->allocate_points_for_order(201);
+        $balance_after_processing = $points_manager->get_points_balance(1);
+        $this->assertEquals(10, $balance_after_processing, 'Points should allocate on processing status');
+
+        // Create order 2 - simulate completed status allocation
+        $this->resetPointsTestState();
+        $order2 = $this->registerWcOrder(new WC_Order(), 202);
+        $order2->set_total(100);
+        $order2->set_status('completed');
+        
+        // Allocate on completed
+        $points_manager->allocate_points_for_order(202);
+        $balance_after_completed = $points_manager->get_points_balance(1);
+        $this->assertEquals(10, $balance_after_completed, 'Points should allocate on completed status');
+    }
+
+    /**
+     * Test that duplicate allocation is prevented (processing → completed transition)
+     */
+    public function testNoDuplicateAllocationOnStatusTransition() {
+        $points_manager = new InterSoccer_Points_Manager();
+
+        $order = $this->registerWcOrder(new WC_Order(), 301);
+        $order->set_total(100);
+
+        // First allocation on processing
+        $points_manager->allocate_points_for_order(301);
+        $balance_first = $points_manager->get_points_balance(1);
+        $this->assertEquals(10, $balance_first);
+
+        // Second call (simulating completed after processing) should not double-allocate
+        $points_manager->allocate_points_for_order(301);
+        $balance_second = $points_manager->get_points_balance(1);
+        $this->assertEquals(10, $balance_second, 'Should not allocate twice for same order');
+    }
+
+    /**
      * Test points deduction for refunds
      */
     public function testDeductPointsForRefund() {
