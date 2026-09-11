@@ -28,10 +28,14 @@ class InterSoccer_Points_Manager {
         // Check allocation method - instant or deferred
         $allocation_method = get_option('intersoccer_points_allocation_method', 'instant');
         
+        // §9.4 Oracle: Points allocate on PROCESSING or COMPLETED (not pending/failed)
+        // Hook both statuses to ensure points are awarded when payment is confirmed
         if ($allocation_method === 'instant') {
+            add_action('woocommerce_order_status_processing', [$this, 'allocate_points_for_order'], 10, 1);
             add_action('woocommerce_order_status_completed', [$this, 'allocate_points_for_order'], 10, 1);
         } else {
             // For deferred, store order IDs for later processing
+            add_action('woocommerce_order_status_processing', [$this, 'queue_order_for_points_allocation'], 10, 1);
             add_action('woocommerce_order_status_completed', [$this, 'queue_order_for_points_allocation'], 10, 1);
         }
         

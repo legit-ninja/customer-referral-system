@@ -20,6 +20,8 @@ class CommissionManagerTest extends TestCase {
         update_option('intersoccer_commission_tiers_partner', $default_tiers);
         update_option('intersoccer_commission_tiers_social_influencer', $default_tiers);
         update_option('intersoccer_enable_email_notifications', 0);
+        // Default referral code commission rate (Issue #30)
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
     }
 
     protected function tearDown(): void {
@@ -34,6 +36,7 @@ class CommissionManagerTest extends TestCase {
         delete_option('intersoccer_seasonal_bonus_mar_apr');
         delete_option('intersoccer_weekend_bonus');
         delete_option('intersoccer_enable_email_notifications');
+        delete_option('intersoccer_coach_referral_code_commission_rate');
 
         $mock_wpdb_get_var_results = [];
         $mock_users = [];
@@ -51,11 +54,15 @@ class CommissionManagerTest extends TestCase {
 
     /**
      * Test calculate_base_commission method
+     * 
+     * Commission is calculated on subtotal + shipping (excluding tax, before points redeem)
      */
     public function testCalculateBaseCommission() {
         $order = new WC_Order();
-        $order->set_total(100);
-        $order->set_tax_total(10);
+        // Set up order with subtotal 90, no shipping, so commissionable = 90
+        $order->set_subtotal(90);
+        $order->set_shipping_total(0);
+        $order->set_total_discount(0);
 
         $this->mockCoachCustomerCount(5);
         $this->assertEquals(9.0, InterSoccer_Commission_Manager::calculate_base_commission($order, 1));
@@ -69,23 +76,27 @@ class CommissionManagerTest extends TestCase {
 
     /**
      * Test calculate_loyalty_bonus method
+     * 
+     * Loyalty bonus is calculated on commissionable amount (subtotal + shipping)
      */
     public function testCalculateLoyaltyBonus() {
         $order = new WC_Order();
-        $order->set_total(100);
-        $order->set_tax_total(10);
+        // Set up order with subtotal 90, no shipping, so commissionable = 90
+        $order->set_subtotal(90);
+        $order->set_shipping_total(0);
+        $order->set_total_discount(0);
 
         // Test first purchase (5% loyalty bonus)
         $bonus = InterSoccer_Commission_Manager::calculate_loyalty_bonus($order, 1);
-        $this->assertEquals(4.5, $bonus); // (100-10) * 0.05
+        $this->assertEquals(4.5, $bonus); // 90 * 0.05
 
         // Test second purchase (8% loyalty bonus)
         $bonus = InterSoccer_Commission_Manager::calculate_loyalty_bonus($order, 2);
-        $this->assertEquals(7.2, $bonus); // (100-10) * 0.08
+        $this->assertEquals(7.2, $bonus); // 90 * 0.08
 
         // Test third+ purchase (15% loyalty bonus)
         $bonus = InterSoccer_Commission_Manager::calculate_loyalty_bonus($order, 3);
-        $this->assertEquals(13.5, $bonus); // (100-10) * 0.15
+        $this->assertEquals(13.5, $bonus); // 90 * 0.15
     }
 
     /**
@@ -972,5 +983,179 @@ class CommissionManagerTest extends TestCase {
         $this->assertNotNull($mock_wpdb_last_insert, 'wpdb->insert into referral_credits should succeed');
         $this->assertSame('wp_intersoccer_referral_credits', $mock_wpdb_last_insert['table']);
         $this->assertArrayHasKey('order_id', $mock_wpdb_last_insert['data']);
+    }
+
+    // =========================================================================
+    // REFERRAL CODE COMMISSION RATE TESTS (Issue #30)
+    // =========================================================================
+
+    /**
+     * Test get_referral_code_commission_rate returns default 10%
+     */
+    public function testGetReferralCodeCommissionRate_Default() {
+        $rate = InterSoccer_Commission_Manager::get_referral_code_commission_rate();
+        $this->assertEquals(0.10, $rate, 'Default referral code commission rate should be 10%');
+    }
+
+    /**
+     * Test get_referral_code_commission_rate with custom value
+     */
+    public function testGetReferralCodeCommissionRate_CustomValue() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 15);
+        $rate = InterSoccer_Commission_Manager::get_referral_code_commission_rate();
+        $this->assertEquals(0.15, $rate, 'Custom referral code commission rate should be 15%');
+    }
+
+    /**
+     * Test get_referral_code_commission_rate clamps to 0-100 range
+     */
+    public function testGetReferralCodeCommissionRate_ClampsRange() {
+        // Test below 0
+        update_option('intersoccer_coach_referral_code_commission_rate', -5);
+        $rate = InterSoccer_Commission_Manager::get_referral_code_commission_rate();
+        $this->assertEquals(0.0, $rate, 'Negative rate should clamp to 0');
+
+        // Test above 100
+        update_option('intersoccer_coach_referral_code_commission_rate', 150);
+        $rate = InterSoccer_Commission_Manager::get_referral_code_commission_rate();
+        $this->assertEquals(1.0, $rate, 'Rate above 100% should clamp to 100%');
+    }
+
+    /**
+     * Test calculate_referral_code_commission
+     * 
+     * Commission is calculated on subtotal + shipping (before points redeem)
+     */
+    public function testCalculateReferralCodeCommission() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+
+        $order = new WC_Order();
+        // Subtotal 500, no shipping = commissionable 500
+        $order->set_subtotal(500);
+        $order->set_shipping_total(0);
+        $order->set_total_discount(0);
+
+        $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(50.0, $commission, 'CHF 500 order at 10% should yield CHF 50 commission');
+    }
+
+    /**
+     * Test calculate_referral_code_commission excludes tax (via subtotal method)
+     * 
+     * Tax is automatically excluded because we use get_subtotal() which is pre-tax
+     */
+    public function testCalculateReferralCodeCommission_ExcludesTax() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+
+        $order = new WC_Order();
+        // Subtotal 100 (pre-tax), no shipping = commissionable 100
+        $order->set_subtotal(100);
+        $order->set_shipping_total(0);
+        $order->set_total_discount(0);
+
+        $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(10.0, $commission, 'Commission should be 10% of 100 = 10');
+    }
+
+    /**
+     * Test calculate_total_commission uses referral code rate when flag is true
+     */
+    public function testCalculateTotalCommission_UsesReferralCodeRate() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+        $this->mockCoachCustomerCount(5); // Would give tiered rate of 10% anyway
+
+        $order = new WC_Order();
+        // Subtotal 100, no shipping = commissionable 100
+        $order->set_subtotal(100);
+        $order->set_shipping_total(0);
+        $order->set_total_discount(0);
+
+        // With use_referral_code_rate = true
+        $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 1, true);
+        $this->assertTrue($commission['referral_code_rate_used'], 'Flag should indicate referral code rate was used');
+        $this->assertEquals(10.0, $commission['base_commission'], 'Should use referral code commission rate');
+    }
+
+    /**
+     * Test calculate_total_commission uses tiered rate when flag is false
+     */
+    public function testCalculateTotalCommission_UsesTieredRate() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 15);
+        $this->mockCoachCustomerCount(15); // Tier 2: 15%
+
+        $order = new WC_Order();
+        // Subtotal 90, no shipping = commissionable 90
+        $order->set_subtotal(90);
+        $order->set_shipping_total(0);
+        $order->set_total_discount(0);
+
+        // With use_referral_code_rate = false (default)
+        $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 1, false);
+        $this->assertFalse($commission['referral_code_rate_used'], 'Flag should indicate tiered rate was used');
+        $this->assertEquals(13.5, $commission['base_commission'], 'Should use tiered commission rate (15% of 90)');
+    }
+
+    /**
+     * Test referral code commission rate distinction from partnership rate
+     */
+    public function testReferralCodeCommission_DifferentFromPartnership() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+        $this->mockCoachCustomerCount(25); // Platinum tier: 20%
+
+        $order = new WC_Order();
+        // Subtotal 100, no shipping = commissionable 100
+        $order->set_subtotal(100);
+        $order->set_shipping_total(0);
+        $order->set_total_discount(0);
+        $order->set_tax_total(0);
+
+        // Partnership commission uses tiered rates
+        $partnership = InterSoccer_Commission_Manager::calculate_partnership_commission($order, 1);
+        $this->assertEquals(20.0, $partnership['base_commission'], 'Partnership should use tiered rate (20%)');
+
+        // Referral code commission uses flat rate
+        $referral_code = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(10.0, $referral_code, 'Referral code commission should use flat 10% rate');
+    }
+
+    /**
+     * Test commission is calculated BEFORE points redemption (§9.7 oracle)
+     * 
+     * Per Piper's product sign-off, commission should be calculated on goods subtotal
+     * BEFORE loyalty-points redemption discount is applied.
+     */
+    public function testCommissionCalculatedBeforePointsRedemption() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+
+        $order = new WC_Order();
+        // Order: Subtotal 500, Shipping 10, Points redemption -50
+        $order->set_subtotal(500);
+        $order->set_shipping_total(10);
+        $order->set_total_discount(0);
+        
+        // Add points redemption fee (negative fee)
+        $points_fee = new WC_Order_Item_Fee('Referral Credits Discount', -50);
+        $order->add_fee($points_fee);
+
+        // Commission should be on subtotal + shipping = 510, NOT 510-50=460
+        $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(51.0, $commission, 'Commission should be 10% of 510 (before points redemption), not 460');
+    }
+
+    /**
+     * Test commission includes shipping in base calculation
+     */
+    public function testCommissionIncludesShipping() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+
+        $order = new WC_Order();
+        // Order: Subtotal 100, Shipping 20
+        $order->set_subtotal(100);
+        $order->set_shipping_total(20);
+        $order->set_total_discount(0);
+
+        // Commission should be on subtotal + shipping = 120
+        $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(12.0, $commission, 'Commission should be 10% of 120 (subtotal + shipping)');
     }
 }

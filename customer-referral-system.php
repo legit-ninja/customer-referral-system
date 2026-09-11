@@ -631,6 +631,10 @@ class InterSoccer_Referral_System {
         add_option('intersoccer_coach_referral_bonus_points', 50);
         add_option('intersoccer_first_session_bonus', 200);
 
+        // Coach referral code commission rate (Issue #30)
+        // Default 10% commission on purchases using coach's referral code
+        add_option('intersoccer_coach_referral_code_commission_rate', 10);
+
         // System settings
         add_option('intersoccer_cookie_duration', 30);
         add_option('intersoccer_enable_gamification', 1);
