@@ -5,7 +5,6 @@ run-tests.php
 test-verification.php
 run-simple-test.php
 vendor/
-composer.lock
 
 # Deployment
 deploy.local.sh
