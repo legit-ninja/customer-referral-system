@@ -43,20 +43,88 @@
     margin-top: 4px;
 }
 
+.stat-card.points-card .stat-explainer {
+    font-size: 12px;
+    color: #64748b;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e2e8f0;
+    line-height: 1.4;
+}
+
 /* Referral Section */
 .referral-section {
-    /* background: white; */
     padding: 25px;
     border-radius: 12px;
     margin-bottom: 30px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
+.referral-section-title {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0 0 16px 0;
+}
+
 .highlight {
     background: linear-gradient(135deg, #667eea, #764ba2);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
+    background-clip: text;
     font-weight: bold;
+}
+
+.referral-field-label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #374151;
+}
+
+.referral-code-row,
+.referral-link-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.referral-code-input {
+    flex: 1;
+    padding: 14px;
+    border: 2px solid #667eea;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: bold;
+    text-align: center;
+    letter-spacing: 2px;
+    font-family: monospace;
+    background: #f8fafc;
+}
+
+.referral-link-input {
+    flex: 1;
+    padding: 12px;
+    border: 2px solid #e1e5e9;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 14px;
+    background: #f8fafc;
+}
+
+.share-cta {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: white;
+    font-weight: 600;
+}
+
+.share-cta:hover {
+    background: linear-gradient(135deg, #5a6fd8, #6b4190);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
 
 /* Stack label above input+button row so they don't look smushed */
@@ -141,10 +209,15 @@
     display: none !important;
 }
 
+.referral-code-container {
+    margin-bottom: 20px;
+}
+
 .social-share-buttons {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
+    margin-top: 20px;
 }
 
 .social-btn {

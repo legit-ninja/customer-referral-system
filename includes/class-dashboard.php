@@ -353,6 +353,10 @@ class InterSoccer_Referral_Dashboard {
             ? number_format_i18n($points_balance)
             : number_format($points_balance);
         
+        // Points earning explainer (product truth: CHF 10 = 1 pt)
+        $points_explainer = __('Earn 1 point for every CHF 10 spent. Points can be redeemed at checkout.', 'intersoccer-referral');
+        $share_cta_label = __('Share Your Link', 'intersoccer-referral');
+        
         ob_start();
         ?>
         <div class="intersoccer-customer-dashboard">
@@ -361,49 +365,51 @@ class InterSoccer_Referral_Dashboard {
                     <div class="stat-label"><?php echo esc_html($current_balance_label); ?></div>
                     <div class="stat-value"><?php echo esc_html($formatted_points_balance); ?></div>
                     <div class="stat-unit"><?php echo esc_html($points_unit_label); ?></div>
+                    <div class="stat-explainer"><?php echo esc_html($points_explainer); ?></div>
                 </div>
             </div>
             <!-- Referral Code & Link Section -->
             <div class="referral-section">
-                <h3><?php echo esc_html($share_earn_title); ?></h3>
+                <h3 class="referral-section-title"><?php echo esc_html($share_earn_title); ?></h3>
                 <div class="referral-info">
                     <p class="referral-description">
-                        <span class="highlight"><?php echo esc_html($earn_text); ?></span> <?php echo esc_html($for_every_friend); ?> 
                         <?php echo esc_html($share_description); ?>
                     </p>
                 </div>
                 
                 <!-- Referral Code Display -->
-                <div class="referral-code-container" style="margin-bottom: 20px;">
-                    <label for="referral-code" style="display: block; margin-bottom: 8px; font-weight: 600;">
+                <div class="referral-code-container">
+                    <label for="referral-code" class="referral-field-label">
                         <?php echo esc_html($your_referral_code_label); ?>
                     </label>
-                    <div style="display: flex; gap: 10px; align-items: center;">
+                    <div class="referral-code-row">
                         <input type="text" 
                                id="referral-code" 
                                value="<?php echo esc_attr($referral_code); ?>" 
                                readonly 
-                               style="flex: 1; padding: 14px; border: 2px solid #667eea; border-radius: 8px; font-size: 18px; font-weight: bold; text-align: center; letter-spacing: 2px; font-family: monospace;">
-                        <button id="copy-code-btn" class="copy-button" onclick="copyReferralCode()" style="padding: 14px 24px; font-size: 16px;">
+                               class="referral-code-input"
+                               data-field="referral_code">
+                        <button id="copy-code-btn" class="copy-button" onclick="copyReferralCode()">
                             <span class="button-text">📋 <?php echo esc_html($copy_code_text); ?></span>
                             <span class="button-success">✅ <?php echo esc_html($copied_text); ?></span>
                         </button>
                     </div>
                 </div>
                 
-                <!-- Referral Link Display -->
+                <!-- Referral Link Display with stable selector for Tess -->
                 <div class="referral-link-container">
-                    <label for="referral-link" style="display: block; margin-bottom: 8px; font-weight: 600;">
+                    <label for="referral-link" class="referral-field-label">
                         <?php echo esc_html($your_referral_link_label); ?>
                     </label>
-                    <div style="display: flex; gap: 10px;">
+                    <div class="referral-link-row">
                         <input type="text" 
                                id="referral-link" 
                                value="<?php echo esc_attr($referral_link); ?>" 
                                readonly
-                               style="flex: 1; padding: 12px; border: 2px solid #e1e5e9; border-radius: 6px; font-family: monospace; font-size: 14px;">
-                        <button id="copy-link-btn" class="copy-button" onclick="copyReferralLink()" style="padding: 12px 20px;">
-                            <span class="button-text">📋 <?php echo esc_html($copy_link_text); ?></span>
+                               class="referral-link-input"
+                               data-field="share_url">
+                        <button id="share-link-btn" class="copy-button share-cta" onclick="copyReferralLink()">
+                            <span class="button-text">📤 <?php echo esc_html($share_cta_label); ?></span>
                             <span class="button-success">✅ <?php echo esc_html($copied_text); ?></span>
                         </button>
                     </div>
@@ -418,7 +424,7 @@ class InterSoccer_Referral_Dashboard {
                     <p class="referral-qr-caption"><?php echo esc_html($qr_caption); ?></p>
                 </div>
                 
-                <div class="social-share-buttons" style="margin-top: 20px;">
+                <div class="social-share-buttons">
                     <a href="https://wa.me/?text=<?php echo urlencode($whatsapp_message); ?>" 
                        target="_blank" class="social-btn whatsapp-btn">
                         📱 <?php echo esc_html($whatsapp_label); ?>
