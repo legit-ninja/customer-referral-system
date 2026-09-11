@@ -3,17 +3,34 @@
 /**
  * InterSoccer Checkout Points Redemption & Referral Code Handler
  * 
- * Stable selectors for Tess automated tests:
- * - [data-testid="points-redeem-checkout"] - main wrapper (TC-REDEEM-01: checkout-only)
- * - [data-testid="points-balance-display"] - shows customer balance
- * - [data-testid="points-redeem-toggle"] - checkbox to enable redemption
- * - [data-testid="points-redeem-panel"] - expanded redemption controls
- * - [data-testid="points-input"] - custom amount input
- * - [data-testid="apply-all-points-btn"] - quick apply button
- * - [data-testid="points-discount-confirmation"] - discount applied confirmation (TC-REDEEM-02)
- * - [data-testid="applied-discount-amount"] - the discount amount text
- * - [data-testid="zero-balance-message"] - shown when balance is 0 (TC-REDEEM-03)
- * - .intersoccer-referral-code-wrapper - referral code input section (TC-REDEEM-04: coexists with redeem)
+ * Tess TC-REDEEM Stable Selectors (from main - DO NOT RENAME IDs):
+ * 
+ * TC-REDEEM-01 (checkout-only redeem):
+ * - Root wrapper: .intersoccer-points-redemption-wrapper (via woocommerce_review_order_before_payment)
+ * - Inner container: .intersoccer-points-redemption
+ * - Enable toggle: #intersoccer_use_points
+ * - Details panel: .intersoccer-points-redemption .points-details
+ * - Available balance: .points-available [data-field="points_balance"]
+ * - Apply all CTA: .apply-all-points
+ * - Custom input: #intersoccer_points_to_redeem [data-field="points_to_redeem"]
+ * 
+ * TC-REDEEM-02 (applied discount confirmation):
+ * - Confirmation UI: .applied-amount / #intersoccer-points-applied [data-field="points_applied_confirm"]
+ * - Confirmation text: .applied-text
+ * - Order summary fee: "Referral Credits Discount" (from apply_points_discount_as_fee)
+ * - AJAX: action=update_points_session
+ * - Order meta: _intersoccer_points_redeemed
+ * 
+ * TC-REDEEM-03 (zero balance):
+ * - When balance is 0, .intersoccer-points-redemption-wrapper is ABSENT (not rendered)
+ * 
+ * TC-REDEEM-04 (combo with referral):
+ * - .intersoccer-referral-code-wrapper
+ * - #intersoccer_referral_code
+ * - #apply_referral_code
+ * - #referral_code_message
+ * 
+ * DO NOT use legacy: #credit-slider, #apply-max-credits
  */
 
 (function ($) {
@@ -31,17 +48,18 @@
             return;
         }
 
+        // TC-REDEEM-04: Referral code selectors (existing IDs - DO NOT RENAME)
         const $referralInput = $('#intersoccer_referral_code');
         const $referralButton = $('#apply_referral_code');
         const $referralMessage = $('#referral_code_message');
 
-        // Points UI elements
+        // TC-REDEEM-01/02: Points UI selectors (existing IDs/classes - DO NOT RENAME)
         const $pointsToggle = $('#intersoccer_use_points');
         const $pointsInput = $('#intersoccer_points_to_redeem');
-        const $pointsPanel = $('[data-testid="points-redeem-panel"]');
-        const $confirmation = $('[data-testid="points-discount-confirmation"]');
-        const $confirmationAmount = $('[data-testid="applied-discount-amount"]');
-        const $applyAllBtn = $('[data-testid="apply-all-points-btn"]');
+        const $pointsPanel = $('.intersoccer-points-redemption .points-details');
+        const $confirmation = $('.intersoccer-points-redemption .applied-amount');
+        const $confirmationText = $('.intersoccer-points-redemption .applied-text');
+        const $applyAllBtn = $('.apply-all-points');
 
         function applyReferralCode() {
             const referralCode = ($referralInput.val() || '').trim();
@@ -96,8 +114,10 @@
 
         /**
          * Apply points amount and show confirmation
-         * This implements TC-REDEEM-02: discount confirmation in order summary
+         * TC-REDEEM-02: discount confirmation in order summary
+         * Uses .applied-amount / .applied-text selectors (existing from main)
          * Uses classes for visibility (Lane pattern-lock: prefer classes over inline)
+         * AJAX: action=update_points_session
          */
         function applyPointsAmount(pointsAmount) {
             const availablePoints = parseInt(config.available_points, 10) || 0;
@@ -115,19 +135,20 @@
             $pointsInput.val(amount);
 
             // Update confirmation display (TC-REDEEM-02)
-            // Success state: muted label + strong amount
+            // Uses .applied-amount + .applied-text (existing selectors)
+            // Lane pattern: muted text + strong amount (green), not purple
             if (amount > 0) {
-                $confirmationAmount.text(amount + ' pts = CHF ' + discountAmount);
+                $confirmationText.text(amount + ' pts = CHF ' + discountAmount + ' discount');
                 $confirmation
-                    .removeClass('intersoccer-points-applied-confirmation--hidden')
-                    .addClass('intersoccer-points-applied-confirmation--visible');
+                    .removeClass('applied-amount--hidden')
+                    .addClass('applied-amount--visible');
             } else {
                 $confirmation
-                    .removeClass('intersoccer-points-applied-confirmation--visible')
-                    .addClass('intersoccer-points-applied-confirmation--hidden');
+                    .removeClass('applied-amount--visible')
+                    .addClass('applied-amount--hidden');
             }
 
-            // Send to server to update session
+            // Send to server to update session (AJAX: action=update_points_session)
             $.ajax({
                 url: config.ajax_url,
                 type: 'POST',
@@ -139,6 +160,7 @@
             }).done(function (response) {
                 if (response && response.success) {
                     // Trigger WooCommerce checkout update to show discount in order summary
+                    // Fee shows as "Referral Credits Discount" via apply_points_discount_as_fee
                     $(document.body).trigger('update_checkout');
                 }
             });
@@ -220,9 +242,11 @@
         }
 
         // Points redemption toggle (TC-REDEEM-01: checkout-only interaction)
+        // Selector: #intersoccer_use_points (existing ID - DO NOT RENAME)
+        // Panel: .intersoccer-points-redemption .points-details
         // Uses classes for visibility (Lane pattern-lock: prefer classes over inline)
         $(document).off('change', '#intersoccer_use_points').on('change', '#intersoccer_use_points', function () {
-            const $panel = $(this).closest('.intersoccer-points-redemption').find('[data-testid="points-redeem-panel"]');
+            const $panel = $(this).closest('.intersoccer-points-redemption').find('.points-details');
             if ($(this).is(':checked')) {
                 $panel
                     .removeClass('points-details--hidden')
@@ -237,13 +261,7 @@
         });
 
         // Apply all points button
-        $(document).off('click', '[data-testid="apply-all-points-btn"]').on('click', '[data-testid="apply-all-points-btn"]', function (e) {
-            e.preventDefault();
-            const maxPoints = parseInt($(this).data('max-points'), 10) || parseInt(config.available_points, 10) || 0;
-            applyPointsAmount(maxPoints);
-        });
-
-        // Legacy apply-all-points class support
+        // Selector: .apply-all-points (existing class - DO NOT RENAME)
         $(document).off('click', '.apply-all-points').on('click', '.apply-all-points', function (e) {
             e.preventDefault();
             const maxPoints = parseInt($(this).data('max-points'), 10) || parseInt(config.available_points, 10) || 0;

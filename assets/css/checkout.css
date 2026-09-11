@@ -137,45 +137,6 @@
     padding: 0;
 }
 
-/* Points Header: inline balance display */
-.intersoccer-points-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-
-.intersoccer-points-title {
-    margin: 0;
-    font-size: 15px;
-    font-weight: 600;
-    color: #374151;
-}
-
-.intersoccer-points-balance-display {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 14px;
-}
-
-.intersoccer-points-balance-display .balance-label {
-    color: #64748b;
-}
-
-.intersoccer-points-balance-display .balance-value {
-    font-weight: 700;
-    font-size: 16px;
-    color: #667eea;
-}
-
-.intersoccer-points-balance-display .balance-unit {
-    color: #64748b;
-    font-size: 13px;
-}
-
 /* Toggle checkbox */
 .intersoccer-points-redemption-toggle {
     display: flex;
@@ -200,19 +161,31 @@
 }
 
 /* Points details panel — light bg, 8px radius */
-.points-details {
+.intersoccer-points-redemption .points-details {
     background: #f8fafc;
     border-radius: 8px;
     padding: 16px;
     margin-top: 8px;
 }
 
-.points-details--hidden {
+.intersoccer-points-redemption .points-details--hidden {
     display: none;
 }
 
-.points-details--visible {
+.intersoccer-points-redemption .points-details--visible {
     display: block;
+}
+
+/* Available balance: .points-available with data-field="points_balance" */
+.intersoccer-points-redemption .points-available {
+    margin: 0 0 14px;
+    font-size: 14px;
+    color: #374151;
+}
+
+.intersoccer-points-redemption .points-available strong {
+    color: #667eea;
+    font-weight: 700;
 }
 
 /* Primary CTA: purple gradient for main redeem action */
@@ -295,9 +268,11 @@
 
 /* --------------------------------------------------------------------------
    Applied Discount Confirmation (TC-REDEEM-02)
-   Success state: muted label + strong amount, NOT a purple button
+   Selectors: .applied-amount + .applied-text (existing from main)
+   Added: #intersoccer-points-applied, data-field="points_applied_confirm"
+   Lane pattern: muted text + strong amount (green #059669), NOT purple button
    -------------------------------------------------------------------------- */
-.intersoccer-points-applied-confirmation {
+.intersoccer-points-redemption .applied-amount {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -308,15 +283,15 @@
     border-radius: 8px;
 }
 
-.intersoccer-points-applied-confirmation--hidden {
+.intersoccer-points-redemption .applied-amount--hidden {
     display: none;
 }
 
-.intersoccer-points-applied-confirmation--visible {
+.intersoccer-points-redemption .applied-amount--visible {
     display: flex;
 }
 
-.intersoccer-points-applied-confirmation .confirmation-icon {
+.intersoccer-points-redemption .applied-amount .applied-icon {
     width: 22px;
     height: 22px;
     background: #059669;
@@ -330,48 +305,18 @@
     flex-shrink: 0;
 }
 
-.intersoccer-points-applied-confirmation .confirmation-content {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-}
-
-/* Muted label */
-.intersoccer-points-applied-confirmation .confirmation-label {
-    font-size: 11px;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
 /* Strong amount — green for success, not purple */
-.intersoccer-points-applied-confirmation .confirmation-amount {
-    font-size: 16px;
-    font-weight: 700;
+.intersoccer-points-redemption .applied-amount .applied-text {
+    font-size: 15px;
+    font-weight: 600;
     color: #059669;
 }
 
 /* --------------------------------------------------------------------------
    Zero Balance State (TC-REDEEM-03)
+   NOTE: When balance is 0, .intersoccer-points-redemption-wrapper is ABSENT
+   (not rendered). Tests should check for wrapper presence.
    -------------------------------------------------------------------------- */
-.intersoccer-points-zero-balance {
-    text-align: left;
-    padding: 14px 16px;
-    background: #f8fafc;
-    border-radius: 8px;
-}
-
-.intersoccer-points-zero-balance .zero-balance-text {
-    margin: 0 0 4px;
-    font-size: 14px;
-    color: #64748b;
-}
-
-.intersoccer-points-zero-balance .zero-balance-hint {
-    margin: 0;
-    font-size: 13px;
-    color: #94a3b8;
-}
 
 /* --------------------------------------------------------------------------
    Order Summary Discount Line (fee confirmation in WooCommerce order review)
