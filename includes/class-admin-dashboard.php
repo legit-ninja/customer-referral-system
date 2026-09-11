@@ -751,9 +751,10 @@ class InterSoccer_Referral_Admin_Dashboard {
 
         // Applied confirmation: .applied-amount + .applied-text (existing classes - DO NOT RENAME)
         // TC-REDEEM-02: Add id="intersoccer-points-applied" + data-field="points_applied_confirm"
-        // Lane pattern: muted label + strong amount (green #059669), not purple button
+        // Lane pattern: muted label ("Applied:") + strong/green amount only
         echo '<div class="applied-amount applied-amount--hidden" id="intersoccer-points-applied" data-field="points_applied_confirm">';
         echo '<span class="applied-icon">✓</span>';
+        echo '<span class="applied-label">' . esc_html__('Applied:', 'intersoccer-referral') . '</span>';
         echo '<span class="applied-text"></span>';
         echo '</div>';
 

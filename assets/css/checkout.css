@@ -183,8 +183,9 @@
     color: #374151;
 }
 
+/* Lane nit: dark + bold for balance, not purple (purple stays for CTAs/focus only) */
 .intersoccer-points-redemption .points-available strong {
-    color: #667eea;
+    color: #374151;
     font-weight: 700;
 }
 
@@ -305,10 +306,18 @@
     flex-shrink: 0;
 }
 
+/* Lane pattern: muted label + strong/green amount only */
+.intersoccer-points-redemption .applied-amount .applied-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #64748b;
+    margin-right: 4px;
+}
+
 /* Strong amount — green for success, not purple */
 .intersoccer-points-redemption .applied-amount .applied-text {
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 700;
     color: #059669;
 }
 

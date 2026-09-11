@@ -136,9 +136,10 @@
 
             // Update confirmation display (TC-REDEEM-02)
             // Uses .applied-amount + .applied-text (existing selectors)
-            // Lane pattern: muted text + strong amount (green), not purple
+            // Lane pattern: muted label ("Applied:") + strong/green amount only
             if (amount > 0) {
-                $confirmationText.text(amount + ' pts = CHF ' + discountAmount + ' discount');
+                // Only the amount goes in .applied-text (green); label is separate muted element
+                $confirmationText.text(amount + ' pts = CHF ' + discountAmount);
                 $confirmation
                     .removeClass('applied-amount--hidden')
                     .addClass('applied-amount--visible');
