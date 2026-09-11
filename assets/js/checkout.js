@@ -97,6 +97,7 @@
         /**
          * Apply points amount and show confirmation
          * This implements TC-REDEEM-02: discount confirmation in order summary
+         * Uses classes for visibility (Lane pattern-lock: prefer classes over inline)
          */
         function applyPointsAmount(pointsAmount) {
             const availablePoints = parseInt(config.available_points, 10) || 0;
@@ -114,11 +115,16 @@
             $pointsInput.val(amount);
 
             // Update confirmation display (TC-REDEEM-02)
+            // Success state: muted label + strong amount
             if (amount > 0) {
                 $confirmationAmount.text(amount + ' pts = CHF ' + discountAmount);
-                $confirmation.slideDown(200);
+                $confirmation
+                    .removeClass('intersoccer-points-applied-confirmation--hidden')
+                    .addClass('intersoccer-points-applied-confirmation--visible');
             } else {
-                $confirmation.slideUp(200);
+                $confirmation
+                    .removeClass('intersoccer-points-applied-confirmation--visible')
+                    .addClass('intersoccer-points-applied-confirmation--hidden');
             }
 
             // Send to server to update session
@@ -214,12 +220,17 @@
         }
 
         // Points redemption toggle (TC-REDEEM-01: checkout-only interaction)
+        // Uses classes for visibility (Lane pattern-lock: prefer classes over inline)
         $(document).off('change', '#intersoccer_use_points').on('change', '#intersoccer_use_points', function () {
             const $panel = $(this).closest('.intersoccer-points-redemption').find('[data-testid="points-redeem-panel"]');
             if ($(this).is(':checked')) {
-                $panel.slideDown(200);
+                $panel
+                    .removeClass('points-details--hidden')
+                    .addClass('points-details--visible');
             } else {
-                $panel.slideUp(200);
+                $panel
+                    .removeClass('points-details--visible')
+                    .addClass('points-details--hidden');
                 // Clear points when unchecked
                 applyPointsAmount(0);
             }

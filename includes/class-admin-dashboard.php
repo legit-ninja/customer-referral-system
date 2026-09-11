@@ -694,66 +694,67 @@ class InterSoccer_Referral_Admin_Dashboard {
         echo '<div class="intersoccer-points-redemption-wrapper" data-testid="points-redeem-checkout">';
         echo '<div class="intersoccer-points-redemption">';
         
-        // Header with balance display
+        // Header with balance display — customer island only, no WP admin chrome
         echo '<div class="intersoccer-points-header">';
-        echo '<h4 class="intersoccer-points-title">' . esc_html__('Redeem Loyalty Points', 'intersoccer-referral') . '</h4>';
-        echo '<div class="intersoccer-points-balance-display" data-testid="points-balance-display">';
-        echo '<span class="balance-label">' . esc_html__('Your Balance:', 'intersoccer-referral') . '</span>';
+        echo '<span class="intersoccer-points-title">' . esc_html__('Loyalty Points', 'intersoccer-referral') . '</span>';
+        echo '<span class="intersoccer-points-balance-display" data-testid="points-balance-display">';
+        echo '<span class="balance-label">' . esc_html__('Balance:', 'intersoccer-referral') . '</span>';
         echo '<span class="balance-value" data-points-balance="' . esc_attr($available_credits) . '">' . number_format($available_credits, 0) . '</span>';
-        echo '<span class="balance-unit">' . esc_html__('points', 'intersoccer-referral') . '</span>';
-        echo '</div>';
+        echo '<span class="balance-unit">' . esc_html__('pts', 'intersoccer-referral') . '</span>';
+        echo '</span>';
         echo '</div>';
         
         if ($available_credits > 0) {
             // Toggle to enable points usage
             echo '<div class="intersoccer-points-redemption-toggle">';
-            echo '<input type="checkbox" name="intersoccer_use_points" id="intersoccer_use_points" data-testid="points-redeem-toggle" />';
-            echo '<label for="intersoccer_use_points">' . esc_html__('Use my loyalty points on this order', 'intersoccer-referral') . '</label>';
+            echo '<input type="checkbox" name="intersoccer_use_points" id="intersoccer_use_points" data-testid="points-redeem-toggle">';
+            echo '<label for="intersoccer_use_points">' . esc_html__('Use my points on this order', 'intersoccer-referral') . '</label>';
             echo '</div>';
 
-            // Points details panel (shown when checkbox is checked)
-            echo '<div class="points-details" style="display: none;" data-testid="points-redeem-panel">';
+            // Points details panel (hidden by default, shown via JS when checkbox checked)
+            echo '<div class="points-details points-details--hidden" data-testid="points-redeem-panel">';
             
-            // Quick apply buttons
+            // Primary CTA: purple gradient for main redeem action
             echo '<div class="points-quick-apply">';
-            echo '<button type="button" class="apply-all-points button intersoccer-btn-primary" data-testid="apply-all-points-btn" data-max-points="' . esc_attr($max_redeemable) . '">';
+            echo '<button type="button" class="intersoccer-btn-primary apply-all-points" data-testid="apply-all-points-btn" data-max-points="' . esc_attr($max_redeemable) . '">';
             echo esc_html(sprintf(__('Apply All (%d pts = CHF %s)', 'intersoccer-referral'), $max_redeemable, number_format($max_redeemable * $credit_value, 2)));
             echo '</button>';
             echo '</div>';
 
-            // Custom amount input
+            // Custom amount input — tertiary section
             echo '<div class="custom-amount">';
-            echo '<label for="intersoccer_points_to_redeem">' . esc_html__('Or enter custom amount:', 'intersoccer-referral') . '</label>';
+            echo '<label for="intersoccer_points_to_redeem">' . esc_html__('Or enter amount:', 'intersoccer-referral') . '</label>';
             echo '<div class="custom-amount-input-group">';
             echo '<input type="number" name="intersoccer_points_to_redeem" id="intersoccer_points_to_redeem" ';
-            echo 'min="0" max="' . esc_attr($max_redeemable) . '" step="1" placeholder="0" ';
-            echo 'data-testid="points-input" data-credit-value="' . esc_attr($credit_value) . '" />';
-            echo '<span class="points-unit">' . esc_html__('points', 'intersoccer-referral') . '</span>';
+            echo 'class="intersoccer-input" min="0" max="' . esc_attr($max_redeemable) . '" step="1" placeholder="0" ';
+            echo 'data-testid="points-input" data-credit-value="' . esc_attr($credit_value) . '">';
+            echo '<span class="points-unit">' . esc_html__('pts', 'intersoccer-referral') . '</span>';
             echo '</div>';
             echo '</div>';
 
-            // Conversion info
+            // Conversion info — muted helper text
             echo '<p class="points-conversion-info">';
-            echo '<span class="conversion-rate">' . esc_html(sprintf(__('1 point = CHF %s', 'intersoccer-referral'), number_format($credit_value, 2))) . '</span>';
-            echo ' &bull; ';
-            echo '<span class="max-redeemable">' . esc_html(sprintf(__('Max redeemable: %d pts', 'intersoccer-referral'), $max_redeemable)) . '</span>';
+            echo '<span class="conversion-rate">' . esc_html(sprintf(__('1 pt = CHF %s', 'intersoccer-referral'), number_format($credit_value, 2))) . '</span>';
+            echo ' · ';
+            echo '<span class="max-redeemable">' . esc_html(sprintf(__('Max: %d pts', 'intersoccer-referral'), $max_redeemable)) . '</span>';
             echo '</p>';
 
-            // Applied discount confirmation area - Tess TC-REDEEM-02 stable selector
-            echo '<div class="intersoccer-points-applied-confirmation" style="display: none;" data-testid="points-discount-confirmation">';
-            echo '<div class="confirmation-icon">✓</div>';
-            echo '<div class="confirmation-content">';
-            echo '<span class="confirmation-label">' . esc_html__('Discount Applied:', 'intersoccer-referral') . '</span>';
+            // Applied discount confirmation — success state: muted label + strong amount
+            // TC-REDEEM-02 stable selector
+            echo '<div class="intersoccer-points-applied-confirmation intersoccer-points-applied-confirmation--hidden" data-testid="points-discount-confirmation">';
+            echo '<span class="confirmation-icon">✓</span>';
+            echo '<span class="confirmation-content">';
+            echo '<span class="confirmation-label">' . esc_html__('Discount applied', 'intersoccer-referral') . '</span>';
             echo '<span class="confirmation-amount" data-testid="applied-discount-amount"></span>';
-            echo '</div>';
+            echo '</span>';
             echo '</div>';
 
             echo '</div>'; // .points-details
         } else {
             // Zero balance messaging - Tess TC-REDEEM-03 (P1)
             echo '<div class="intersoccer-points-zero-balance" data-testid="zero-balance-message">';
-            echo '<p class="zero-balance-text">' . esc_html__('You don\'t have any points to redeem yet.', 'intersoccer-referral') . '</p>';
-            echo '<p class="zero-balance-hint">' . esc_html__('Earn points on future purchases — 1 point for every CHF 10 spent!', 'intersoccer-referral') . '</p>';
+            echo '<p class="zero-balance-text">' . esc_html__('No points available yet.', 'intersoccer-referral') . '</p>';
+            echo '<p class="zero-balance-hint">' . esc_html__('Earn 1 point for every CHF 10 spent!', 'intersoccer-referral') . '</p>';
             echo '</div>';
         }
         
