@@ -1,5 +1,21 @@
 /* global jQuery, window, document */
 
+/**
+ * InterSoccer Checkout Points Redemption & Referral Code Handler
+ * 
+ * Stable selectors for Tess automated tests:
+ * - [data-testid="points-redeem-checkout"] - main wrapper (TC-REDEEM-01: checkout-only)
+ * - [data-testid="points-balance-display"] - shows customer balance
+ * - [data-testid="points-redeem-toggle"] - checkbox to enable redemption
+ * - [data-testid="points-redeem-panel"] - expanded redemption controls
+ * - [data-testid="points-input"] - custom amount input
+ * - [data-testid="apply-all-points-btn"] - quick apply button
+ * - [data-testid="points-discount-confirmation"] - discount applied confirmation (TC-REDEEM-02)
+ * - [data-testid="applied-discount-amount"] - the discount amount text
+ * - [data-testid="zero-balance-message"] - shown when balance is 0 (TC-REDEEM-03)
+ * - .intersoccer-referral-code-wrapper - referral code input section (TC-REDEEM-04: coexists with redeem)
+ */
+
 (function ($) {
     'use strict';
 
@@ -18,6 +34,14 @@
         const $referralInput = $('#intersoccer_referral_code');
         const $referralButton = $('#apply_referral_code');
         const $referralMessage = $('#referral_code_message');
+
+        // Points UI elements
+        const $pointsToggle = $('#intersoccer_use_points');
+        const $pointsInput = $('#intersoccer_points_to_redeem');
+        const $pointsPanel = $('[data-testid="points-redeem-panel"]');
+        const $confirmation = $('[data-testid="points-discount-confirmation"]');
+        const $confirmationAmount = $('[data-testid="applied-discount-amount"]');
+        const $applyAllBtn = $('[data-testid="apply-all-points-btn"]');
 
         function applyReferralCode() {
             const referralCode = ($referralInput.val() || '').trim();
@@ -46,7 +70,7 @@
                     let appliedMessage = response.data && response.data.message ? response.data.message : '';
                     if (response.data && typeof response.data.discount_amount !== 'undefined') {
                         const discountValue = parseFloat(response.data.discount_amount);
-                        if (!isNaN(discountValue)) {
+                        if (!isNaN(discountValue) && discountValue > 0) {
                             appliedMessage += ' ' + config.i18n.discount_label + ' CHF ' + discountValue.toFixed(2);
                         }
                     }
@@ -70,25 +94,34 @@
             });
         }
 
+        /**
+         * Apply points amount and show confirmation
+         * This implements TC-REDEEM-02: discount confirmation in order summary
+         */
         function applyPointsAmount(pointsAmount) {
             const availablePoints = parseInt(config.available_points, 10) || 0;
             let amount = parseInt(pointsAmount, 10) || 0;
 
+            // Clamp to valid range
             if (amount < 0) amount = 0;
             if (amount > availablePoints) amount = availablePoints;
 
-            $('#intersoccer_points_to_redeem').val(amount);
+            // Get credit value (CHF per point) from input data attribute or default to 1.00
+            const creditValue = parseFloat($pointsInput.data('credit-value')) || 1.00;
+            const discountAmount = (amount * creditValue).toFixed(2);
 
-            const $appliedAmount = $('.applied-amount');
-            const $appliedText = $('.applied-text');
+            // Update input value
+            $pointsInput.val(amount);
 
+            // Update confirmation display (TC-REDEEM-02)
             if (amount > 0) {
-                $appliedText.text(config.i18n.applied + ' ' + amount + ' ' + config.i18n.points_discount);
-                $appliedAmount.show();
+                $confirmationAmount.text(amount + ' pts = CHF ' + discountAmount);
+                $confirmation.slideDown(200);
             } else {
-                $appliedAmount.hide();
+                $confirmation.slideUp(200);
             }
 
+            // Send to server to update session
             $.ajax({
                 url: config.ajax_url,
                 type: 'POST',
@@ -99,6 +132,7 @@
                 }
             }).done(function (response) {
                 if (response && response.success) {
+                    // Trigger WooCommerce checkout update to show discount in order summary
                     $(document.body).trigger('update_checkout');
                 }
             });
@@ -128,11 +162,13 @@
             }
         }
 
+        // Referral code apply button click
         $(document).off('click', '#apply_referral_code').on('click', '#apply_referral_code', function (event) {
             event.preventDefault();
             applyReferralCode();
         });
 
+        // Referral code change button click
         $(document).off('click', '#change_referral_code').on('click', '#change_referral_code', function (event) {
             event.preventDefault();
             const $changeBtn = $(this);
@@ -164,7 +200,7 @@
             });
         });
 
-        // Auto-apply referral code if requested
+        // Auto-apply referral code if requested (from cookie/session attribution)
         if ($referralInput.length && $referralButton.length) {
             const shouldAutoApply = $referralButton.data('auto-apply') === 'yes';
             const existingCode = ($referralInput.val() || '').trim();
@@ -177,21 +213,33 @@
             }
         }
 
-        // Points interactions
+        // Points redemption toggle (TC-REDEEM-01: checkout-only interaction)
         $(document).off('change', '#intersoccer_use_points').on('change', '#intersoccer_use_points', function () {
-            const $pointsDetails = $(this).closest('.intersoccer-points-redemption').find('.points-details');
+            const $panel = $(this).closest('.intersoccer-points-redemption').find('[data-testid="points-redeem-panel"]');
             if ($(this).is(':checked')) {
-                $pointsDetails.slideDown();
+                $panel.slideDown(200);
             } else {
-                $pointsDetails.slideUp();
+                $panel.slideUp(200);
+                // Clear points when unchecked
                 applyPointsAmount(0);
             }
         });
 
-        $(document).off('click', '.apply-all-points').on('click', '.apply-all-points', function () {
-            applyPointsAmount(config.available_points);
+        // Apply all points button
+        $(document).off('click', '[data-testid="apply-all-points-btn"]').on('click', '[data-testid="apply-all-points-btn"]', function (e) {
+            e.preventDefault();
+            const maxPoints = parseInt($(this).data('max-points'), 10) || parseInt(config.available_points, 10) || 0;
+            applyPointsAmount(maxPoints);
         });
 
+        // Legacy apply-all-points class support
+        $(document).off('click', '.apply-all-points').on('click', '.apply-all-points', function (e) {
+            e.preventDefault();
+            const maxPoints = parseInt($(this).data('max-points'), 10) || parseInt(config.available_points, 10) || 0;
+            applyPointsAmount(maxPoints);
+        });
+
+        // Custom points input change
         $(document).off('input', '#intersoccer_points_to_redeem').on('input', '#intersoccer_points_to_redeem', function () {
             applyPointsAmount($(this).val());
         });
@@ -201,6 +249,7 @@
         initCheckoutHandlers();
     });
 
+    // Re-initialize after WooCommerce updates checkout
     $(document.body).on('updated_checkout', function () {
         initCheckoutHandlers();
     });

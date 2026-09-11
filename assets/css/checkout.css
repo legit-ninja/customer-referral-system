@@ -1,3 +1,17 @@
+/* ==========================================================================
+   InterSoccer Checkout Styles
+   
+   Customer island tokens:
+   - Primary gradient: #667eea → #764ba2 (purple)
+   - Background: #f8fafc
+   - Border: #e2e8f0
+   - Text: #374151 (dark), #64748b (muted)
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Referral Code Section
+   Stable selector: .intersoccer-referral-code-wrapper
+   -------------------------------------------------------------------------- */
 .intersoccer-referral-code-wrapper {
     width: 100%;
     clear: both;
@@ -11,6 +25,8 @@
 .intersoccer-referral-code-inner label {
     display: block;
     margin-bottom: 0.5em;
+    font-weight: 600;
+    color: #374151;
 }
 
 .intersoccer-referral-code-inner input[type="text"] {
@@ -19,9 +35,371 @@
     margin-right: 8px;
     margin-bottom: 8px;
     min-height: 44px;
+    border: 2px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 14px;
+}
+
+.intersoccer-referral-code-inner input[type="text"]:focus {
+    border-color: #667eea;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
 }
 
 .intersoccer-referral-code-inner .button {
     min-height: 44px;
     margin-bottom: 8px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 0 20px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.intersoccer-referral-code-inner .button:hover:not(:disabled) {
+    background: linear-gradient(135deg, #5a6fd8, #6b4190);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.intersoccer-referral-code-inner .button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.intersoccer-referral-code-inner .button-link {
+    background: transparent;
+    color: #667eea;
+    text-decoration: underline;
+    padding: 0 8px;
+}
+
+.intersoccer-referral-code-inner .button-link:hover {
+    color: #764ba2;
+    background: transparent;
+    box-shadow: none;
+    transform: none;
+}
+
+/* Referral code message */
+.intersoccer-referral-message {
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 14px;
+    margin-top: 8px;
+}
+
+.intersoccer-referral-message.success {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1), rgba(118, 75, 162, 0.1));
+    border-left: 3px solid #667eea;
+    color: #374151;
+}
+
+.intersoccer-referral-message.error {
+    background: #fef2f2;
+    border-left: 3px solid #ef4444;
+    color: #dc2626;
+}
+
+/* --------------------------------------------------------------------------
+   Points Redemption Section
+   Stable selectors:
+   - .intersoccer-points-redemption-wrapper [data-testid="points-redeem-checkout"]
+   - [data-testid="points-balance-display"]
+   - [data-testid="points-redeem-toggle"]
+   - [data-testid="points-redeem-panel"]
+   - [data-testid="points-input"]
+   - [data-testid="points-discount-confirmation"]
+   - [data-testid="applied-discount-amount"]
+   -------------------------------------------------------------------------- */
+.intersoccer-points-redemption-wrapper {
+    width: 100%;
+    clear: both;
+    margin-bottom: 1.5em;
+}
+
+.intersoccer-points-redemption {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* Points Header */
+.intersoccer-points-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e2e8f0;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.intersoccer-points-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.intersoccer-points-balance-display {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+}
+
+.intersoccer-points-balance-display .balance-label {
+    color: #64748b;
+}
+
+.intersoccer-points-balance-display .balance-value {
+    font-weight: 700;
+    font-size: 18px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.intersoccer-points-balance-display .balance-unit {
+    color: #64748b;
+    font-size: 13px;
+}
+
+/* Toggle checkbox */
+.intersoccer-points-redemption-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.intersoccer-points-redemption-toggle input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    accent-color: #667eea;
+    cursor: pointer;
+}
+
+.intersoccer-points-redemption-toggle label {
+    font-size: 15px;
+    font-weight: 500;
+    color: #374151;
+    cursor: pointer;
+}
+
+/* Points details panel */
+.points-details {
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 12px;
+}
+
+/* Quick apply buttons */
+.points-quick-apply {
+    margin-bottom: 16px;
+}
+
+.intersoccer-btn-primary {
+    background: linear-gradient(135deg, #667eea, #764ba2) !important;
+    color: #fff !important;
+    border: none !important;
+    border-radius: 6px !important;
+    padding: 12px 20px !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+    text-align: center;
+}
+
+.intersoccer-btn-primary:hover {
+    background: linear-gradient(135deg, #5a6fd8, #6b4190) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+/* Custom amount input */
+.custom-amount {
+    margin-bottom: 12px;
+}
+
+.custom-amount label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: #64748b;
+}
+
+.custom-amount-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.custom-amount input[type="number"] {
+    flex: 1;
+    max-width: 120px;
+    padding: 10px 12px;
+    border: 2px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 16px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.custom-amount input[type="number"]:focus {
+    border-color: #667eea;
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.custom-amount .points-unit {
+    font-size: 14px;
+    color: #64748b;
+}
+
+/* Conversion info */
+.points-conversion-info {
+    margin: 12px 0 0;
+    font-size: 12px;
+    color: #64748b;
+    text-align: center;
+}
+
+.points-conversion-info .conversion-rate {
+    font-weight: 500;
+}
+
+/* Applied discount confirmation (TC-REDEEM-02) */
+.intersoccer-points-applied-confirmation {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+    padding: 14px 16px;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.12), rgba(118, 75, 162, 0.12));
+    border: 2px solid #667eea;
+    border-radius: 8px;
+}
+
+.intersoccer-points-applied-confirmation .confirmation-icon {
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.intersoccer-points-applied-confirmation .confirmation-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.intersoccer-points-applied-confirmation .confirmation-label {
+    font-size: 12px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.intersoccer-points-applied-confirmation .confirmation-amount {
+    font-size: 18px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Zero balance state (TC-REDEEM-03) */
+.intersoccer-points-zero-balance {
+    text-align: center;
+    padding: 16px;
+    background: #f8fafc;
+    border-radius: 8px;
+}
+
+.intersoccer-points-zero-balance .zero-balance-text {
+    margin: 0 0 8px;
+    font-size: 14px;
+    color: #64748b;
+}
+
+.intersoccer-points-zero-balance .zero-balance-hint {
+    margin: 0;
+    font-size: 13px;
+    color: #94a3b8;
+}
+
+/* --------------------------------------------------------------------------
+   Order Summary Discount Line (fee confirmation)
+   Visible in WooCommerce order review when points discount is applied
+   -------------------------------------------------------------------------- */
+.woocommerce-checkout-review-order-table .fee th,
+.woocommerce-checkout-review-order-table .fee td {
+    color: #374151;
+}
+
+.woocommerce-checkout-review-order-table .fee .amount {
+    color: #059669;
+    font-weight: 600;
+}
+
+/* Style negative fees (discounts) with purple gradient text */
+.woocommerce-checkout-review-order-table .fee .amount[data-discount="true"],
+.woocommerce-checkout-review-order-table tr.fee td .woocommerce-Price-amount {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* --------------------------------------------------------------------------
+   Responsive Adjustments
+   -------------------------------------------------------------------------- */
+@media (max-width: 600px) {
+    .intersoccer-points-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .intersoccer-points-balance-display {
+        width: 100%;
+        justify-content: flex-start;
+    }
+    
+    .intersoccer-referral-code-inner {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .intersoccer-referral-code-inner input[type="text"] {
+        max-width: 100%;
+        margin-right: 0;
+    }
+    
+    .intersoccer-referral-code-inner .button {
+        width: 100%;
+    }
 }
