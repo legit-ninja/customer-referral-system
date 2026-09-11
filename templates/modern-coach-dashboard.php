@@ -282,7 +282,7 @@ $theme = get_user_meta($user_id, 'intersoccer_dashboard_theme', true) ?: 'light'
                 </div>
                 <div class="referral-code-body">
                     <span class="code-value" id="referral-code" data-field="referral_code"><?php echo esc_html($referral_code); ?></span>
-                    <button class="btn-tertiary share-cta" id="copy-code"><?php esc_html_e('Copy Code', 'intersoccer-referral'); ?></button>
+                    <button class="btn-tertiary" id="copy-code"><?php esc_html_e('Copy Code', 'intersoccer-referral'); ?></button>
                 </div>
             </div>
 
