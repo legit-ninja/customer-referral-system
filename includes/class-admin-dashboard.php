@@ -551,7 +551,7 @@ class InterSoccer_Referral_Admin_Dashboard {
             wp_send_json_error(['message' => __('Credits cannot be negative.', 'intersoccer-referral')]);
         }
 
-        update_user_meta($user_id, 'intersoccer_customer_credits', $credits);
+        // Write only to intersoccer_points_balance (issue #36: stop dual-write)
         update_user_meta($user_id, 'intersoccer_points_balance', $credits);
 
         wp_send_json_success([
