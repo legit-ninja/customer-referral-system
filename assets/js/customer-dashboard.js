@@ -36,9 +36,10 @@
     // Copy referral link function
     function copyReferralLink() {
         const linkInput = document.getElementById('referral-link');
-        const copyBtn = document.getElementById('copy-link-btn');
+        // Support both #share-link-btn (new) and #copy-link-btn (legacy) for backward compatibility
+        const copyBtn = document.getElementById('share-link-btn') || document.getElementById('copy-link-btn');
 
-        if (!linkInput || !copyBtn) {
+        if (!linkInput) {
             return;
         }
 
@@ -48,18 +49,24 @@
         try {
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(linkInput.value).then(function () {
-                    copyBtn.classList.add('copied');
-                    setTimeout(() => copyBtn.classList.remove('copied'), 2000);
+                    if (copyBtn) {
+                        copyBtn.classList.add('copied');
+                        setTimeout(() => copyBtn.classList.remove('copied'), 2000);
+                    }
                 });
             } else {
                 document.execCommand('copy');
-                copyBtn.classList.add('copied');
-                setTimeout(() => copyBtn.classList.remove('copied'), 2000);
+                if (copyBtn) {
+                    copyBtn.classList.add('copied');
+                    setTimeout(() => copyBtn.classList.remove('copied'), 2000);
+                }
             }
         } catch (err) {
             document.execCommand('copy');
-            copyBtn.classList.add('copied');
-            setTimeout(() => copyBtn.classList.remove('copied'), 2000);
+            if (copyBtn) {
+                copyBtn.classList.add('copied');
+                setTimeout(() => copyBtn.classList.remove('copied'), 2000);
+            }
         }
     }
 
