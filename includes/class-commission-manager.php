@@ -191,12 +191,11 @@ class InterSoccer_Commission_Manager {
         // Note: get_subtotal() returns pre-tax subtotal in most WooCommerce configurations
 
         // Subtract non-points discounts (coupons, referral discounts) but NOT points redemption
-        // Points redemption is a fee with name 'Referral Credits Discount'
+        // Commission is calculated BEFORE points redeem per §9.7 oracle
         if (method_exists($order, 'get_fees')) {
             foreach ($order->get_fees() as $fee) {
-                $fee_name = $fee->get_name();
-                // Skip points redemption fee - commission is calculated BEFORE points redeem
-                if (strpos($fee_name, 'Referral Credits Discount') !== false) {
+                // Skip points redemption fee using hardened detection (issue #36)
+                if (self::is_points_redemption_fee($fee, $order)) {
                     continue;
                 }
                 // Include other negative fees (discounts) in commission calculation
@@ -214,6 +213,65 @@ class InterSoccer_Commission_Manager {
         }
 
         return $commissionable;
+    }
+
+    /**
+     * Identify whether a fee item is a points redemption discount.
+     *
+     * Uses multiple detection strategies to avoid dependence on translated display strings:
+     * 1. Fee item meta `_intersoccer_points_fee` (most reliable, set on fee creation)
+     * 2. Order meta `_intersoccer_points_redeemed` correlation with negative fee total
+     * 3. Display string matching as fallback for backward compatibility
+     *
+     * @param WC_Order_Item_Fee|object $fee   The fee item to check
+     * @param WC_Order|object          $order The order containing the fee (for meta lookup)
+     * @return bool True if this fee is a points redemption discount
+     */
+    private static function is_points_redemption_fee($fee, $order) {
+        if (!is_object($fee)) {
+            return false;
+        }
+
+        // Strategy 1: Check fee item meta (most reliable)
+        if (method_exists($fee, 'get_meta')) {
+            $is_points_fee = $fee->get_meta('_intersoccer_points_fee', true);
+            if ($is_points_fee === '1' || $is_points_fee === 1 || $is_points_fee === true) {
+                return true;
+            }
+        }
+
+        // Strategy 2: Correlate order meta with fee amount
+        // If order has _intersoccer_points_redeemed meta and fee total matches, it's likely the points fee
+        if (is_object($order) && method_exists($order, 'get_meta') && method_exists($fee, 'get_total')) {
+            $points_redeemed = (int) $order->get_meta('_intersoccer_points_redeemed', true);
+            if ($points_redeemed > 0) {
+                $fee_total = (float) $fee->get_total();
+                // Points redemption fees are negative, so -$points_redeemed should match fee_total
+                if (abs($fee_total + $points_redeemed) < 0.01) {
+                    return true;
+                }
+            }
+        }
+
+        // Strategy 3: Fallback to display string matching for backward compatibility
+        // This covers orders created before the hardened detection was implemented
+        if (method_exists($fee, 'get_name')) {
+            $fee_name = $fee->get_name();
+            // Check for known fee names (including untranslated and common translations)
+            $known_fee_names = apply_filters('intersoccer_points_fee_names', [
+                'Referral Credits Discount',
+                'Points Discount',
+                'Réduction de crédits de parrainage', // French
+                'Empfehlungscredits-Rabatt', // German
+            ]);
+            foreach ($known_fee_names as $known_name) {
+                if (strpos($fee_name, $known_name) !== false) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**

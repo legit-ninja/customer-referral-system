@@ -80,7 +80,8 @@ class InterSoccer_Referral_Admin_Dashboard {
             add_action('woocommerce_checkout_process', [$this, 'validate_points_redemption']);
             // Mark discount usage on the order (so we can consume it only once the order becomes successful).
             add_action('woocommerce_checkout_create_order', [$this, 'maybe_mark_first_order_discount_on_order'], 10, 2);
-            // add_action('woocommerce_checkout_create_order', [$this, 'apply_points_discount_to_order'], 10, 2); // Disabled - cart fees are automatically converted to order items
+            // Mark points redemption fee for hardened detection in commission calculation (issue #36)
+            add_action('woocommerce_checkout_create_order', [$this, 'mark_points_redemption_fee_on_order'], 10, 2);
             add_action('woocommerce_order_status_changed', [$this, 'deduct_points_on_order_completion'], 10, 4);
             // Consume the first-order discount only when the order reaches a successful state.
             add_action('woocommerce_order_status_changed', [$this, 'maybe_consume_first_order_discount'], 20, 4);
@@ -836,6 +837,11 @@ class InterSoccer_Referral_Admin_Dashboard {
             // Add the fee to the order
             $order->add_item($fee);
 
+            // Mark the fee as a points redemption fee for hardened detection (issue #36)
+            // This must be done after add_item() so the fee has an ID
+            $fee->add_meta_data('_intersoccer_points_fee', '1', true);
+            $fee->save_meta_data();
+
             // Recalculate totals
             $order->calculate_totals();
         }
@@ -1460,6 +1466,61 @@ class InterSoccer_Referral_Admin_Dashboard {
         // Clear pending markers; if payment fails/cancels, a later attempt can still apply again
         // because we only \"consume\" on a successful order status.
         $session->set('intersoccer_first_order_discount_pending', 'no');
+    }
+
+    /**
+     * Mark points redemption fee items with meta for hardened commission exclusion detection.
+     *
+     * When cart fees are converted to order item fees, this callback adds `_intersoccer_points_fee`
+     * meta to the fee item so that `InterSoccer_Commission_Manager::is_points_redemption_fee()`
+     * can reliably identify it without depending on translated display strings (issue #36).
+     *
+     * @param WC_Order $order The order being created
+     * @param array    $data  Checkout form data
+     * @return void
+     */
+    public function mark_points_redemption_fee_on_order($order, $data) {
+        $session = $this->get_wc_session();
+        if (!$session) {
+            return;
+        }
+
+        $points_to_redeem = (int) $session->get('intersoccer_points_to_redeem', 0);
+        if ($points_to_redeem <= 0) {
+            return;
+        }
+
+        if (!is_object($order) || !method_exists($order, 'get_items')) {
+            return;
+        }
+
+        // Store points redeemed in order meta for commission calculation (§9.7 oracle)
+        if (method_exists($order, 'update_meta_data')) {
+            $order->update_meta_data('_intersoccer_points_redeemed', $points_to_redeem);
+        }
+
+        // Find the points fee item by matching the expected discount amount
+        $fee_label = __('Referral Credits Discount', 'intersoccer-referral');
+        foreach ($order->get_items('fee') as $fee) {
+            if (!is_object($fee) || !method_exists($fee, 'get_name') || !method_exists($fee, 'get_total')) {
+                continue;
+            }
+
+            $fee_name = $fee->get_name();
+            $fee_total = (float) $fee->get_total();
+
+            // Match by name or by amount correlation
+            $name_matches = ($fee_name === $fee_label);
+            $amount_matches = (abs($fee_total + $points_to_redeem) < 0.01);
+
+            if ($name_matches || $amount_matches) {
+                if (method_exists($fee, 'add_meta_data') && method_exists($fee, 'save_meta_data')) {
+                    $fee->add_meta_data('_intersoccer_points_fee', '1', true);
+                    $fee->save_meta_data();
+                }
+                break; // Only one points fee per order
+            }
+        }
     }
 
     /**

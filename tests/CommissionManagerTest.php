@@ -1158,4 +1158,215 @@ class CommissionManagerTest extends TestCase {
         $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
         $this->assertEquals(12.0, $commission, 'Commission should be 10% of 120 (subtotal + shipping)');
     }
+
+    // =========================================================================
+    // HARDENED FEE EXCLUSION TESTS (Issue #36)
+    // =========================================================================
+
+    /**
+     * Test is_points_redemption_fee detects fee with _intersoccer_points_fee meta (Strategy 1)
+     */
+    public function testIsPointsRedemptionFee_DetectsByFeeMeta() {
+        $order = new WC_Order();
+        $order->set_subtotal(100);
+
+        $fee = new WC_Order_Item_Fee('Some Translated Name', -50);
+        $fee->add_meta_data('_intersoccer_points_fee', '1', true);
+        $order->add_fee($fee);
+
+        $is_points_fee = $this->invokePrivateMethod(
+            InterSoccer_Commission_Manager::class,
+            'is_points_redemption_fee',
+            [$fee, $order]
+        );
+
+        $this->assertTrue($is_points_fee, 'Should detect points fee by _intersoccer_points_fee meta');
+    }
+
+    /**
+     * Test is_points_redemption_fee detects fee by order meta correlation (Strategy 2)
+     */
+    public function testIsPointsRedemptionFee_DetectsByOrderMetaCorrelation() {
+        $order = new WC_Order();
+        $order->set_subtotal(100);
+        $order->update_meta_data('_intersoccer_points_redeemed', 50);
+
+        // Fee without _intersoccer_points_fee meta but matching amount
+        $fee = new WC_Order_Item_Fee('Unknown Fee Name', -50);
+        $order->add_fee($fee);
+
+        $is_points_fee = $this->invokePrivateMethod(
+            InterSoccer_Commission_Manager::class,
+            'is_points_redemption_fee',
+            [$fee, $order]
+        );
+
+        $this->assertTrue($is_points_fee, 'Should detect points fee by order meta correlation');
+    }
+
+    /**
+     * Test is_points_redemption_fee detects fee by display string (Strategy 3 - fallback)
+     */
+    public function testIsPointsRedemptionFee_DetectsByDisplayString() {
+        $order = new WC_Order();
+        $order->set_subtotal(100);
+
+        // Fee with known display string but no meta
+        $fee = new WC_Order_Item_Fee('Referral Credits Discount', -30);
+        $order->add_fee($fee);
+
+        $is_points_fee = $this->invokePrivateMethod(
+            InterSoccer_Commission_Manager::class,
+            'is_points_redemption_fee',
+            [$fee, $order]
+        );
+
+        $this->assertTrue($is_points_fee, 'Should detect points fee by display string fallback');
+    }
+
+    /**
+     * Test is_points_redemption_fee detects German translated fee name
+     */
+    public function testIsPointsRedemptionFee_DetectsGermanTranslation() {
+        $order = new WC_Order();
+        $order->set_subtotal(100);
+
+        $fee = new WC_Order_Item_Fee('Empfehlungscredits-Rabatt', -25);
+        $order->add_fee($fee);
+
+        $is_points_fee = $this->invokePrivateMethod(
+            InterSoccer_Commission_Manager::class,
+            'is_points_redemption_fee',
+            [$fee, $order]
+        );
+
+        $this->assertTrue($is_points_fee, 'Should detect German translated fee name');
+    }
+
+    /**
+     * Test is_points_redemption_fee detects French translated fee name
+     */
+    public function testIsPointsRedemptionFee_DetectsFrenchTranslation() {
+        $order = new WC_Order();
+        $order->set_subtotal(100);
+
+        $fee = new WC_Order_Item_Fee('Réduction de crédits de parrainage', -25);
+        $order->add_fee($fee);
+
+        $is_points_fee = $this->invokePrivateMethod(
+            InterSoccer_Commission_Manager::class,
+            'is_points_redemption_fee',
+            [$fee, $order]
+        );
+
+        $this->assertTrue($is_points_fee, 'Should detect French translated fee name');
+    }
+
+    /**
+     * Test is_points_redemption_fee returns false for unrelated fees
+     */
+    public function testIsPointsRedemptionFee_ReturnsFalseForUnrelatedFee() {
+        $order = new WC_Order();
+        $order->set_subtotal(100);
+
+        // Fee with unrelated name and no matching meta
+        $fee = new WC_Order_Item_Fee('Gift Card Discount', -20);
+        $order->add_fee($fee);
+
+        $is_points_fee = $this->invokePrivateMethod(
+            InterSoccer_Commission_Manager::class,
+            'is_points_redemption_fee',
+            [$fee, $order]
+        );
+
+        $this->assertFalse($is_points_fee, 'Should not detect unrelated fee as points fee');
+    }
+
+    /**
+     * Test commission excludes points fee detected by meta (hardened detection)
+     */
+    public function testCommissionExcludesPointsFeeByMeta() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+
+        $order = new WC_Order();
+        $order->set_subtotal(500);
+        $order->set_shipping_total(10);
+        $order->set_total_discount(0);
+
+        // Add points fee with meta marker (like orders created after issue #36)
+        $points_fee = new WC_Order_Item_Fee('Translated Points Discount Name', -50);
+        $points_fee->add_meta_data('_intersoccer_points_fee', '1', true);
+        $order->add_fee($points_fee);
+
+        // Commission should be on subtotal + shipping = 510, excluding the points fee
+        $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(51.0, $commission, 'Commission should be 10% of 510 (points fee excluded by meta)');
+    }
+
+    /**
+     * Test commission excludes points fee detected by order meta correlation
+     */
+    public function testCommissionExcludesPointsFeeByOrderMetaCorrelation() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+
+        $order = new WC_Order();
+        $order->set_subtotal(500);
+        $order->set_shipping_total(10);
+        $order->set_total_discount(0);
+        $order->update_meta_data('_intersoccer_points_redeemed', 50);
+
+        // Add points fee without meta marker but with matching amount
+        $points_fee = new WC_Order_Item_Fee('Any Name', -50);
+        $order->add_fee($points_fee);
+
+        // Commission should be on subtotal + shipping = 510, excluding the points fee
+        $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(51.0, $commission, 'Commission should be 10% of 510 (points fee excluded by order meta correlation)');
+    }
+
+    /**
+     * Test commission includes non-points fees correctly
+     */
+    public function testCommissionIncludesNonPointsFees() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+
+        $order = new WC_Order();
+        $order->set_subtotal(500);
+        $order->set_shipping_total(10);
+        $order->set_total_discount(0);
+
+        // Add a non-points negative fee (like a coupon discount applied as fee)
+        $coupon_fee = new WC_Order_Item_Fee('Coupon Discount', -50);
+        $order->add_fee($coupon_fee);
+
+        // Commission should be on subtotal + shipping - coupon = 510 - 50 = 460
+        $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(46.0, $commission, 'Commission should be 10% of 460 (non-points fee included in base)');
+    }
+
+    /**
+     * Test commission with both points fee and other fees
+     */
+    public function testCommissionWithMixedFees() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+
+        $order = new WC_Order();
+        $order->set_subtotal(500);
+        $order->set_shipping_total(10);
+        $order->set_total_discount(0);
+        $order->update_meta_data('_intersoccer_points_redeemed', 50);
+
+        // Add points fee (should be excluded)
+        $points_fee = new WC_Order_Item_Fee('Referral Credits Discount', -50);
+        $order->add_fee($points_fee);
+
+        // Add non-points fee (should be included in calculation)
+        $coupon_fee = new WC_Order_Item_Fee('Birthday Discount', -30);
+        $order->add_fee($coupon_fee);
+
+        // Commission should be on subtotal + shipping - coupon = 510 - 30 = 480
+        // (points fee excluded per §9.7 oracle)
+        $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(48.0, $commission, 'Commission should be 10% of 480 (points fee excluded, coupon fee included)');
+    }
 }
