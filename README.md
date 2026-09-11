@@ -324,7 +324,7 @@ The plugin uses two user-meta keys for customer balances:
 
 #### Migration from `intersoccer_customer_credits` (Issue #36)
 
-As of PR #XX (issue #36), all earn/redeem operations write exclusively to `intersoccer_points_balance`:
+As of PR #43 (issue #36), all earn/redeem operations write exclusively to `intersoccer_points_balance`:
 
 1. **Referrer reward points** — now credited only to `intersoccer_points_balance`
 2. **New customer bonus points** — now credited only to `intersoccer_points_balance`
