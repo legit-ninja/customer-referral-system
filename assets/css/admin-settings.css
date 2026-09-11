@@ -8,6 +8,18 @@
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
+/* Rate card description spacing */
+.rate-card .description {
+    margin-top: 8px;
+    color: inherit;
+}
+
+/* Commission tier card description spacing */
+.commission-tier-row + .description,
+.intersoccer-settings-section > div > .description {
+    margin-bottom: 15px;
+}
+
 .settings-card h3 {
     margin-top: 0;
     color: #23282d;
