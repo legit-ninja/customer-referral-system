@@ -671,7 +671,8 @@ class InterSoccer_Referral_Admin_Dashboard {
     }
 
     public function add_points_redemption_field() {
-        // WooCommerce checkout integration
+        // WooCommerce checkout integration - CHECKOUT-ONLY per §2 AC
+        // Renders via woocommerce_review_order_before_payment hook
         if (!is_user_logged_in()) return;
 
         // Hide checkout fields in passive mode
@@ -680,43 +681,86 @@ class InterSoccer_Referral_Admin_Dashboard {
         }
 
         $user_id = get_current_user_id();
-        $available_credits = get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0;
+        $available_credits = (int) (get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0);
         intersoccer_referral_log("Checkout points field - User: $user_id, Available credits: $available_credits");
 
-        if ($available_credits > 0) {
-            // Get cart total for context
-            $cart_total = WC()->cart->get_total('edit');
-
-            echo '<div class="intersoccer-points-redemption-wrapper">';
-            echo '<div class="intersoccer-points-redemption">';
-            echo '<div class="intersoccer-points-redemption-toggle">';
-            echo '<input type="checkbox" name="intersoccer_use_points" id="intersoccer_use_points" />';
-            echo '<label for="intersoccer_use_points">' . __('Use Loyalty Points', 'intersoccer-referral') . '</label>';
-            echo '</div>';
-
-            echo '<div class="points-details" style="display: none;">';
-            echo '<p class="points-available">' . sprintf(__('You have %s points available', 'intersoccer-referral'), '<strong>' . number_format($available_credits, 0) . '</strong>') . '</p>';
-
-            echo '<div class="points-quick-apply">';
-            echo '<button type="button" class="apply-all-points button button-secondary">' . __('Apply All Available', 'intersoccer-referral') . '</button>';
-            echo '</div>';
-
-            echo '<div class="custom-amount">';
-            echo '<label for="intersoccer_points_to_redeem">' . __('Or enter custom amount:', 'intersoccer-referral') . '</label>';
-            echo '<input type="number" name="intersoccer_points_to_redeem" id="intersoccer_points_to_redeem" min="0" max="' . $available_credits . '" step="1" placeholder="0" />';
-            echo '<span class="points-unit">points</span>';
-            echo '</div>';
-
-            echo '<p class="points-limit-desc">' . __('You can redeem up to your cart total or available points, whichever is less.', 'intersoccer-referral') . '</p>';
-
-            echo '<div class="applied-amount" style="display: none;">';
-            echo '<span class="applied-text"></span>';
-            echo '</div>';
-
-            echo '</div>';
-            echo '</div>';
-            echo '</div>';
+        // Tess selector note: when balance is 0, .intersoccer-points-redemption-wrapper is ABSENT
+        // (not rendered with empty state). Tests should check for wrapper presence to detect available points.
+        if ($available_credits <= 0) {
+            return;
         }
+
+        // Get cart total for max redeemable calculation
+        $cart_total = WC()->cart ? (float) WC()->cart->get_total('edit') : 0;
+        $max_redeemable = min($available_credits, (int) floor($cart_total));
+        
+        // CHF per point (from admin settings, default 1.00)
+        $credit_value = (float) get_option('intersoccer_credit_value', 1.00);
+
+        // Tess TC-REDEEM-01: Stable selectors - keep existing from main
+        // Root: .intersoccer-points-redemption-wrapper
+        // Inner: .intersoccer-points-redemption
+        echo '<div class="intersoccer-points-redemption-wrapper">';
+        echo '<div class="intersoccer-points-redemption">';
+        
+        // Toggle: #intersoccer_use_points (existing ID - DO NOT RENAME)
+        echo '<div class="intersoccer-points-redemption-toggle">';
+        echo '<input type="checkbox" name="intersoccer_use_points" id="intersoccer_use_points">';
+        echo '<label for="intersoccer_use_points">' . esc_html__('Use Loyalty Points', 'intersoccer-referral') . '</label>';
+        echo '</div>';
+
+        // Details panel: .intersoccer-points-redemption .points-details
+        // Hidden by default via class, shown when checkbox is checked
+        echo '<div class="points-details points-details--hidden">';
+        
+        // Available balance: .points-available + data-field="points_balance"
+        // Value from intersoccer_points_balance user meta
+        echo '<p class="points-available" data-field="points_balance">';
+        echo sprintf(
+            esc_html__('You have %s points available', 'intersoccer-referral'),
+            '<strong>' . number_format($available_credits, 0) . '</strong>'
+        );
+        echo '</p>';
+
+        // Primary CTA: .apply-all-points (existing class - DO NOT RENAME)
+        // Purple gradient per Lane pattern-lock
+        echo '<div class="points-quick-apply">';
+        echo '<button type="button" class="apply-all-points intersoccer-btn-primary" data-max-points="' . esc_attr($max_redeemable) . '">';
+        echo esc_html(sprintf(__('Apply All (%d pts = CHF %s)', 'intersoccer-referral'), $max_redeemable, number_format($max_redeemable * $credit_value, 2)));
+        echo '</button>';
+        echo '</div>';
+
+        // Custom amount: #intersoccer_points_to_redeem + data-field="points_to_redeem"
+        // (existing ID - DO NOT RENAME)
+        echo '<div class="custom-amount">';
+        echo '<label for="intersoccer_points_to_redeem">' . esc_html__('Or enter custom amount:', 'intersoccer-referral') . '</label>';
+        echo '<div class="custom-amount-input-group">';
+        echo '<input type="number" name="intersoccer_points_to_redeem" id="intersoccer_points_to_redeem" ';
+        echo 'data-field="points_to_redeem" data-credit-value="' . esc_attr($credit_value) . '" ';
+        echo 'min="0" max="' . esc_attr($max_redeemable) . '" step="1" placeholder="0">';
+        echo '<span class="points-unit">' . esc_html__('points', 'intersoccer-referral') . '</span>';
+        echo '</div>';
+        echo '</div>';
+
+        // Conversion info — muted helper text (Lane: #94a3b8)
+        echo '<p class="points-conversion-info">';
+        echo '<span class="conversion-rate">' . esc_html(sprintf(__('1 pt = CHF %s', 'intersoccer-referral'), number_format($credit_value, 2))) . '</span>';
+        echo ' · ';
+        echo '<span class="max-redeemable">' . esc_html(sprintf(__('Max: %d pts', 'intersoccer-referral'), $max_redeemable)) . '</span>';
+        echo '</p>';
+
+        // Applied confirmation: .applied-amount + .applied-text (existing classes - DO NOT RENAME)
+        // TC-REDEEM-02: Add id="intersoccer-points-applied" + data-field="points_applied_confirm"
+        // Lane pattern: muted label ("Applied:") + strong/green amount only
+        echo '<div class="applied-amount applied-amount--hidden" id="intersoccer-points-applied" data-field="points_applied_confirm">';
+        echo '<span class="applied-icon">✓</span>';
+        echo '<span class="applied-label">' . esc_html__('Applied:', 'intersoccer-referral') . '</span>';
+        echo '<span class="applied-text"></span>';
+        echo '</div>';
+
+        echo '</div>'; // .points-details
+        echo '</div>'; // .intersoccer-points-redemption
+        echo '</div>'; // .intersoccer-points-redemption-wrapper
     }
 
     /**

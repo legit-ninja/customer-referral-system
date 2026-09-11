@@ -1,3 +1,20 @@
+/* ==========================================================================
+   InterSoccer Checkout Styles
+   
+   Customer island tokens (Lane pattern-lock):
+   - Primary gradient: #667eea → #764ba2 (purple) for primary CTA only
+   - Background: #f8fafc
+   - Border: #e2e8f0
+   - Text: #374151 (dark), #64748b (muted), #94a3b8 (light muted)
+   - Radii: 8px on inputs/controls
+   - No WP admin chrome or p.description styles
+   - Checkout-scoped only — no dashboard card chrome leaking here
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   Referral Code Section
+   Stable selector: .intersoccer-referral-code-wrapper
+   -------------------------------------------------------------------------- */
 .intersoccer-referral-code-wrapper {
     width: 100%;
     clear: both;
@@ -11,6 +28,9 @@
 .intersoccer-referral-code-inner label {
     display: block;
     margin-bottom: 0.5em;
+    font-weight: 600;
+    color: #374151;
+    font-size: 14px;
 }
 
 .intersoccer-referral-code-inner input[type="text"] {
@@ -19,9 +39,338 @@
     margin-right: 8px;
     margin-bottom: 8px;
     min-height: 44px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 14px;
+    background: #fff;
 }
 
+.intersoccer-referral-code-inner input[type="text"]:focus {
+    border-color: #667eea;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.12);
+}
+
+/* Primary CTA: purple gradient */
 .intersoccer-referral-code-inner .button {
     min-height: 44px;
     margin-bottom: 8px;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 0 20px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: opacity 0.15s ease;
+}
+
+.intersoccer-referral-code-inner .button:hover:not(:disabled) {
+    opacity: 0.9;
+}
+
+.intersoccer-referral-code-inner .button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Tertiary action: text link style for secondary actions */
+.intersoccer-referral-code-inner .button-link,
+.intersoccer-btn-tertiary {
+    background: transparent;
+    color: #64748b;
+    border: none;
+    padding: 0 8px;
+    font-size: 13px;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.intersoccer-referral-code-inner .button-link:hover,
+.intersoccer-btn-tertiary:hover {
+    color: #667eea;
+}
+
+/* Referral code message */
+.intersoccer-referral-message {
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    margin-top: 8px;
+}
+
+.intersoccer-referral-message.success {
+    background: rgba(102, 126, 234, 0.08);
+    border-left: 3px solid #667eea;
+    color: #374151;
+}
+
+.intersoccer-referral-message.error {
+    background: #fef2f2;
+    border-left: 3px solid #ef4444;
+    color: #dc2626;
+}
+
+/* --------------------------------------------------------------------------
+   Points Redemption Section — Checkout-scoped, no dashboard card chrome
+   
+   Stable selectors:
+   - .intersoccer-points-redemption-wrapper [data-testid="points-redeem-checkout"]
+   - [data-testid="points-balance-display"]
+   - [data-testid="points-redeem-toggle"]
+   - [data-testid="points-redeem-panel"]
+   - [data-testid="points-input"]
+   - [data-testid="points-discount-confirmation"]
+   - [data-testid="applied-discount-amount"]
+   -------------------------------------------------------------------------- */
+.intersoccer-points-redemption-wrapper {
+    width: 100%;
+    clear: both;
+    margin-bottom: 1.5em;
+}
+
+/* Minimal container — no card shadow/border to avoid dashboard chrome */
+.intersoccer-points-redemption {
+    background: transparent;
+    padding: 0;
+}
+
+/* Toggle checkbox */
+.intersoccer-points-redemption-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.intersoccer-points-redemption-toggle input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: #667eea;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.intersoccer-points-redemption-toggle label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #374151;
+    cursor: pointer;
+}
+
+/* Points details panel — light bg, 8px radius */
+.intersoccer-points-redemption .points-details {
+    background: #f8fafc;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 8px;
+}
+
+.intersoccer-points-redemption .points-details--hidden {
+    display: none;
+}
+
+.intersoccer-points-redemption .points-details--visible {
+    display: block;
+}
+
+/* Available balance: .points-available with data-field="points_balance" */
+.intersoccer-points-redemption .points-available {
+    margin: 0 0 14px;
+    font-size: 14px;
+    color: #374151;
+}
+
+/* Lane nit: dark + bold for balance, not purple (purple stays for CTAs/focus only) */
+.intersoccer-points-redemption .points-available strong {
+    color: #374151;
+    font-weight: 700;
+}
+
+/* Primary CTA: purple gradient for main redeem action */
+.points-quick-apply {
+    margin-bottom: 14px;
+}
+
+.intersoccer-btn-primary {
+    display: block;
+    width: 100%;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    text-align: center;
+    transition: opacity 0.15s ease;
+}
+
+.intersoccer-btn-primary:hover {
+    opacity: 0.9;
+}
+
+/* Custom amount input */
+.custom-amount {
+    margin-bottom: 12px;
+}
+
+.custom-amount label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    color: #64748b;
+}
+
+.custom-amount-input-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.custom-amount input[type="number"] {
+    flex: 1;
+    max-width: 100px;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    text-align: center;
+    background: #fff;
+}
+
+.custom-amount input[type="number"]:focus {
+    border-color: #667eea;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.12);
+}
+
+.custom-amount .points-unit {
+    font-size: 14px;
+    color: #64748b;
+}
+
+/* Conversion info — muted helper text */
+.points-conversion-info {
+    margin: 10px 0 0;
+    font-size: 12px;
+    color: #94a3b8;
+    text-align: left;
+}
+
+.points-conversion-info .conversion-rate {
+    font-weight: 500;
+    color: #64748b;
+}
+
+/* --------------------------------------------------------------------------
+   Applied Discount Confirmation (TC-REDEEM-02)
+   Selectors: .applied-amount + .applied-text (existing from main)
+   Added: #intersoccer-points-applied, data-field="points_applied_confirm"
+   Lane pattern: muted text + strong amount (green #059669), NOT purple button
+   -------------------------------------------------------------------------- */
+.intersoccer-points-redemption .applied-amount {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: rgba(5, 150, 105, 0.06);
+    border: 1px solid rgba(5, 150, 105, 0.2);
+    border-radius: 8px;
+}
+
+.intersoccer-points-redemption .applied-amount--hidden {
+    display: none;
+}
+
+.intersoccer-points-redemption .applied-amount--visible {
+    display: flex;
+}
+
+.intersoccer-points-redemption .applied-amount .applied-icon {
+    width: 22px;
+    height: 22px;
+    background: #059669;
+    color: #fff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+/* Lane pattern: muted label + strong/green amount only */
+.intersoccer-points-redemption .applied-amount .applied-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: #64748b;
+    margin-right: 4px;
+}
+
+/* Strong amount — green for success, not purple */
+.intersoccer-points-redemption .applied-amount .applied-text {
+    font-size: 15px;
+    font-weight: 700;
+    color: #059669;
+}
+
+/* --------------------------------------------------------------------------
+   Zero Balance State (TC-REDEEM-03)
+   NOTE: When balance is 0, .intersoccer-points-redemption-wrapper is ABSENT
+   (not rendered). Tests should check for wrapper presence.
+   -------------------------------------------------------------------------- */
+
+/* --------------------------------------------------------------------------
+   Order Summary Discount Line (fee confirmation in WooCommerce order review)
+   -------------------------------------------------------------------------- */
+.woocommerce-checkout-review-order-table .fee th,
+.woocommerce-checkout-review-order-table .fee td {
+    color: #374151;
+}
+
+/* Discount amounts shown in green (success) */
+.woocommerce-checkout-review-order-table .fee .amount,
+.woocommerce-checkout-review-order-table tr.fee td .woocommerce-Price-amount {
+    color: #059669;
+    font-weight: 600;
+}
+
+/* --------------------------------------------------------------------------
+   Responsive Adjustments
+   -------------------------------------------------------------------------- */
+@media (max-width: 600px) {
+    .intersoccer-points-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .intersoccer-points-balance-display {
+        width: 100%;
+        justify-content: flex-start;
+    }
+    
+    .intersoccer-referral-code-inner {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .intersoccer-referral-code-inner input[type="text"] {
+        max-width: 100%;
+        margin-right: 0;
+    }
+    
+    .intersoccer-referral-code-inner .button {
+        width: 100%;
+    }
+    
+    .custom-amount input[type="number"] {
+        max-width: 80px;
+    }
 }
