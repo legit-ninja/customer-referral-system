@@ -17,7 +17,7 @@ class MultiTouchAttributionTest extends TestCase {
 
     private function coachReferralLink(int $coach_id): string {
         InterSoccer_Referral_Handler::ensure_coach_referral_code($coach_id);
-        return $this->coachReferralLink($coach_id);
+        return InterSoccer_Referral_Handler::generate_coach_referral_link($coach_id);
     }
 
     /**
