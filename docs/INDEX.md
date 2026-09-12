@@ -2,6 +2,31 @@
 
 This folder contains all documentation for the InterSoccer Customer Referral System plugin.
 
+---
+
+## 🎯 Current Product Truth (v1.9.11 / Epic #25)
+
+The **share-link + loyalty** slice shipped in v1.9.11. Here is the frozen product model:
+
+| Feature | Behavior |
+|---------|----------|
+| Referral mechanism | Unique personal **share link + referral code** (not name-mention) |
+| Points earn rate | Admin-configurable (default example: CHF 10 spent = 1 point) |
+| Points redemption | **Checkout only** |
+| Coach commission | Admin-configurable (example: 10% of purchases using their code) |
+| Referral code stacking | **Not allowed** — one code per order |
+
+**Shipped PRs:** #33 (admin copy), #34 (backend), #35 (share CTA), #39 (checkout redeem), #46 (version bump)
+
+> **Superseded concepts:** Multi-tier commission (15%/7.5%/5%), season CHF bonuses, 250-pt referrer rewards, free-at-6+ milestone, and name-mention CHF 30 were analyzed in planning docs but are **not** part of the shipped product. Those docs remain under `docs/planning/` and `docs/technical/` for historical reference and are marked outdated.
+
+See also:
+- [CHANGELOG.md](CHANGELOG.md) — version history
+- [README Configuration](../README.md#configuration) — admin-configurable rates
+- [PRODUCT-TRUTH-SHARE-LOYALTY.md](guides/PRODUCT-TRUTH-SHARE-LOYALTY.md) — detailed product truth guide
+
+---
+
 ## 📚 Documentation Structure
 
 ### 📖 Guides (`/guides/`)

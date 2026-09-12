@@ -1,6 +1,16 @@
 # Financial Model & Behavioral Psychology Analysis
 ## Customer Referral System - InterSoccer
 
+> ⚠️ **HISTORICAL ANALYSIS — SUPERSEDED**
+>
+> This document is a **November 2025 behavioral psychology analysis** exploring incentive structures and gamification concepts. It is retained for historical/analytical reference.
+>
+> **The shipping product truth is defined by epic #25 frozen AC (v1.9.11).** See [PRODUCT-TRUTH-SHARE-LOYALTY.md](../guides/PRODUCT-TRUTH-SHARE-LOYALTY.md) for the actual shipped model: share link + referral code, admin-configurable points earn/redeem, checkout-only redemption, and single-code-per-order rule.
+>
+> Do not cite this document as current product behavior.
+
+---
+
 **Date**: November 2025  
 **Focus**: Human Behavior, Incentive Optimization, Viral Growth  
 **Goal**: Maximum customer acquisition & retention through psychology-driven incentives
