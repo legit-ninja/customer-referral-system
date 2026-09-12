@@ -19,10 +19,23 @@ SERVER_PATH="/var/www/html/wp-content/plugins/customer-referral-system"
 SSH_PORT="22"
 SSH_KEY="~/.ssh/id_rsa"
 
+###############################################################################
+# Sandbox Environment Flag
+###############################################################################
+# Set IS_SANDBOX=true for local/ninja test deployments.
+# When enabled, post-deploy will set intersoccer_points_allocation_method=instant
+# so G-EARN / Cypress earn-smoke tests work without waiting for weekly cron.
+#
+# See: https://github.com/legit-ninja/customer-referral-system/issues/44
+#
+# DO NOT set IS_SANDBOX=true for production deployments!
+IS_SANDBOX=false
+
 # Example values (uncomment and modify):
 # SERVER_USER="jeremy"
 # SERVER_HOST="intersoccer.legit.ninja"
 # SERVER_PATH="/var/www/html/wp-content/plugins/customer-referral-system"
 # SSH_PORT="22"
 # SSH_KEY="~/.ssh/id_rsa"
+# IS_SANDBOX=true  # Enable for local/legit.ninja test environments
 

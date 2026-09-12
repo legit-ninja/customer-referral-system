@@ -304,6 +304,28 @@ php scripts/test-verification.php
 - Tests checkout flow, points redemption, user journeys
 - Run separately from PHPUnit suite
 
+**G-EARN / Cypress Earn-Smoke Requirements:**
+
+> ⚠️ **Important:** G-EARN and Cypress earn-smoke tests require `intersoccer_points_allocation_method=instant`.
+> See [#44](https://github.com/legit-ninja/customer-referral-system/issues/44) for details.
+
+The plugin supports two points allocation modes:
+- **instant** (default): Points allocated immediately on order processing/completion
+- **deferred**: Points queued for weekly cron batch processing
+
+In deferred mode, points are not allocated immediately when an order is completed — they are queued for weekly cron processing. This causes G-EARN and earn-smoke tests to fail because they expect points to be credited on order completion.
+
+**For sandbox/test environments:**
+1. Set `IS_SANDBOX=true` in your `deploy.local.sh`
+2. The deploy script will automatically set `intersoccer_points_allocation_method=instant` post-deploy
+
+**Manual one-shot fix:**
+```bash
+wp option update intersoccer_points_allocation_method instant
+```
+
+**Do NOT change production to instant** unless that is the desired production behavior — this setting only affects sandbox/local/legit.ninja test deployments.
+
 ### Localization
 - Text domain: `intersoccer-referral`
 - Translation ready with `load_plugin_textdomain()`

@@ -35,6 +35,11 @@ SERVER_PATH="/path/to/wordpress/wp-content/plugins/customer-referral-system"
 SSH_PORT="22"
 SSH_KEY="~/.ssh/id_rsa"
 
+# Sandbox environment flag (override in deploy.local.sh for test environments)
+# When IS_SANDBOX=true, post-deploy sets intersoccer_points_allocation_method=instant
+# Required for G-EARN / Cypress earn-smoke tests (see #44)
+IS_SANDBOX=false
+
 # Load local configuration if it exists
 if [ -f "deploy.local.sh" ]; then
     source deploy.local.sh
@@ -831,6 +836,38 @@ unlink(__FILE__);
     echo -e "${GREEN}✓ Referral plugin tables dropped${NC}"
 }
 
+configure_sandbox_options() {
+    print_header "Configuring Sandbox Options"
+
+    # Set points allocation method to instant for sandbox environments
+    # Required for G-EARN / Cypress earn-smoke tests
+    # See: https://github.com/legit-ninja/customer-referral-system/issues/44
+    SANDBOX_SCRIPT='<?php
+define("WP_USE_THEMES", false);
+require_once(dirname(dirname(dirname(dirname(__FILE__)))) . "/wp-load.php");
+
+// Set points allocation method to instant for sandbox/test environments
+$current = get_option("intersoccer_points_allocation_method", "instant");
+update_option("intersoccer_points_allocation_method", "instant");
+$new = get_option("intersoccer_points_allocation_method", "instant");
+
+echo "✓ intersoccer_points_allocation_method: " . $current . " → " . $new . "\n";
+echo "\nSandbox configuration complete.\n";
+echo "G-EARN / Cypress earn-smoke tests will now receive points on order processing.\n";
+echo "See: https://github.com/legit-ninja/customer-referral-system/issues/44\n";
+unlink(__FILE__);
+?>'
+
+    # Upload and execute the script
+    echo "$SANDBOX_SCRIPT" | ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cat > ${SERVER_PATH}/configure-sandbox-temp.php"
+
+    echo "Setting intersoccer_points_allocation_method=instant on server..."
+    ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cd ${SERVER_PATH} && php configure-sandbox-temp.php"
+
+    echo ""
+    echo -e "${GREEN}✓ Sandbox options configured${NC}"
+}
+
 ###############################################################################
 # Main Script
 ###############################################################################
@@ -841,6 +878,7 @@ echo "Configuration:"
 echo "  Server: ${SERVER_USER}@${SERVER_HOST}"
 echo "  Path: ${SERVER_PATH}"
 echo "  SSH Port: ${SSH_PORT}"
+echo "  Sandbox Mode: ${IS_SANDBOX}"
 echo ""
 
 # ⚠️  IMPORTANT: PHPUnit tests ALWAYS run before deployment
@@ -869,6 +907,12 @@ deploy_to_server
 # Copy translations to global directory
 if [ "$DRY_RUN" = false ]; then
     copy_translations_to_global_dir
+fi
+
+# Configure sandbox options if IS_SANDBOX is enabled
+# Sets intersoccer_points_allocation_method=instant for G-EARN / Cypress tests
+if [ "$IS_SANDBOX" = true ] && [ "$DRY_RUN" = false ]; then
+    configure_sandbox_options
 fi
 
 # Clear caches if requested
