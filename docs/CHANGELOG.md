@@ -11,6 +11,12 @@
 ### Changed
 - Version bump to 1.9.11 (#46)
 
+### Fixed
+- Checkout points panel visibility sync after `updated_checkout` event (#48)
+
+### Deploy / Testing
+- IS_SANDBOX deploy sets `alloc=instant` for G-EARN smoke tests (#47)
+
 ### Documentation
 - Docs sync for share-link + loyalty product truth (closes #32)
 - Updated README Configuration and Features to reflect current product model
