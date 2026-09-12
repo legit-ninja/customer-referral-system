@@ -21,22 +21,20 @@ A comprehensive WordPress plugin that implements an advanced coach referral prog
 ## Features
 
 ### 🎯 Core Referral System
-- **Coach Referral Program**: Coaches can generate unique referral links to earn commissions
-- **Multi-Tier Commission Structure**: First, second, and third-level referral commissions
-- **Customer Partnerships**: Long-term relationships between coaches and customers
+- **Share Link & Referral Code**: Customers and coaches get a unique personal share link with referral code
+- **Coach Commission**: Coaches earn commission on purchases made with their referral code (e.g., 10% — admin-configurable)
+- **Single-Code Rule**: One referral code per order — codes cannot be stacked
 - **Referral Code Tracking**: Automatic tracking and attribution of referrals
 
 ### 🎮 Gamification & Achievements
 - **Tier System**: Bronze, Silver, Gold, and Platinum coach tiers based on performance
 - **Achievement System**: Points and badges for various accomplishments
 - **Performance Tracking**: Monthly performance metrics and leaderboards
-- **Loyalty Bonuses**: Additional rewards for customer retention
 
-### 💰 Commission & Rewards
-- **Dynamic Commission Rates**: Configurable rates for different referral levels
-- **Loyalty Bonuses**: Bonuses for repeat customers and long-term partnerships
-- **Retention Bonuses**: Rewards for customers returning for multiple seasons
-- **Network Effect Bonuses**: Additional incentives for building referral networks
+### 💰 Commission & Loyalty Points
+- **Loyalty Points Earn**: Customers earn points based on spend (default example: CHF 10 spent = 1 point)
+- **Checkout-Only Redeem**: Customers redeem points at checkout only
+- **Admin-Configurable Rates**: All commission and points rates are configurable in WordPress admin
 
 ### 📊 Analytics & Reporting
 - **Real-time Dashboards**: Separate dashboards for coaches and customers
@@ -139,15 +137,20 @@ See [docs/guides/WPML-SETUP.md](docs/guides/WPML-SETUP.md) for detailed configur
 
 ## Configuration
 
-### Commission Settings
-- **First Level**: 15% (configurable)
-- **Second Level**: 7.5% (configurable)
-- **Third Level**: 5% (configurable)
+### Current Product Model (v1.9.11)
 
-### Loyalty Bonuses
-- **First Season**: 5 CHF
-- **Second Season**: 8 CHF
-- **Third Season**: 15 CHF
+This plugin implements a **share-link + loyalty points** system. Key behaviors:
+
+| Setting | Example Default | Notes |
+|---------|-----------------|-------|
+| Points earn rate | CHF 10 spent = 1 point | Admin-configurable |
+| Points redemption | Checkout only | Customers redeem accumulated points when placing an order |
+| Coach commission | 10% of referred purchases | Admin-configurable; applies when customer uses coach's referral code |
+| Referral code stacking | Not allowed | One referral code per order |
+
+All rates are **admin-configurable** in WordPress under InterSoccer > Referral Settings.
+
+> **Note:** Historical planning documents (e.g., `docs/technical/FINANCIAL-MODEL-ANALYSIS.md`, `docs/planning/`) contain multi-tier commission structures, season CHF bonuses, and gamification milestones that were analyzed but **not shipped** in the current product. Those docs are retained for historical/analysis purposes and are clearly marked as superseded.
 
 ### Tier Thresholds
 - **Silver**: 5 successful referrals
@@ -188,8 +191,8 @@ Displays the coach referral dashboard with:
 
 ### Customer Dashboard Widget
 - Customer referral statistics
-- Available credits display
-- Referral link sharing
+- Points balance display
+- Personal share link
 - Progress tracking
 
 ### Coach Dashboard Widget
