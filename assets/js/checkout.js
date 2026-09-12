@@ -61,6 +61,29 @@
         const $confirmationText = $('.intersoccer-points-redemption .applied-text');
         const $applyAllBtn = $('.apply-all-points');
 
+        /**
+         * Sync points panel visibility with checkbox state.
+         * Fixes race condition where WooCommerce updated_checkout replaces the
+         * order-review fragment, resetting the panel to --hidden while the
+         * checkbox remains checked.
+         */
+        function syncPointsPanelVisibility() {
+            const $toggle = $('#intersoccer_use_points');
+            const $panel = $('.intersoccer-points-redemption .points-details');
+            if (!$toggle.length || !$panel.length) {
+                return;
+            }
+            if ($toggle.is(':checked')) {
+                $panel
+                    .removeClass('points-details--hidden')
+                    .addClass('points-details--visible');
+            } else {
+                $panel
+                    .removeClass('points-details--visible')
+                    .addClass('points-details--hidden');
+            }
+        }
+
         function applyReferralCode() {
             const referralCode = ($referralInput.val() || '').trim();
             const $button = $referralButton;
@@ -273,6 +296,14 @@
         $(document).off('input', '#intersoccer_points_to_redeem').on('input', '#intersoccer_points_to_redeem', function () {
             applyPointsAmount($(this).val());
         });
+
+        // Click handler for points toggle (belt-and-suspenders with change)
+        $(document).off('click', '#intersoccer_use_points').on('click', '#intersoccer_use_points', function () {
+            syncPointsPanelVisibility();
+        });
+
+        // Sync panel visibility at end of init to handle post-fragment-replace state
+        syncPointsPanelVisibility();
     }
 
     $(document).ready(function () {
