@@ -4,6 +4,9 @@ use PHPUnit\Framework\TestCase;
 
 class CustomerWidgetSummaryTest extends TestCase {
     protected function setUp(): void {
+        if (!class_exists('Elementor\Widget_Base')) {
+            $this->markTestSkipped('Elementor not available in test environment');
+        }
         require_once __DIR__ . '/../includes/class-elementor-widgets.php';
 
         global $mock_users;

@@ -8,11 +8,19 @@ use PHPUnit\Framework\TestCase;
 class PointsManagerTest extends TestCase {
 
     protected function setUp(): void {
-        // Include the points manager class
+        // Include bootstrap first to ensure all mocks are in place
+        require_once __DIR__ . '/bootstrap.php';
         require_once __DIR__ . '/../includes/class-points-manager.php';
-        update_option('intersoccer_points_allocation_mode', 'ratio');
-        update_option('intersoccer_points_percentage_rate', 0);
-        update_option('intersoccer_points_allocation_method', 'instant');
+        
+        // Reset options before each test via global mock
+        global $mock_options;
+        $mock_options['intersoccer_points_allocation_mode'] = 'ratio';
+        $mock_options['intersoccer_points_percentage_rate'] = 0;
+        $mock_options['intersoccer_points_allocation_method'] = 'instant';
+        $mock_options['intersoccer_points_golive_date'] = '';
+        $mock_options['intersoccer_points_rate'] = 10;
+        $mock_options['intersoccer_first_purchase_bonus_points'] = 0;
+        
         $this->resetPointsTestState();
     }
 
@@ -26,7 +34,7 @@ class PointsManagerTest extends TestCase {
     }
 
     private function resetPointsTestState(): void {
-        global $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_customer_spent, $mock_session, $mock_user_meta, $mock_wpdb_get_results, $mock_wp_json_response, $mock_user_capabilities;
+        global $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_customer_spent, $mock_session, $mock_user_meta, $mock_wpdb_get_results, $mock_wp_json_response, $mock_user_capabilities, $mock_options;
 
         $this->resetPointsManagerSingleton();
         $mock_points_balances = [];
@@ -42,6 +50,12 @@ class PointsManagerTest extends TestCase {
         $mock_wp_json_response = null;
         $mock_user_capabilities = [];
         $_POST = [];
+        
+        // Reset options that affect points allocation
+        $mock_options['intersoccer_points_golive_date'] = '';
+        $mock_options['intersoccer_points_allocation_mode'] = 'ratio';
+        $mock_options['intersoccer_points_rate'] = 10;
+        $mock_options['intersoccer_first_purchase_bonus_points'] = 0;
     }
 
     private function registerWcOrder(WC_Order $order, int $order_id = 123): WC_Order {
