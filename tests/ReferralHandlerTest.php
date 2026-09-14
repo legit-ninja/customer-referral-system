@@ -8,6 +8,8 @@ use PHPUnit\Framework\TestCase;
 class ReferralHandlerTest extends TestCase {
 
     protected function setUp(): void {
+        // Include bootstrap for mock functions
+        require_once __DIR__ . '/bootstrap.php';
         // Include the referral handler class
         require_once __DIR__ . '/../includes/class-referral-handler.php';
         $this->clearUtmOptions();

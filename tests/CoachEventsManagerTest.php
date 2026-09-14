@@ -17,6 +17,7 @@ class CoachEventsManagerTest extends TestCase {
     protected function setUp(): void {
         parent::setUp();
 
+        require_once __DIR__ . '/bootstrap.php';
         require_once __DIR__ . '/../includes/class-referral-handler.php';
         require_once __DIR__ . '/../includes/class-coach-events-manager.php';
 
