@@ -5,36 +5,62 @@ class InterSoccer_Admin_Financial {
 
     public function render_financial_report_page() {
         $financial_data = $this->get_financial_report_data();
+        $has_data = ($financial_data['total_revenue'] > 0 || $financial_data['total_costs'] > 0 || $financial_data['points_balance'] > 0);
         ?>
         <div class="wrap intersoccer-admin">
-            <h1 class="wp-heading-inline">Financial Report</h1>
+            <h1 class="wp-heading-inline"><?php esc_html_e('Financial Report', 'intersoccer-referral'); ?></h1>
 
-            <div class="intersoccer-financial-summary">
-                <div class="financial-card">
-                    <h3>Total Revenue</h3>
-                    <div class="amount"><?php echo number_format($financial_data['total_revenue'], 0); ?> CHF</div>
-                </div>
-                <div class="financial-card">
-                    <h3>Total Costs</h3>
-                    <div class="amount"><?php echo number_format($financial_data['total_costs'], 0); ?> CHF</div>
-                </div>
-                <div class="financial-card">
-                    <h3>Net Profit</h3>
-                    <div class="amount <?php echo $financial_data['net_profit'] >= 0 ? 'positive' : 'negative'; ?>">
-                        <?php echo number_format($financial_data['net_profit'], 0); ?> CHF
+            <?php if (!$has_data): ?>
+            <div class="intersoccer-notice intersoccer-notice-empty">
+                <span class="dashicons dashicons-info-outline"></span>
+                <p><?php esc_html_e('No financial data available yet. Financial figures will appear once there are transactions in the system.', 'intersoccer-referral'); ?></p>
+            </div>
+            <?php endif; ?>
+
+            <div class="intersoccer-financial-summary" data-loading="false">
+                <div class="financial-card" data-source="intersoccer_referral_credits">
+                    <h3><?php esc_html_e('Total Revenue', 'intersoccer-referral'); ?></h3>
+                    <div class="amount"><?php echo esc_html(number_format($financial_data['total_revenue'], 0)); ?> <span class="currency-label">CHF</span></div>
+                    <div class="source-info" title="<?php esc_attr_e('Source: intersoccer_referral_credits.credit_amount', 'intersoccer-referral'); ?>">
+                        <span class="dashicons dashicons-database"></span>
                     </div>
                 </div>
-                <div class="financial-card">
-                    <h3>Active Credits</h3>
-                    <div class="amount"><?php echo number_format($financial_data['active_credits'], 0); ?> CHF</div>
+                <div class="financial-card" data-source="intersoccer_credit_redemptions">
+                    <h3><?php esc_html_e('Total Costs', 'intersoccer-referral'); ?></h3>
+                    <div class="amount"><?php echo esc_html(number_format($financial_data['total_costs'], 0)); ?> <span class="currency-label">CHF</span></div>
+                    <div class="source-info" title="<?php esc_attr_e('Source: intersoccer_credit_redemptions.credit_amount', 'intersoccer-referral'); ?>">
+                        <span class="dashicons dashicons-database"></span>
+                    </div>
                 </div>
-                <div class="financial-card">
-                    <h3>Points Balance</h3>
-                    <div class="amount"><?php echo number_format($financial_data['points_balance'], 0); ?> PTS</div>
+                <div class="financial-card" data-source="computed">
+                    <h3><?php esc_html_e('Net Profit', 'intersoccer-referral'); ?></h3>
+                    <div class="amount <?php echo $financial_data['net_profit'] >= 0 ? 'positive' : 'negative'; ?>">
+                        <?php echo esc_html(number_format($financial_data['net_profit'], 0)); ?> <span class="currency-label">CHF</span>
+                    </div>
+                    <div class="source-info" title="<?php esc_attr_e('Computed: Total Revenue - Total Costs', 'intersoccer-referral'); ?>">
+                        <span class="dashicons dashicons-calculator"></span>
+                    </div>
                 </div>
-                <div class="financial-card">
-                    <h3>Points Earned</h3>
-                    <div class="amount"><?php echo number_format($financial_data['points_earned'], 0); ?> PTS</div>
+                <div class="financial-card" data-source="intersoccer_points_balance">
+                    <h3><?php esc_html_e('Active Points Liability', 'intersoccer-referral'); ?></h3>
+                    <div class="amount"><?php echo esc_html(number_format($financial_data['active_credits'], 0)); ?> <span class="currency-label">PTS</span></div>
+                    <div class="source-info" title="<?php esc_attr_e('Source: usermeta.intersoccer_points_balance (canonical)', 'intersoccer-referral'); ?>">
+                        <span class="dashicons dashicons-database"></span>
+                    </div>
+                </div>
+                <div class="financial-card" data-source="intersoccer_points_log">
+                    <h3><?php esc_html_e('Total Points Balance', 'intersoccer-referral'); ?></h3>
+                    <div class="amount"><?php echo esc_html(number_format($financial_data['points_balance'], 0)); ?> <span class="currency-label">PTS</span></div>
+                    <div class="source-info" title="<?php esc_attr_e('Source: intersoccer_points_log latest balance per customer', 'intersoccer-referral'); ?>">
+                        <span class="dashicons dashicons-database"></span>
+                    </div>
+                </div>
+                <div class="financial-card" data-source="intersoccer_points_log">
+                    <h3><?php esc_html_e('Total Points Earned', 'intersoccer-referral'); ?></h3>
+                    <div class="amount"><?php echo esc_html(number_format($financial_data['points_earned'], 0)); ?> <span class="currency-label">PTS</span></div>
+                    <div class="source-info" title="<?php esc_attr_e('Source: intersoccer_points_log (positive amounts)', 'intersoccer-referral'); ?>">
+                        <span class="dashicons dashicons-database"></span>
+                    </div>
                 </div>
             </div>
 
@@ -69,10 +95,12 @@ class InterSoccer_Admin_Financial {
             FROM {$wpdb->prefix}intersoccer_credit_redemptions
         ");
 
+        // Canonical source: intersoccer_points_balance (not legacy intersoccer_customer_credits)
+        // Per issue #24 AC §2: Points balance must match intersoccer_points_balance
         $active_credits = $wpdb->get_var("
             SELECT COALESCE(SUM(meta_value), 0)
             FROM {$wpdb->usermeta}
-            WHERE meta_key = 'intersoccer_customer_credits'
+            WHERE meta_key = 'intersoccer_points_balance'
             AND meta_value > 0
         ");
 
@@ -137,32 +165,39 @@ class InterSoccer_Admin_Financial {
         ");
 
         ?>
-        <table class="wp-list-table widefat fixed striped">
+        <?php if (empty($monthly_data)): ?>
+        <div class="intersoccer-notice intersoccer-notice-empty">
+            <span class="dashicons dashicons-calendar-alt"></span>
+            <p><?php esc_html_e('No monthly data available. Monthly breakdown will appear once there are transactions.', 'intersoccer-referral'); ?></p>
+        </div>
+        <?php else: ?>
+        <table class="wp-list-table widefat fixed striped" role="grid" aria-label="<?php esc_attr_e('Monthly Financial Breakdown', 'intersoccer-referral'); ?>">
             <thead>
                 <tr>
-                    <th>Month</th>
-                    <th>Revenue</th>
-                    <th>Costs</th>
-                    <th>Net Profit</th>
-                    <th>Points Earned</th>
-                    <th>Points Spent</th>
+                    <th scope="col"><?php esc_html_e('Month', 'intersoccer-referral'); ?></th>
+                    <th scope="col"><?php esc_html_e('Revenue (CHF)', 'intersoccer-referral'); ?></th>
+                    <th scope="col"><?php esc_html_e('Costs (CHF)', 'intersoccer-referral'); ?></th>
+                    <th scope="col"><?php esc_html_e('Net Profit (CHF)', 'intersoccer-referral'); ?></th>
+                    <th scope="col"><?php esc_html_e('Points Earned (PTS)', 'intersoccer-referral'); ?></th>
+                    <th scope="col"><?php esc_html_e('Points Spent (PTS)', 'intersoccer-referral'); ?></th>
                 </tr>
             </thead>
             <tbody>
                 <?php foreach ($monthly_data as $data): ?>
                 <tr>
-                    <td><?php echo date('F Y', strtotime($data->month . '-01')); ?></td>
-                    <td><?php echo number_format($data->revenue, 0); ?> CHF</td>
-                    <td><?php echo number_format($data->costs, 0); ?> CHF</td>
+                    <td><?php echo esc_html(date_i18n('F Y', strtotime($data->month . '-01'))); ?></td>
+                    <td><?php echo esc_html(number_format($data->revenue, 0)); ?></td>
+                    <td><?php echo esc_html(number_format($data->costs, 0)); ?></td>
                     <td class="<?php echo ($data->revenue - $data->costs) >= 0 ? 'positive' : 'negative'; ?>">
-                        <?php echo number_format($data->revenue - $data->costs, 0); ?> CHF
+                        <?php echo esc_html(number_format($data->revenue - $data->costs, 0)); ?>
                     </td>
-                    <td><?php echo number_format($data->points_earned, 0); ?> PTS</td>
-                    <td><?php echo number_format($data->points_spent, 0); ?> PTS</td>
+                    <td><?php echo esc_html(number_format($data->points_earned, 0)); ?></td>
+                    <td><?php echo esc_html(number_format($data->points_spent, 0)); ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
+        <?php endif; ?>
         <?php
     }
 }

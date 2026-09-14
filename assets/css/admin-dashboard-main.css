@@ -54,6 +54,15 @@
     color: #2c3e50;
 }
 
+/* Unit labels (CHF, PTS) - clearly distinguish currency from points */
+.stat-content h3 .unit-label,
+.metric-value .unit-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: #94a3b8;
+    margin-left: 4px;
+}
+
 .stat-content p {
     margin: 0 0 8px 0;
     color: #7f8c8d;
@@ -357,3 +366,37 @@
     }
 }
 
+/* Empty and error state notices */
+.intersoccer-notice {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.intersoccer-notice-empty {
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    color: #64748b;
+}
+
+.intersoccer-notice-error {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    color: #dc2626;
+}
+
+.intersoccer-notice .dashicons {
+    font-size: 20px;
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+.intersoccer-notice p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+}
