@@ -190,18 +190,26 @@ class PointsManagerTest extends TestCase {
 
     /**
      * Test points allocation for orders
+     * 
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
      */
     public function testAllocatePointsForOrder() {
-        // Verify clean mock state
-        global $mock_points_balances, $mock_order_points_allocated;
-        if (!empty($mock_points_balances) || !empty($mock_order_points_allocated)) {
-            $this->markTestSkipped('Test requires clean mock state - run tests/PointsManagerTest.php individually');
-        }
+        require_once __DIR__ . '/bootstrap.php';
+        require_once __DIR__ . '/../includes/class-points-manager.php';
+        
+        global $mock_options;
+        $mock_options['intersoccer_points_allocation_mode'] = 'ratio';
+        $mock_options['intersoccer_points_rate'] = 10;
+        $mock_options['intersoccer_points_golive_date'] = '';
         
         $points_manager = new InterSoccer_Points_Manager();
 
-        $order = $this->registerWcOrder(new WC_Order(), 123);
+        global $mock_wc_orders_by_id;
+        $order = new WC_Order(123);
+        $order->set_id(123);
         $order->set_total(100); // 100 CHF order
+        $mock_wc_orders_by_id[123] = $order;
 
         // Test points allocation
         $points_manager->allocate_points_for_order(123);
@@ -218,31 +226,45 @@ class PointsManagerTest extends TestCase {
      * 'processing' OR 'completed' status (not pending/failed).
      * Both statuses trigger allocation, but duplicate allocation is prevented
      * by the order_has_points_allocated() check.
+     * 
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
      */
     public function testAllocatePointsOnProcessingOrCompleted() {
-        // Verify clean mock state
-        global $mock_points_balances, $mock_order_points_allocated;
-        if (!empty($mock_points_balances) || !empty($mock_order_points_allocated)) {
-            $this->markTestSkipped('Test requires clean mock state - run tests/PointsManagerTest.php individually');
-        }
+        require_once __DIR__ . '/bootstrap.php';
+        require_once __DIR__ . '/../includes/class-points-manager.php';
+        
+        global $mock_options, $mock_wc_orders_by_id, $mock_points_balances, $mock_order_points_allocated, $mock_user_meta, $mock_points_log_rows;
+        $mock_options['intersoccer_points_allocation_mode'] = 'ratio';
+        $mock_options['intersoccer_points_rate'] = 10;
+        $mock_options['intersoccer_points_golive_date'] = '';
         
         $points_manager = new InterSoccer_Points_Manager();
 
         // Create order 1 - simulate processing status allocation
-        $order1 = $this->registerWcOrder(new WC_Order(), 201);
+        $order1 = new WC_Order(201);
+        $order1->set_id(201);
         $order1->set_total(100);
         $order1->set_status('processing');
+        $mock_wc_orders_by_id[201] = $order1;
         
         // Allocate on processing
         $points_manager->allocate_points_for_order(201);
         $balance_after_processing = $points_manager->get_points_balance(1);
         $this->assertEquals(10, $balance_after_processing, 'Points should allocate on processing status');
 
+        // Reset for second order
+        $mock_points_balances = [];
+        $mock_order_points_allocated = [];
+        $mock_user_meta = [];
+        $mock_points_log_rows = [];
+        
         // Create order 2 - simulate completed status allocation
-        $this->resetPointsTestState();
-        $order2 = $this->registerWcOrder(new WC_Order(), 202);
+        $order2 = new WC_Order(202);
+        $order2->set_id(202);
         $order2->set_total(100);
         $order2->set_status('completed');
+        $mock_wc_orders_by_id[202] = $order2;
         
         // Allocate on completed
         $points_manager->allocate_points_for_order(202);
@@ -252,18 +274,25 @@ class PointsManagerTest extends TestCase {
 
     /**
      * Test that duplicate allocation is prevented (processing → completed transition)
+     * 
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
      */
     public function testNoDuplicateAllocationOnStatusTransition() {
-        // Verify clean mock state
-        global $mock_points_balances, $mock_order_points_allocated;
-        if (!empty($mock_points_balances) || !empty($mock_order_points_allocated)) {
-            $this->markTestSkipped('Test requires clean mock state - run tests/PointsManagerTest.php individually');
-        }
+        require_once __DIR__ . '/bootstrap.php';
+        require_once __DIR__ . '/../includes/class-points-manager.php';
+        
+        global $mock_options, $mock_wc_orders_by_id;
+        $mock_options['intersoccer_points_allocation_mode'] = 'ratio';
+        $mock_options['intersoccer_points_rate'] = 10;
+        $mock_options['intersoccer_points_golive_date'] = '';
         
         $points_manager = new InterSoccer_Points_Manager();
 
-        $order = $this->registerWcOrder(new WC_Order(), 301);
+        $order = new WC_Order(301);
+        $order->set_id(301);
         $order->set_total(100);
+        $mock_wc_orders_by_id[301] = $order;
 
         // First allocation on processing
         $points_manager->allocate_points_for_order(301);
@@ -278,18 +307,26 @@ class PointsManagerTest extends TestCase {
 
     /**
      * Test points deduction for refunds
+     * 
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
      */
     public function testDeductPointsForRefund() {
-        // Verify clean mock state
-        global $mock_points_balances, $mock_order_points_allocated;
-        if (!empty($mock_points_balances) || !empty($mock_order_points_allocated)) {
-            $this->markTestSkipped('Test requires clean mock state - run tests/PointsManagerTest.php individually');
-        }
+        require_once __DIR__ . '/bootstrap.php';
+        require_once __DIR__ . '/../includes/class-points-manager.php';
+        
+        global $mock_options, $mock_wc_orders_by_id;
+        $mock_options['intersoccer_points_allocation_mode'] = 'ratio';
+        $mock_options['intersoccer_points_rate'] = 10;
+        $mock_options['intersoccer_points_golive_date'] = '';
         
         $points_manager = new InterSoccer_Points_Manager();
 
-        $order = $this->registerWcOrder(new WC_Order(), 123);
+        $order = new WC_Order(123);
+        $order->set_id(123);
         $order->set_total(50); // 50 CHF = 5 points
+        $mock_wc_orders_by_id[123] = $order;
+        
         $points_manager->allocate_points_for_order(123);
 
         $balance_before = $points_manager->get_points_balance(1);
@@ -473,19 +510,26 @@ class PointsManagerTest extends TestCase {
     /**
      * Test points refund on order cancellation
      */
+    /**
+     * @runInSeparateProcess
+     * @preserveGlobalState disabled
+     */
     public function testRefundPointsOnCancellation() {
-        // Verify clean mock state
-        global $mock_points_balances, $mock_order_points_allocated;
-        if (!empty($mock_points_balances) || !empty($mock_order_points_allocated)) {
-            $this->markTestSkipped('Test requires clean mock state - run tests/PointsManagerTest.php individually');
-        }
+        require_once __DIR__ . '/bootstrap.php';
+        require_once __DIR__ . '/../includes/class-points-manager.php';
+        
+        global $mock_options, $mock_wc_orders_by_id, $mock_session;
+        $mock_options['intersoccer_points_allocation_mode'] = 'ratio';
+        $mock_options['intersoccer_points_rate'] = 10;
+        $mock_options['intersoccer_points_golive_date'] = '';
         
         $points_manager = new InterSoccer_Points_Manager();
 
-        $order = $this->registerWcOrder(new WC_Order(), 123);
+        $order = new WC_Order(123);
+        $order->set_id(123);
         $order->set_total(100);
+        $mock_wc_orders_by_id[123] = $order;
 
-        global $mock_session;
         $mock_session = ['intersoccer_points_to_redeem' => 10];
 
         $points_manager->add_points_transaction(1, 'test', 20, null, 'Test points');
