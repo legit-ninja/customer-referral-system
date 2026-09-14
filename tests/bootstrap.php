@@ -753,6 +753,7 @@ if (!class_exists('Mock_WPDB')) {
         public $posts = 'wp_posts';
         public $postmeta = 'wp_postmeta';
         public $usermeta = 'wp_usermeta';
+        public $users = 'wp_users';
         public $insert_id = 0;
         public $last_error = '';
         public $num_rows = 0;
