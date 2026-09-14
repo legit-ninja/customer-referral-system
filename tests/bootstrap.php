@@ -102,6 +102,150 @@ if (!function_exists('wp_debug_backtrace_summary')) {
     }
 }
 
+if (!function_exists('maybe_unserialize')) {
+    function maybe_unserialize($data) {
+        if (is_serialized($data)) {
+            return @unserialize(trim($data));
+        }
+        return $data;
+    }
+}
+
+if (!function_exists('is_serialized')) {
+    function is_serialized($data, $strict = true) {
+        if (!is_string($data)) {
+            return false;
+        }
+        $data = trim($data);
+        if ('N;' === $data) {
+            return true;
+        }
+        if (strlen($data) < 4) {
+            return false;
+        }
+        if (':' !== $data[1]) {
+            return false;
+        }
+        if ($strict) {
+            $lastc = substr($data, -1);
+            if (';' !== $lastc && '}' !== $lastc) {
+                return false;
+            }
+        } else {
+            $semicolon = strpos($data, ';');
+            $brace = strpos($data, '}');
+            if (false === $semicolon && false === $brace) {
+                return false;
+            }
+            if (false !== $semicolon && $semicolon < 3) {
+                return false;
+            }
+            if (false !== $brace && $brace < 4) {
+                return false;
+            }
+        }
+        $token = $data[0];
+        switch ($token) {
+            case 's':
+                if ($strict) {
+                    if ('"' !== substr($data, -2, 1)) {
+                        return false;
+                    }
+                } elseif (false === strpos($data, '"')) {
+                    return false;
+                }
+                // Fall through
+            case 'a':
+            case 'O':
+            case 'E':
+                return (bool) preg_match("/^{$token}:[0-9]+:/s", $data);
+            case 'b':
+            case 'i':
+            case 'd':
+                $end = $strict ? '$' : '';
+                return (bool) preg_match("/^{$token}:[0-9.E+-]+;{$end}/", $data);
+        }
+        return false;
+    }
+}
+
+if (!function_exists('wp_parse_args')) {
+    function wp_parse_args($args, $defaults = []) {
+        if (is_object($args)) {
+            $parsed_args = get_object_vars($args);
+        } elseif (is_array($args)) {
+            $parsed_args = &$args;
+        } else {
+            parse_str($args, $parsed_args);
+        }
+        if (is_array($defaults) && $defaults) {
+            return array_merge($defaults, $parsed_args);
+        }
+        return $parsed_args;
+    }
+}
+
+if (!function_exists('delete_user_meta')) {
+    function delete_user_meta($user_id, $meta_key, $meta_value = '') {
+        global $mock_user_meta;
+        if (!isset($mock_user_meta[$user_id]) || !array_key_exists($meta_key, $mock_user_meta[$user_id])) {
+            return false;
+        }
+        unset($mock_user_meta[$user_id][$meta_key]);
+        return true;
+    }
+}
+
+if (!function_exists('intersoccer_referral_system')) {
+    function intersoccer_referral_system() {
+        static $instance = null;
+        if ($instance === null) {
+            $instance = new class {
+                public function get_dashboard() {
+                    if (!class_exists('InterSoccer_Dashboard')) {
+                        require_once __DIR__ . '/../includes/class-dashboard.php';
+                    }
+                    return new InterSoccer_Dashboard();
+                }
+                
+                public function register_customer_account_endpoint() {
+                    // Mock implementation - registers endpoint
+                    global $mock_rewrite_endpoints;
+                    if (!isset($mock_rewrite_endpoints)) {
+                        $mock_rewrite_endpoints = [];
+                    }
+                    $mock_rewrite_endpoints['referrals'] = EP_ROOT | EP_PAGES;
+                    return true;
+                }
+                
+                public function add_customer_dashboard_menu_item($items) {
+                    // Mock implementation - adds menu item for customers (but not coaches)
+                    global $mock_current_user_instance;
+                    $roles = $mock_current_user_instance->roles ?? [];
+                    if (in_array('coach', $roles)) {
+                        return $items; // No menu for coaches
+                    }
+                    // Insert 'referrals' after 'dashboard' key
+                    $new_items = [];
+                    foreach ($items as $key => $value) {
+                        $new_items[$key] = $value;
+                        if ($key === 'dashboard') {
+                            $new_items['referrals'] = __('Refer & Earn', 'intersoccer-referral');
+                        }
+                    }
+                    return $new_items;
+                }
+                
+                public function render_customer_account_endpoint() {
+                    // Mock implementation - renders dashboard
+                    echo '<div class="intersoccer-customer-dashboard"><h2>Your Referral Dashboard</h2><p>Dashboard Content</p></div>';
+                }
+            };
+        }
+        return $instance;
+    }
+}
+
 if (!function_exists('esc_html')) {
     function esc_html($text) {
         return htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8');
@@ -609,6 +753,7 @@ if (!class_exists('Mock_WPDB')) {
         public $posts = 'wp_posts';
         public $postmeta = 'wp_postmeta';
         public $usermeta = 'wp_usermeta';
+        public $users = 'wp_users';
         public $insert_id = 0;
         public $last_error = '';
         public $num_rows = 0;
@@ -616,6 +761,10 @@ if (!class_exists('Mock_WPDB')) {
         public function prepare($query, ...$args) {
             if (empty($args)) {
                 return $query;
+            }
+            // Flatten args if first element is an array (WordPress style call)
+            if (count($args) === 1 && is_array($args[0])) {
+                $args = $args[0];
             }
             return vsprintf(str_replace('%d', '%s', $query), $args);
         }
@@ -728,6 +877,15 @@ if (!class_exists('Mock_WPDB')) {
                 }
             }
 
+            // Return sensible defaults based on query type
+            if (strpos($query, 'SUM(') !== false || strpos($query, 'COUNT(*)') !== false) {
+                return (object) [
+                    'total_referrals' => 0,
+                    'total_earnings' => 0.0,
+                    'avg_commission' => 0.0,
+                ];
+            }
+            
             return (object) [
                 'id' => 1,
                 'coach_id' => 2,
