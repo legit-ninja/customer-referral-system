@@ -762,6 +762,10 @@ if (!class_exists('Mock_WPDB')) {
             if (empty($args)) {
                 return $query;
             }
+            // Flatten args if first element is an array (WordPress style call)
+            if (count($args) === 1 && is_array($args[0])) {
+                $args = $args[0];
+            }
             return vsprintf(str_replace('%d', '%s', $query), $args);
         }
 
@@ -873,6 +877,15 @@ if (!class_exists('Mock_WPDB')) {
                 }
             }
 
+            // Return sensible defaults based on query type
+            if (strpos($query, 'SUM(') !== false || strpos($query, 'COUNT(*)') !== false) {
+                return (object) [
+                    'total_referrals' => 0,
+                    'total_earnings' => 0.0,
+                    'avg_commission' => 0.0,
+                ];
+            }
+            
             return (object) [
                 'id' => 1,
                 'coach_id' => 2,
