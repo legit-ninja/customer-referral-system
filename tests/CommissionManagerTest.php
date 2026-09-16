@@ -132,6 +132,7 @@ class CommissionManagerTest extends TestCase {
         $order = new WC_Order();
         $order->set_total(100);
         $order->set_tax_total(10);
+        $order->set_shipping_total(0);
 
         $this->mockCoachCustomerCount(5);
         $commission = InterSoccer_Commission_Manager::calculate_partnership_commission($order, 1);
@@ -207,6 +208,7 @@ class CommissionManagerTest extends TestCase {
         $order = new WC_Order();
         $order->set_total(100);
         $order->set_tax_total(10);
+        $order->set_shipping_total(0);
         $this->mockCoachCustomerCount(15);
 
         $commission = InterSoccer_Commission_Manager::calculate_total_commission(
@@ -238,6 +240,7 @@ class CommissionManagerTest extends TestCase {
         $order = new WC_Order();
         $order->set_total(200);
         $order->set_tax_total(20);
+        $order->set_shipping_total(0);
 
         $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 1);
         $this->assertEquals(27, $commission['base_commission']);
@@ -258,6 +261,7 @@ class CommissionManagerTest extends TestCase {
         $order = new WC_Order();
         $order->set_total(100);
         $order->set_tax_total(10);
+        $order->set_shipping_total(0);
         $this->mockCoachCustomerCount(15);
 
         $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 1);
@@ -286,6 +290,12 @@ class CommissionManagerTest extends TestCase {
             }
             public function get_subtotal() {
                 return 250.00;
+            }
+            public function get_shipping_total() {
+                return 0.00;
+            }
+            public function get_total_discount() {
+                return 70.00;
             }
         };
 
@@ -703,6 +713,7 @@ class CommissionManagerTest extends TestCase {
         $order = new WC_Order();
         $order->set_total(100);
         $order->set_tax_total(10);
+        $order->set_shipping_total(0);
         
         $commissionable = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_commissionable_amount', [$order]);
         
@@ -716,6 +727,7 @@ class CommissionManagerTest extends TestCase {
         $order = new WC_Order();
         $order->set_total(100);
         $order->set_tax_total(0);
+        $order->set_shipping_total(0);
         
         $commissionable = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_commissionable_amount', [$order]);
         
