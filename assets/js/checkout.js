@@ -11,7 +11,7 @@
  * - Enable toggle: #intersoccer_use_points
  * - Details panel: .intersoccer-points-redemption .points-details
  * - Available balance: .points-available [data-field="points_balance"]
- * - Apply all CTA: .apply-all-points
+ * - Apply CTA: .apply-all-points (visible label: Apply; calculates on click)
  * - Custom input: #intersoccer_points_to_redeem [data-field="points_to_redeem"]
  * 
  * TC-REDEEM-02 (applied discount confirmation):
@@ -36,9 +36,7 @@
 (function ($) {
     'use strict';
 
-    // Survive WooCommerce checkout fragment replace so typing "500" does not
-    // apply "5" then lose the later request to an out-of-order update_checkout.
-    let pointsApplyTimer = null;
+    // Ignore a stale update_points_session if Apply is clicked twice.
     let pointsApplySeq = 0;
 
     function getConfig() {
@@ -64,7 +62,6 @@
         const $pointsPanel = $('.intersoccer-points-redemption .points-details');
         const $confirmation = $('.intersoccer-points-redemption .applied-amount');
         const $confirmationText = $('.intersoccer-points-redemption .applied-text');
-        const $applyAllBtn = $('.apply-all-points');
 
         /**
          * Sync points panel visibility with checkbox state.
@@ -202,13 +199,6 @@
             });
         }
 
-        function applyPointsAmountDebounced(pointsAmount) {
-            clearTimeout(pointsApplyTimer);
-            pointsApplyTimer = setTimeout(function () {
-                applyPointsAmount(pointsAmount);
-            }, 400);
-        }
-
         // Referral code state on load
         if ($referralInput.length && $referralButton.length) {
             const isApplied = $referralInput.data('code-applied') === 'yes' || ($referralMessage.data('applied') === 'yes');
@@ -299,23 +289,18 @@
                     .removeClass('points-details--visible')
                     .addClass('points-details--hidden');
                 // Clear points when unchecked
-                clearTimeout(pointsApplyTimer);
                 applyPointsAmount(0);
             }
         });
 
-        // Apply all points button
-        // Selector: .apply-all-points (existing class - DO NOT RENAME)
+        // Apply typed amount (class .apply-all-points is locked; label is Apply).
         $(document).off('click', '.apply-all-points').on('click', '.apply-all-points', function (e) {
             e.preventDefault();
-            clearTimeout(pointsApplyTimer);
-            const maxPoints = parseInt($(this).data('max-points'), 10) || parseInt(config.available_points, 10) || 0;
-            applyPointsAmount(maxPoints);
-        });
-
-        // Custom points input: debounce so typing 500 does not redeem 5 then 50.
-        $(document).off('input', '#intersoccer_points_to_redeem').on('input', '#intersoccer_points_to_redeem', function () {
-            applyPointsAmountDebounced($(this).val());
+            const typed = parseInt($('#intersoccer_points_to_redeem').val(), 10);
+            if (!typed || typed <= 0) {
+                return;
+            }
+            applyPointsAmount(typed);
         });
 
         // Click handler for points toggle (belt-and-suspenders with change)

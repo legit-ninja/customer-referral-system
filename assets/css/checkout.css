@@ -114,16 +114,7 @@
 }
 
 /* --------------------------------------------------------------------------
-   Points Redemption Section — Checkout-scoped, no dashboard card chrome
-   
-   Stable selectors:
-   - .intersoccer-points-redemption-wrapper [data-testid="points-redeem-checkout"]
-   - [data-testid="points-balance-display"]
-   - [data-testid="points-redeem-toggle"]
-   - [data-testid="points-redeem-panel"]
-   - [data-testid="points-input"]
-   - [data-testid="points-discount-confirmation"]
-   - [data-testid="applied-discount-amount"]
+   Points Redemption Section — layout only (inherit checkout/theme colors)
    -------------------------------------------------------------------------- */
 .intersoccer-points-redemption-wrapper {
     width: 100%;
@@ -131,13 +122,10 @@
     margin-bottom: 1.5em;
 }
 
-/* Minimal container — no card shadow/border to avoid dashboard chrome */
 .intersoccer-points-redemption {
-    background: transparent;
     padding: 0;
 }
 
-/* Toggle checkbox */
 .intersoccer-points-redemption-toggle {
     display: flex;
     align-items: center;
@@ -145,25 +133,7 @@
     margin-bottom: 12px;
 }
 
-.intersoccer-points-redemption-toggle input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    accent-color: #667eea;
-    cursor: pointer;
-    border-radius: 4px;
-}
-
-.intersoccer-points-redemption-toggle label {
-    font-size: 14px;
-    font-weight: 500;
-    color: #374151;
-    cursor: pointer;
-}
-
-/* Points details panel — light bg, 8px radius */
 .intersoccer-points-redemption .points-details {
-    background: #f8fafc;
-    border-radius: 8px;
     padding: 16px;
     margin-top: 8px;
 }
@@ -176,44 +146,15 @@
     display: block;
 }
 
-/* Available balance: .points-available with data-field="points_balance" */
 .intersoccer-points-redemption .points-available {
     margin: 0 0 14px;
     font-size: 14px;
-    color: #374151;
 }
 
-/* Lane nit: dark + bold for balance, not purple (purple stays for CTAs/focus only) */
 .intersoccer-points-redemption .points-available strong {
-    color: #374151;
     font-weight: 700;
 }
 
-/* Primary CTA: purple gradient for main redeem action */
-.points-quick-apply {
-    margin-bottom: 14px;
-}
-
-.intersoccer-btn-primary {
-    display: block;
-    width: 100%;
-    background: linear-gradient(135deg, #667eea, #764ba2);
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    padding: 12px 20px;
-    font-weight: 600;
-    font-size: 14px;
-    cursor: pointer;
-    text-align: center;
-    transition: opacity 0.15s ease;
-}
-
-.intersoccer-btn-primary:hover {
-    opacity: 0.9;
-}
-
-/* Custom amount input */
 .custom-amount {
     margin-bottom: 12px;
 }
@@ -222,7 +163,6 @@
     display: block;
     margin-bottom: 6px;
     font-size: 13px;
-    color: #64748b;
 }
 
 .custom-amount-input-group {
@@ -232,56 +172,33 @@
 }
 
 .custom-amount input[type="number"] {
-    flex: 1;
+    flex: 0 0 auto;
     max-width: 100px;
     padding: 10px 12px;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
     font-size: 15px;
-    font-weight: 600;
     text-align: center;
-    background: #fff;
-}
-
-.custom-amount input[type="number"]:focus {
-    border-color: #667eea;
-    outline: none;
-    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.12);
 }
 
 .custom-amount .points-unit {
     font-size: 14px;
-    color: #64748b;
 }
 
-/* Conversion info — muted helper text */
 .points-conversion-info {
     margin: 10px 0 0;
     font-size: 12px;
-    color: #94a3b8;
     text-align: left;
 }
 
 .points-conversion-info .conversion-rate {
     font-weight: 500;
-    color: #64748b;
 }
 
-/* --------------------------------------------------------------------------
-   Applied Discount Confirmation (TC-REDEEM-02)
-   Selectors: .applied-amount + .applied-text (existing from main)
-   Added: #intersoccer-points-applied, data-field="points_applied_confirm"
-   Lane pattern: muted text + strong amount (green #059669), NOT purple button
-   -------------------------------------------------------------------------- */
 .intersoccer-points-redemption .applied-amount {
     display: flex;
     align-items: center;
     gap: 10px;
     margin-top: 14px;
     padding: 12px 14px;
-    background: rgba(5, 150, 105, 0.06);
-    border: 1px solid rgba(5, 150, 105, 0.2);
-    border-radius: 8px;
 }
 
 .intersoccer-points-redemption .applied-amount--hidden {
@@ -295,9 +212,6 @@
 .intersoccer-points-redemption .applied-amount .applied-icon {
     width: 22px;
     height: 22px;
-    background: #059669;
-    color: #fff;
-    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -306,19 +220,15 @@
     flex-shrink: 0;
 }
 
-/* Lane pattern: muted label + strong/green amount only */
 .intersoccer-points-redemption .applied-amount .applied-label {
     font-size: 13px;
     font-weight: 500;
-    color: #64748b;
     margin-right: 4px;
 }
 
-/* Strong amount — green for success, not purple */
 .intersoccer-points-redemption .applied-amount .applied-text {
     font-size: 15px;
     font-weight: 700;
-    color: #059669;
 }
 
 /* --------------------------------------------------------------------------

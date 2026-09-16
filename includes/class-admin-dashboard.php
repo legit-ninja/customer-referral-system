@@ -705,10 +705,13 @@ class InterSoccer_Referral_Admin_Dashboard {
         echo '<div class="intersoccer-points-redemption">';
         
         // Toggle: #intersoccer_use_points (existing ID - DO NOT RENAME)
-        echo '<div class="intersoccer-points-redemption-toggle">';
-        echo '<input type="checkbox" name="intersoccer_use_points" id="intersoccer_use_points"' . ($session_points > 0 ? ' checked' : '') . '>';
-        echo '<label for="intersoccer_use_points">' . esc_html__('Use Loyalty Points', 'intersoccer-referral') . '</label>';
-        echo '</div>';
+        echo '<p class="form-row form-row-wide intersoccer-points-redemption-toggle">';
+        echo '<label class="woocommerce-form__label woocommerce-form__label-for-checkbox checkbox">';
+        echo '<input class="woocommerce-form__input woocommerce-form__input-checkbox input-checkbox" type="checkbox" ';
+        echo 'name="intersoccer_use_points" id="intersoccer_use_points" value="on"' . ($session_points > 0 ? ' checked' : '') . '> ';
+        echo '<span>' . esc_html__('Use Loyalty Points', 'intersoccer-referral') . '</span>';
+        echo '</label>';
+        echo '</p>';
 
         // Details panel: .intersoccer-points-redemption .points-details
         // Hidden by default via class, shown when checkbox is checked
@@ -724,18 +727,9 @@ class InterSoccer_Referral_Admin_Dashboard {
         );
         echo '</p>';
 
-        // Primary CTA: .apply-all-points (existing class - DO NOT RENAME)
-        // Purple gradient per Lane pattern-lock
-        echo '<div class="points-quick-apply">';
-        echo '<button type="button" class="apply-all-points intersoccer-btn-primary" data-max-points="' . esc_attr($max_redeemable) . '">';
-        echo esc_html(sprintf(__('Apply All (%d pts = CHF %s)', 'intersoccer-referral'), $max_redeemable, number_format($max_redeemable * $credit_value, 2)));
-        echo '</button>';
-        echo '</div>';
-
-        // Custom amount: #intersoccer_points_to_redeem + data-field="points_to_redeem"
-        // (existing ID - DO NOT RENAME)
+        // Custom amount + Apply: #intersoccer_points_to_redeem, .apply-all-points (IDs/classes locked)
         echo '<div class="custom-amount">';
-        echo '<label for="intersoccer_points_to_redeem">' . esc_html__('Or enter custom amount:', 'intersoccer-referral') . '</label>';
+        echo '<label for="intersoccer_points_to_redeem">' . esc_html__('Points to redeem:', 'intersoccer-referral') . '</label>';
         echo '<div class="custom-amount-input-group">';
         echo '<input type="number" name="intersoccer_points_to_redeem" id="intersoccer_points_to_redeem" ';
         echo 'data-field="points_to_redeem" data-credit-value="' . esc_attr($credit_value) . '" ';
@@ -743,6 +737,9 @@ class InterSoccer_Referral_Admin_Dashboard {
         echo $session_points > 0 ? ' value="' . esc_attr($session_points) . '"' : '';
         echo '>';
         echo '<span class="points-unit">' . esc_html__('points', 'intersoccer-referral') . '</span>';
+        echo '<button type="button" class="button apply-all-points" data-max-points="' . esc_attr($max_redeemable) . '">';
+        echo esc_html__('Apply', 'intersoccer-referral');
+        echo '</button>';
         echo '</div>';
         echo '</div>';
 
