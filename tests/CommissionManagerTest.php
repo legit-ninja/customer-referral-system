@@ -127,16 +127,20 @@ class CommissionManagerTest extends TestCase {
 
     /**
      * Test calculate_partnership_commission method
+     * 
+     * Per §9.7: Commission is based on subtotal + shipping (before points, excluding tax)
      */
     public function testCalculatePartnershipCommission() {
         $order = new WC_Order();
-        $order->set_total(100);
-        $order->set_tax_total(10);
+        // Subtotal 90, shipping 0 = commissionable 90
+        $order->set_subtotal(90);
         $order->set_shipping_total(0);
+        $order->set_total_discount(0);
 
         $this->mockCoachCustomerCount(5);
         $commission = InterSoccer_Commission_Manager::calculate_partnership_commission($order, 1);
 
+        // 90 * 10% = 9.0
         $this->assertEquals(9.0, $commission['base_commission']);
         $this->assertEquals(9.0, $commission['total_amount']);
         $this->assertEquals(0.0, $commission['tier_bonus']);
@@ -203,12 +207,15 @@ class CommissionManagerTest extends TestCase {
 
     /**
      * Test calculate_total_commission method
+     * 
+     * Per §9.7: Commission is based on subtotal + shipping (before points, excluding tax)
      */
     public function testCalculateTotalCommission() {
         $order = new WC_Order();
-        $order->set_total(100);
-        $order->set_tax_total(10);
+        // Subtotal 90, no shipping = commissionable 90
+        $order->set_subtotal(90);
         $order->set_shipping_total(0);
+        $order->set_total_discount(0);
         $this->mockCoachCustomerCount(15);
 
         $commission = InterSoccer_Commission_Manager::calculate_total_commission(
@@ -225,7 +232,9 @@ class CommissionManagerTest extends TestCase {
         $this->assertArrayHasKey('weekend_bonus', $commission);
         $this->assertArrayHasKey('total_amount', $commission);
 
+        // 90 * 15% (tier 2) = 13.5
         $this->assertEquals(13.5, $commission['base_commission']);
+        // 90 * 5% (first purchase) = 4.5
         $this->assertEquals(4.5, $commission['loyalty_bonus']);
         $this->assertEquals(0.0, $commission['tier_bonus']);
         $this->assertGreaterThanOrEqual(0, $commission['total_amount']);
@@ -233,77 +242,84 @@ class CommissionManagerTest extends TestCase {
 
     /**
      * Test commission calculations with different order totals
+     * 
+     * Per §9.7: Commission is based on subtotal + shipping (before points, excluding tax)
      */
     public function testCommissionWithDifferentTotals() {
         $this->mockCoachCustomerCount(15);
 
         $order = new WC_Order();
-        $order->set_total(200);
-        $order->set_tax_total(20);
+        // Subtotal 180, no shipping = commissionable 180
+        $order->set_subtotal(180);
+        $order->set_shipping_total(0);
+        $order->set_total_discount(0);
+
+        $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 1);
+        // 180 * 15% = 27
+        $this->assertEquals(27, $commission['base_commission']);
+        // 180 * 5% = 9
+        $this->assertEquals(9, $commission['loyalty_bonus']);
+
+        // Subtotal 45, no shipping = commissionable 45
+        $order->set_subtotal(45);
         $order->set_shipping_total(0);
 
         $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 1);
-        $this->assertEquals(27, $commission['base_commission']);
-        $this->assertEquals(9, $commission['loyalty_bonus']);
-
-        $order->set_total(50);
-        $order->set_tax_total(5);
-
-        $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 1);
+        // 45 * 15% = 6.75
         $this->assertEquals(6.75, $commission['base_commission']);
+        // 45 * 5% = 2.25
         $this->assertEquals(2.25, $commission['loyalty_bonus']);
     }
 
     /**
      * Test commission calculations with different purchase counts
+     * 
+     * Per §9.7: Commission is based on subtotal + shipping (before points, excluding tax)
      */
     public function testCommissionWithDifferentPurchaseCounts() {
         $order = new WC_Order();
-        $order->set_total(100);
-        $order->set_tax_total(10);
+        // Subtotal 90, no shipping = commissionable 90
+        $order->set_subtotal(90);
         $order->set_shipping_total(0);
+        $order->set_total_discount(0);
         $this->mockCoachCustomerCount(15);
 
+        // 90 * 15% = 13.5, loyalty 90 * 5% = 4.5
         $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 1);
         $this->assertEquals(13.5, $commission['base_commission']);
         $this->assertEquals(4.5, $commission['loyalty_bonus']);
 
+        // 90 * 15% = 13.5, loyalty 90 * 8% = 7.2
         $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 2);
         $this->assertEquals(13.5, $commission['base_commission']);
         $this->assertEquals(7.2, $commission['loyalty_bonus']);
 
+        // 90 * 15% = 13.5, loyalty 90 * 15% = 13.5
         $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 3);
         $this->assertEquals(13.5, $commission['base_commission']);
         $this->assertEquals(13.5, $commission['loyalty_bonus']);
     }
 
     /**
-     * Ensure commissions are calculated on discounted totals.
+     * Ensure commissions are calculated on subtotal + shipping per §9.7.
+     * 
+     * Per §9.7: Commission is based on subtotal + shipping (before points, excluding tax)
+     * Coupons reduce commissionable amount via get_total_discount().
      */
     public function testCommissionUsesDiscountedTotal() {
-        $order = new class {
-            public function get_total() {
-                return 180.00;
-            }
-            public function get_total_tax() {
-                return 0.00;
-            }
-            public function get_subtotal() {
-                return 250.00;
-            }
-            public function get_shipping_total() {
-                return 0.00;
-            }
-            public function get_total_discount() {
-                return 70.00;
-            }
-        };
+        $order = new WC_Order();
+        // Subtotal 250, shipping 10, coupon discount 80 = commissionable 250 + 10 - 80 = 180
+        $order->set_subtotal(250);
+        $order->set_shipping_total(10);
+        $order->set_total_discount(80);
 
         $this->mockCoachCustomerCount(15);
 
         $commission = InterSoccer_Commission_Manager::calculate_total_commission($order, 1, 1, 1);
 
+        // 180 * 15% = 27.0
         $this->assertEquals(27.0, $commission['base_commission']);
+        // 180 * 5% = 9.0
         $this->assertEquals(9.0, $commission['loyalty_bonus']);
         $this->assertGreaterThan(0, $commission['total_amount']);
     }
@@ -708,30 +724,32 @@ class CommissionManagerTest extends TestCase {
 
     /**
      * Test get_commissionable_amount - order with tax
+     * §9.7: commissionable = subtotal + shipping (excludes tax)
      */
     public function testGetCommissionableAmount_WithTax() {
         $order = new WC_Order();
-        $order->set_total(100);
-        $order->set_tax_total(10);
-        $order->set_shipping_total(0);
+        $order->set_subtotal(90);       // goods before tax
+        $order->set_shipping_total(10); // shipping
+        // tax is present but excluded from commission calculation
         
         $commissionable = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_commissionable_amount', [$order]);
         
-        $this->assertEquals(90.0, $commissionable, 'Commissionable amount should be total minus tax');
+        $this->assertEquals(100.0, $commissionable, 'Commissionable = subtotal(90) + shipping(10) = 100; tax excluded');
     }
 
     /**
      * Test get_commissionable_amount - order without tax
+     * §9.7: commissionable = subtotal + shipping (excludes tax)
      */
     public function testGetCommissionableAmount_WithoutTax() {
         $order = new WC_Order();
-        $order->set_total(100);
-        $order->set_tax_total(0);
-        $order->set_shipping_total(0);
+        $order->set_subtotal(90);       // goods
+        $order->set_shipping_total(10); // shipping
+        // no tax in this scenario
         
         $commissionable = $this->invokePrivateMethod(InterSoccer_Commission_Manager::class, 'get_commissionable_amount', [$order]);
         
-        $this->assertEquals(100.0, $commissionable, 'Commissionable amount should equal total when no tax');
+        $this->assertEquals(100.0, $commissionable, 'Commissionable = subtotal(90) + shipping(10) = 100');
     }
 
     /**
@@ -1169,5 +1187,216 @@ class CommissionManagerTest extends TestCase {
         // Commission should be on subtotal + shipping = 120
         $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
         $this->assertEquals(12.0, $commission, 'Commission should be 10% of 120 (subtotal + shipping)');
+    }
+
+    // =========================================================================
+    // HARDENED FEE EXCLUSION TESTS (Issue #36)
+    // =========================================================================
+
+    /**
+     * Test is_points_redemption_fee detects fee with _intersoccer_points_fee meta (Strategy 1)
+     */
+    public function testIsPointsRedemptionFee_DetectsByFeeMeta() {
+        $order = new WC_Order();
+        $order->set_subtotal(100);
+
+        $fee = new WC_Order_Item_Fee('Some Translated Name', -50);
+        $fee->add_meta_data('_intersoccer_points_fee', '1', true);
+        $order->add_fee($fee);
+
+        $is_points_fee = $this->invokePrivateMethod(
+            InterSoccer_Commission_Manager::class,
+            'is_points_redemption_fee',
+            [$fee, $order]
+        );
+
+        $this->assertTrue($is_points_fee, 'Should detect points fee by _intersoccer_points_fee meta');
+    }
+
+    /**
+     * Test is_points_redemption_fee detects fee by order meta correlation (Strategy 2)
+     */
+    public function testIsPointsRedemptionFee_DetectsByOrderMetaCorrelation() {
+        $order = new WC_Order();
+        $order->set_subtotal(100);
+        $order->update_meta_data('_intersoccer_points_redeemed', 50);
+
+        // Fee without _intersoccer_points_fee meta but matching amount
+        $fee = new WC_Order_Item_Fee('Unknown Fee Name', -50);
+        $order->add_fee($fee);
+
+        $is_points_fee = $this->invokePrivateMethod(
+            InterSoccer_Commission_Manager::class,
+            'is_points_redemption_fee',
+            [$fee, $order]
+        );
+
+        $this->assertTrue($is_points_fee, 'Should detect points fee by order meta correlation');
+    }
+
+    /**
+     * Test is_points_redemption_fee detects fee by display string (Strategy 3 - fallback)
+     */
+    public function testIsPointsRedemptionFee_DetectsByDisplayString() {
+        $order = new WC_Order();
+        $order->set_subtotal(100);
+
+        // Fee with known display string but no meta
+        $fee = new WC_Order_Item_Fee('Referral Credits Discount', -30);
+        $order->add_fee($fee);
+
+        $is_points_fee = $this->invokePrivateMethod(
+            InterSoccer_Commission_Manager::class,
+            'is_points_redemption_fee',
+            [$fee, $order]
+        );
+
+        $this->assertTrue($is_points_fee, 'Should detect points fee by display string fallback');
+    }
+
+    /**
+     * Test is_points_redemption_fee detects German translated fee name
+     */
+    public function testIsPointsRedemptionFee_DetectsGermanTranslation() {
+        $order = new WC_Order();
+        $order->set_subtotal(100);
+
+        $fee = new WC_Order_Item_Fee('Empfehlungscredits-Rabatt', -25);
+        $order->add_fee($fee);
+
+        $is_points_fee = $this->invokePrivateMethod(
+            InterSoccer_Commission_Manager::class,
+            'is_points_redemption_fee',
+            [$fee, $order]
+        );
+
+        $this->assertTrue($is_points_fee, 'Should detect German translated fee name');
+    }
+
+    /**
+     * Test is_points_redemption_fee detects French translated fee name
+     */
+    public function testIsPointsRedemptionFee_DetectsFrenchTranslation() {
+        $order = new WC_Order();
+        $order->set_subtotal(100);
+
+        $fee = new WC_Order_Item_Fee('Réduction de crédits de parrainage', -25);
+        $order->add_fee($fee);
+
+        $is_points_fee = $this->invokePrivateMethod(
+            InterSoccer_Commission_Manager::class,
+            'is_points_redemption_fee',
+            [$fee, $order]
+        );
+
+        $this->assertTrue($is_points_fee, 'Should detect French translated fee name');
+    }
+
+    /**
+     * Test is_points_redemption_fee returns false for unrelated fees
+     */
+    public function testIsPointsRedemptionFee_ReturnsFalseForUnrelatedFee() {
+        $order = new WC_Order();
+        $order->set_subtotal(100);
+
+        // Fee with unrelated name and no matching meta
+        $fee = new WC_Order_Item_Fee('Gift Card Discount', -20);
+        $order->add_fee($fee);
+
+        $is_points_fee = $this->invokePrivateMethod(
+            InterSoccer_Commission_Manager::class,
+            'is_points_redemption_fee',
+            [$fee, $order]
+        );
+
+        $this->assertFalse($is_points_fee, 'Should not detect unrelated fee as points fee');
+    }
+
+    /**
+     * Test commission excludes points fee detected by meta (hardened detection)
+     */
+    public function testCommissionExcludesPointsFeeByMeta() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+
+        $order = new WC_Order();
+        $order->set_subtotal(500);
+        $order->set_shipping_total(10);
+        $order->set_total_discount(0);
+
+        // Add points fee with meta marker (like orders created after issue #36)
+        $points_fee = new WC_Order_Item_Fee('Translated Points Discount Name', -50);
+        $points_fee->add_meta_data('_intersoccer_points_fee', '1', true);
+        $order->add_fee($points_fee);
+
+        // Commission should be on subtotal + shipping = 510, excluding the points fee
+        $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(51.0, $commission, 'Commission should be 10% of 510 (points fee excluded by meta)');
+    }
+
+    /**
+     * Test commission excludes points fee detected by order meta correlation
+     */
+    public function testCommissionExcludesPointsFeeByOrderMetaCorrelation() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+
+        $order = new WC_Order();
+        $order->set_subtotal(500);
+        $order->set_shipping_total(10);
+        $order->set_total_discount(0);
+        $order->update_meta_data('_intersoccer_points_redeemed', 50);
+
+        // Add points fee without meta marker but with matching amount
+        $points_fee = new WC_Order_Item_Fee('Any Name', -50);
+        $order->add_fee($points_fee);
+
+        // Commission should be on subtotal + shipping = 510, excluding the points fee
+        $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(51.0, $commission, 'Commission should be 10% of 510 (points fee excluded by order meta correlation)');
+    }
+
+    /**
+     * Test commission includes non-points fees correctly
+     */
+    public function testCommissionIncludesNonPointsFees() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+
+        $order = new WC_Order();
+        $order->set_subtotal(500);
+        $order->set_shipping_total(10);
+        $order->set_total_discount(0);
+
+        // Add a non-points negative fee (like a coupon discount applied as fee)
+        $coupon_fee = new WC_Order_Item_Fee('Coupon Discount', -50);
+        $order->add_fee($coupon_fee);
+
+        // Commission should be on subtotal + shipping - coupon = 510 - 50 = 460
+        $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(46.0, $commission, 'Commission should be 10% of 460 (non-points fee included in base)');
+    }
+
+    /**
+     * Test commission with both points fee and other fees
+     */
+    public function testCommissionWithMixedFees() {
+        update_option('intersoccer_coach_referral_code_commission_rate', 10);
+
+        $order = new WC_Order();
+        $order->set_subtotal(500);
+        $order->set_shipping_total(10);
+        $order->set_total_discount(0);
+        $order->update_meta_data('_intersoccer_points_redeemed', 50);
+
+        // Add points fee (should be excluded)
+        $points_fee = new WC_Order_Item_Fee('Referral Credits Discount', -50);
+        $order->add_fee($points_fee);
+
+        // Add non-points fee (should be included in calculation)
+        $coupon_fee = new WC_Order_Item_Fee('Birthday Discount', -30);
+        $order->add_fee($coupon_fee);
+
+        // Commission should be on subtotal + shipping - coupon = 510 - 30 = 480
+        // (points fee excluded per §9.7 oracle)
+        $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
+        $this->assertEquals(48.0, $commission, 'Commission should be 10% of 480 (points fee excluded, coupon fee included)');
     }
 }

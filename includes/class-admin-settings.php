@@ -2984,9 +2984,10 @@ class InterSoccer_Admin_Settings {
                 )";
                 break;
             case 'zero_balance':
+                // Issue #36: Use intersoccer_points_balance as the canonical balance key
                 $where_clause .= " AND ID NOT IN (
                     SELECT user_id FROM {$wpdb->usermeta}
-                    WHERE meta_key = 'intersoccer_customer_credits'
+                    WHERE meta_key = 'intersoccer_points_balance'
                     AND meta_value > 0
                 )";
                 break;
@@ -2996,10 +2997,11 @@ class InterSoccer_Admin_Settings {
 
         $allocated_count = 0;
         foreach ($users as $user) {
-            $current_credits = get_user_meta($user->ID, 'intersoccer_customer_credits', true) ?: 0;
+            // Issue #36: Read from and write only to intersoccer_points_balance
+            $current_credits = get_user_meta($user->ID, 'intersoccer_points_balance', true) ?: 0;
             $new_credits = $current_credits + $credit_amount;
 
-            update_user_meta($user->ID, 'intersoccer_customer_credits', $new_credits);
+            update_user_meta($user->ID, 'intersoccer_points_balance', $new_credits);
 
             // Log the adjustment
             $adjustments = get_user_meta($user->ID, 'intersoccer_credit_adjustments', true) ?: [];

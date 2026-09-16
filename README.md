@@ -21,22 +21,20 @@ A comprehensive WordPress plugin that implements an advanced coach referral prog
 ## Features
 
 ### 🎯 Core Referral System
-- **Coach Referral Program**: Coaches can generate unique referral links to earn commissions
-- **Multi-Tier Commission Structure**: First, second, and third-level referral commissions
-- **Customer Partnerships**: Long-term relationships between coaches and customers
+- **Share Link & Referral Code**: Customers and coaches get a unique personal share link with referral code
+- **Coach Commission**: Coaches earn commission on purchases made with their referral code (e.g., 10% — admin-configurable)
+- **Single-Code Rule**: One referral code per order — codes cannot be stacked
 - **Referral Code Tracking**: Automatic tracking and attribution of referrals
 
 ### 🎮 Gamification & Achievements
 - **Tier System**: Bronze, Silver, Gold, and Platinum coach tiers based on performance
 - **Achievement System**: Points and badges for various accomplishments
 - **Performance Tracking**: Monthly performance metrics and leaderboards
-- **Loyalty Bonuses**: Additional rewards for customer retention
 
-### 💰 Commission & Rewards
-- **Dynamic Commission Rates**: Configurable rates for different referral levels
-- **Loyalty Bonuses**: Bonuses for repeat customers and long-term partnerships
-- **Retention Bonuses**: Rewards for customers returning for multiple seasons
-- **Network Effect Bonuses**: Additional incentives for building referral networks
+### 💰 Commission & Loyalty Points
+- **Loyalty Points Earn**: Customers earn points based on spend (default example: CHF 10 spent = 1 point)
+- **Checkout-Only Redeem**: Customers redeem points at checkout only
+- **Admin-Configurable Rates**: All commission and points rates are configurable in WordPress admin
 
 ### 📊 Analytics & Reporting
 - **Real-time Dashboards**: Separate dashboards for coaches and customers
@@ -139,15 +137,20 @@ See [docs/guides/WPML-SETUP.md](docs/guides/WPML-SETUP.md) for detailed configur
 
 ## Configuration
 
-### Commission Settings
-- **First Level**: 15% (configurable)
-- **Second Level**: 7.5% (configurable)
-- **Third Level**: 5% (configurable)
+### Current Product Model (v1.9.11)
 
-### Loyalty Bonuses
-- **First Season**: 5 CHF
-- **Second Season**: 8 CHF
-- **Third Season**: 15 CHF
+This plugin implements a **share-link + loyalty points** system. Key behaviors:
+
+| Setting | Example Default | Notes |
+|---------|-----------------|-------|
+| Points earn rate | CHF 10 spent = 1 point | Admin-configurable |
+| Points redemption | Checkout only | Customers redeem accumulated points when placing an order |
+| Coach commission | 10% of referred purchases | Admin-configurable; applies when customer uses coach's referral code |
+| Referral code stacking | Not allowed | One referral code per order |
+
+All rates are **admin-configurable** in WordPress under InterSoccer > Referral Settings.
+
+> **Note:** Historical planning documents (e.g., `docs/technical/FINANCIAL-MODEL-ANALYSIS.md`, `docs/planning/`) contain multi-tier commission structures, season CHF bonuses, and gamification milestones that were analyzed but **not shipped** in the current product. Those docs are retained for historical/analysis purposes and are clearly marked as superseded.
 
 ### Tier Thresholds
 - **Silver**: 5 successful referrals
@@ -188,8 +191,8 @@ Displays the coach referral dashboard with:
 
 ### Customer Dashboard Widget
 - Customer referral statistics
-- Available credits display
-- Referral link sharing
+- Points balance display
+- Personal share link
 - Progress tracking
 
 ### Coach Dashboard Widget
@@ -304,6 +307,28 @@ php scripts/test-verification.php
 - Tests checkout flow, points redemption, user journeys
 - Run separately from PHPUnit suite
 
+**G-EARN / Cypress Earn-Smoke Requirements:**
+
+> ⚠️ **Important:** G-EARN and Cypress earn-smoke tests require `intersoccer_points_allocation_method=instant`.
+> See [#44](https://github.com/legit-ninja/customer-referral-system/issues/44) for details.
+
+The plugin supports two points allocation modes:
+- **instant** (default): Points allocated immediately on order processing/completion
+- **deferred**: Points queued for weekly cron batch processing
+
+In deferred mode, points are not allocated immediately when an order is completed — they are queued for weekly cron processing. This causes G-EARN and earn-smoke tests to fail because they expect points to be credited on order completion.
+
+**For sandbox/test environments:**
+1. Set `IS_SANDBOX=true` in your `deploy.local.sh`
+2. The deploy script will automatically set `intersoccer_points_allocation_method=instant` post-deploy
+
+**Manual one-shot fix:**
+```bash
+wp option update intersoccer_points_allocation_method instant
+```
+
+**Do NOT change production to instant** unless that is the desired production behavior — this setting only affects sandbox/local/legit.ninja test deployments.
+
 ### Localization
 - Text domain: `intersoccer-referral`
 - Translation ready with `load_plugin_textdomain()`
@@ -318,9 +343,34 @@ The plugin uses two user-meta keys for customer balances:
 | Meta Key | Purpose | Status |
 |----------|---------|--------|
 | `intersoccer_points_balance` | **Canonical.** The redeemable loyalty-points balance shown to customers and used at checkout. Managed by `InterSoccer_Points_Manager`. | Active |
-| `intersoccer_customer_credits` | Legacy/parallel key used by referral-credit flows (customer-to-customer transfers, referral bonuses via `InterSoccer_Referral_Handler`). Kept in sync with points in most paths but written separately by older credit logic. | Legacy — read for compatibility; new code should use `intersoccer_points_balance`. |
+| `intersoccer_customer_credits` | Legacy key formerly used by referral-credit flows. **Dual-write stopped as of issue #36.** Existing values remain for historical reference but are no longer updated. | Deprecated — read-only for migration purposes. |
 
-**Guideline:** When adjusting balances, use the **Referrals > Customer Points** admin page — it updates `intersoccer_points_balance` and logs changes. Direct writes to `intersoccer_customer_credits` should only occur in the existing referral-credit code paths.
+**Guideline:** When adjusting balances, use the **Referrals > Customer Points** admin page — it updates `intersoccer_points_balance` and logs changes.
+
+#### Migration from `intersoccer_customer_credits` (Issue #36)
+
+As of PR #43 (issue #36), all earn/redeem operations write exclusively to `intersoccer_points_balance`:
+
+1. **Referrer reward points** — now credited only to `intersoccer_points_balance`
+2. **New customer bonus points** — now credited only to `intersoccer_points_balance`
+3. **Gift points** — now uses `intersoccer_points_balance` instead of `intersoccer_customer_credits`
+
+**Legacy data migration:** Existing `intersoccer_customer_credits` values are **not automatically migrated**. If a customer's `intersoccer_points_balance` is 0 but `intersoccer_customer_credits` has a non-zero value, an admin can manually reconcile via the Customer Points page. For bulk migration, use WP-CLI or a custom script:
+
+```php
+// Example: One-time migration script (run via WP-CLI or custom admin action)
+$users = get_users(['meta_key' => 'intersoccer_customer_credits', 'meta_compare' => '>', 'meta_value' => 0]);
+foreach ($users as $user) {
+    $legacy = (int) get_user_meta($user->ID, 'intersoccer_customer_credits', true);
+    $current = (int) get_user_meta($user->ID, 'intersoccer_points_balance', true);
+    if ($legacy > 0 && $current === 0) {
+        update_user_meta($user->ID, 'intersoccer_points_balance', $legacy);
+        // Optionally log: intersoccer_referral_log("Migrated {$legacy} credits to points for user {$user->ID}");
+    }
+}
+```
+
+**Note:** The `intersoccer_customer_credits` key is retained read-only for backward compatibility with any external integrations. New code must not write to it.
 
 ### Import / Export Policy
 

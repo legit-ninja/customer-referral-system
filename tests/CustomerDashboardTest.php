@@ -189,6 +189,7 @@ class CustomerDashboardTest extends TestCase {
         $output = $this->renderCustomerDashboardFresh();
 
         $this->assertStringContainsString('social-share-buttons', $output);
+        // Button ID is share-link-btn (stable selector for Tess)
         $this->assertStringContainsString('share-link-btn', $output);
     }
 

@@ -19,98 +19,109 @@ class InterSoccer_Admin_Dashboard_Main {
             <h1 class="wp-heading-inline">InterSoccer Referral Dashboard</h1>
 
             <!-- Enhanced Stats Cards with Credit Data -->
+            <!-- Figure sources documented per issue #24 AC §1 -->
             <div class="intersoccer-stats-grid">
-                <div class="stat-card referrals-card">
+                <div class="stat-card referrals-card" data-source="intersoccer_referrals">
                     <div class="stat-icon">
                         <span class="dashicons dashicons-businessman"></span>
                     </div>
                     <div class="stat-content">
-                        <h3><?php echo number_format($stats['total_referrals']); ?></h3>
-                        <p>Total Referrals</p>
-                        <span class="stat-change positive">+<?php echo $stats['new_referrals_this_month']; ?> this month</span>
+                        <h3><?php echo esc_html(number_format($stats['total_referrals'])); ?></h3>
+                        <p><?php esc_html_e('Total Referrals', 'intersoccer-referral'); ?></p>
+                        <span class="stat-change positive">+<?php echo esc_html($stats['new_referrals_this_month']); ?> <?php esc_html_e('this month', 'intersoccer-referral'); ?></span>
                     </div>
                 </div>
 
-                <div class="stat-card commissions-card">
+                <div class="stat-card commissions-card" data-source="intersoccer_referrals" title="<?php esc_attr_e('Source: intersoccer_referrals (commission_amount + loyalty_bonus + retention_bonus)', 'intersoccer-referral'); ?>">
                     <div class="stat-icon">
                         <span class="dashicons dashicons-money-alt"></span>
                     </div>
                     <div class="stat-content">
-                        <h3><?php echo number_format($stats['total_commissions'], 0); ?> CHF</h3>
-                        <p>Coach Commissions</p>
-                        <span class="stat-change positive">+<?php echo number_format($stats['commissions_this_month'], 0); ?> CHF this month</span>
+                        <h3><?php echo esc_html(number_format($stats['total_commissions'], 0)); ?> <span class="unit-label">CHF</span></h3>
+                        <p><?php esc_html_e('Coach Commissions', 'intersoccer-referral'); ?></p>
+                        <span class="stat-change positive">+<?php echo esc_html(number_format($stats['commissions_this_month'], 0)); ?> CHF <?php esc_html_e('this month', 'intersoccer-referral'); ?></span>
                     </div>
                 </div>
 
-                <div class="stat-card credits-earned-card">
+                <div class="stat-card credits-earned-card" data-source="intersoccer_points_log" title="<?php esc_attr_e('Source: intersoccer_points_log (points_amount > 0)', 'intersoccer-referral'); ?>">
                     <div class="stat-icon">
                         <span class="dashicons dashicons-awards"></span>
                     </div>
                     <div class="stat-content">
-                        <h3><?php echo number_format($credit_stats['total_credits_earned'], 0); ?> CHF</h3>
-                        <p>Credits Earned by Customers</p>
-                        <span class="stat-change positive">+<?php echo number_format($credit_stats['credits_earned_this_month'], 0); ?> CHF this month</span>
+                        <h3><?php echo esc_html(number_format($credit_stats['total_credits_earned'], 0)); ?> <span class="unit-label">PTS</span></h3>
+                        <p><?php esc_html_e('Points Earned by Customers', 'intersoccer-referral'); ?></p>
+                        <span class="stat-change positive">+<?php echo esc_html(number_format($credit_stats['credits_earned_this_month'], 0)); ?> PTS <?php esc_html_e('this month', 'intersoccer-referral'); ?></span>
                     </div>
                 </div>
 
-                <div class="stat-card credits-used-card">
+                <div class="stat-card credits-used-card" data-source="intersoccer_points_log" title="<?php esc_attr_e('Source: intersoccer_points_log (points_amount < 0)', 'intersoccer-referral'); ?>">
                     <div class="stat-icon">
                         <span class="dashicons dashicons-cart"></span>
                     </div>
                     <div class="stat-content">
-                        <h3><?php echo number_format($credit_stats['total_credits_used'], 0); ?> CHF</h3>
-                        <p>Credits Redeemed</p>
-                        <span class="stat-change neutral"><?php echo number_format($credit_stats['redemption_rate'], 1); ?>% redemption rate</span>
+                        <h3><?php echo esc_html(number_format($credit_stats['total_credits_used'], 0)); ?> <span class="unit-label">PTS</span></h3>
+                        <p><?php esc_html_e('Points Redeemed', 'intersoccer-referral'); ?></p>
+                        <span class="stat-change neutral"><?php echo esc_html(number_format($credit_stats['redemption_rate'], 1)); ?>% <?php esc_html_e('redemption rate', 'intersoccer-referral'); ?></span>
                     </div>
                 </div>
 
-                <div class="stat-card active-credits-card">
+                <div class="stat-card active-credits-card" data-source="intersoccer_points_balance" title="<?php esc_attr_e('Source: usermeta.intersoccer_points_balance (canonical)', 'intersoccer-referral'); ?>">
                     <div class="stat-icon">
                         <span class="dashicons dashicons-vault"></span>
                     </div>
                     <div class="stat-content">
-                        <h3><?php echo number_format($credit_stats['active_credits'], 0); ?> CHF</h3>
-                        <p>Active Credits (Liability)</p>
+                        <h3><?php echo esc_html(number_format($credit_stats['active_credits'], 0)); ?> <span class="unit-label">PTS</span></h3>
+                        <p><?php esc_html_e('Active Points (Liability)', 'intersoccer-referral'); ?></p>
                         <span class="stat-change <?php echo $credit_stats['liability_change'] >= 0 ? 'neutral' : 'positive'; ?>">
-                            <?php echo ($credit_stats['liability_change'] >= 0 ? '+' : '') . number_format($credit_stats['liability_change'], 0); ?> CHF vs last month
+                            <?php echo ($credit_stats['liability_change'] >= 0 ? '+' : '') . esc_html(number_format($credit_stats['liability_change'], 0)); ?> PTS <?php esc_html_e('vs last month', 'intersoccer-referral'); ?>
                         </span>
                     </div>
                 </div>
 
-                <div class="stat-card conversion-card">
+                <div class="stat-card conversion-card" data-source="intersoccer_referrals">
                     <div class="stat-icon">
                         <span class="dashicons dashicons-chart-line"></span>
                     </div>
                     <div class="stat-content">
-                        <h3><?php echo number_format($stats['conversion_rate'], 1); ?>%</h3>
-                        <p>Referral Conversion Rate</p>
+                        <h3><?php echo esc_html(number_format($stats['conversion_rate'], 1)); ?>%</h3>
+                        <p><?php esc_html_e('Referral Conversion Rate', 'intersoccer-referral'); ?></p>
                         <span class="stat-change <?php echo $stats['conversion_change'] >= 0 ? 'positive' : 'negative'; ?>">
-                            <?php echo ($stats['conversion_change'] >= 0 ? '+' : '') . number_format($stats['conversion_change'], 1); ?>% vs last month
+                            <?php echo ($stats['conversion_change'] >= 0 ? '+' : '') . esc_html(number_format($stats['conversion_change'], 1)); ?>% <?php esc_html_e('vs last month', 'intersoccer-referral'); ?>
                         </span>
                     </div>
                 </div>
             </div>
 
             <!-- Financial Health Summary -->
+            <!-- Figure sources documented per issue #24 AC §1 -->
+            <?php 
+            $has_financial_data = ($financial_overview['monthly_program_cost'] > 0 || $financial_overview['total_program_benefit'] > 0);
+            ?>
             <div class="financial-health-section">
-                <h2>Financial Health Overview</h2>
+                <h2><?php esc_html_e('Financial Health Overview', 'intersoccer-referral'); ?></h2>
+                <?php if (!$has_financial_data): ?>
+                <div class="intersoccer-notice intersoccer-notice-empty" style="margin-bottom: 16px;">
+                    <span class="dashicons dashicons-info-outline"></span>
+                    <p><?php esc_html_e('Financial metrics will appear once the referral program has transactions.', 'intersoccer-referral'); ?></p>
+                </div>
+                <?php endif; ?>
                 <div class="financial-metrics">
-                    <div class="financial-metric">
-                        <span class="metric-label">Program Cost (Monthly)</span>
-                        <span class="metric-value"><?php echo number_format($financial_overview['monthly_program_cost'], 0); ?> CHF</span>
+                    <div class="financial-metric" title="<?php esc_attr_e('Source: intersoccer_referral_credits (this month)', 'intersoccer-referral'); ?>">
+                        <span class="metric-label"><?php esc_html_e('Program Cost (Monthly)', 'intersoccer-referral'); ?></span>
+                        <span class="metric-value"><?php echo esc_html(number_format($financial_overview['monthly_program_cost'], 0)); ?> <span class="unit-label">CHF</span></span>
                     </div>
-                    <div class="financial-metric">
-                        <span class="metric-label">Credit Utilization Rate</span>
-                        <span class="metric-value"><?php echo number_format($financial_overview['credit_utilization_rate'], 1); ?>%</span>
+                    <div class="financial-metric" title="<?php esc_attr_e('Computed: Points redeemed / Points earned × 100', 'intersoccer-referral'); ?>">
+                        <span class="metric-label"><?php esc_html_e('Points Utilization Rate', 'intersoccer-referral'); ?></span>
+                        <span class="metric-value"><?php echo esc_html(number_format($financial_overview['credit_utilization_rate'], 1)); ?>%</span>
                     </div>
-                    <div class="financial-metric">
-                        <span class="metric-label">Avg Credits per Customer</span>
-                        <span class="metric-value"><?php echo number_format($financial_overview['avg_credits_per_customer'], 0); ?> CHF</span>
+                    <div class="financial-metric" title="<?php esc_attr_e('Source: intersoccer_referral_credits total / unique customers', 'intersoccer-referral'); ?>">
+                        <span class="metric-label"><?php esc_html_e('Avg Commissions per Customer', 'intersoccer-referral'); ?></span>
+                        <span class="metric-value"><?php echo esc_html(number_format($financial_overview['avg_credits_per_customer'], 0)); ?> <span class="unit-label">CHF</span></span>
                     </div>
-                    <div class="financial-metric">
-                        <span class="metric-label">ROI (Revenue vs Cost)</span>
+                    <div class="financial-metric" title="<?php esc_attr_e('Computed: (Benefit - Cost) / Cost × 100', 'intersoccer-referral'); ?>">
+                        <span class="metric-label"><?php esc_html_e('ROI (Revenue vs Cost)', 'intersoccer-referral'); ?></span>
                         <span class="metric-value <?php echo $financial_overview['roi_percentage'] > 0 ? 'positive' : 'negative'; ?>">
-                            <?php echo number_format($financial_overview['roi_percentage'], 1); ?>%
+                            <?php echo esc_html(number_format($financial_overview['roi_percentage'], 1)); ?>%
                         </span>
                     </div>
                 </div>
@@ -358,10 +369,12 @@ class InterSoccer_Admin_Dashboard_Main {
         $redemption_rate = $total_credits_earned > 0 ? ($total_credits_used / $total_credits_earned) * 100 : 0;
 
         // Active referral credits outstanding (current balance in user meta — the true liability)
+        // Canonical source: intersoccer_points_balance (not legacy intersoccer_customer_credits)
+        // Per issue #24 AC §2: Points balance must match intersoccer_points_balance
         $active_credits = $wpdb->get_var("
             SELECT COALESCE(SUM(meta_value), 0)
             FROM {$wpdb->usermeta}
-            WHERE meta_key = 'intersoccer_customer_credits'
+            WHERE meta_key = 'intersoccer_points_balance'
               AND meta_value > 0
         ");
 
@@ -462,10 +475,12 @@ class InterSoccer_Admin_Dashboard_Main {
         $total_program_cost = $total_redeemed;
 
         // Active credits (current liability)
+        // Canonical source: intersoccer_points_balance (not legacy intersoccer_customer_credits)
+        // Per issue #24 AC §2: Points balance must match intersoccer_points_balance
         $active_credits = $wpdb->get_var("
             SELECT COALESCE(SUM(meta_value), 0)
             FROM {$wpdb->usermeta}
-            WHERE meta_key = 'intersoccer_customer_credits'
+            WHERE meta_key = 'intersoccer_points_balance'
             AND meta_value > 0
         ");
 

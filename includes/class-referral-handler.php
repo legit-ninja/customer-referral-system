@@ -413,7 +413,7 @@ class InterSoccer_Referral_Handler {
             wp_send_json_error( [ 'message' => 'Must be logged in' ] );
         }
 
-        $amount    = floatval( $_POST['gift_amount'] );
+        $amount    = (int) floatval( $_POST['gift_amount'] );
         $recipient = get_user_by( 'email', sanitize_email( $_POST['recipient_email'] ) );
         $sender_id = get_current_user_id();
 
@@ -422,33 +422,36 @@ class InterSoccer_Referral_Handler {
             wp_send_json_error( [ 'message' => 'Cannot gift credits to yourself' ] );
         }
 
-        $sender_credits = intersoccer_get_customer_credits( $sender_id );
+        // Use canonical intersoccer_points_balance (issue #36)
+        $sender_balance = (int) get_user_meta( $sender_id, 'intersoccer_points_balance', true );
 
-        if ( $recipient && $amount >= 50 && $amount <= $sender_credits ) {
+        if ( $recipient && $amount >= 50 && $amount <= $sender_balance ) {
             // Deduct from sender first, then add bonus — using a single atomic-style update.
             // The bonus (20 pts) is applied to the sender's balance AFTER the deduction so
             // the net cost to the sender is ($amount - 20), not $amount.
-            $sender_new = $sender_credits - $amount + 20; // net: sender pays ($amount - 20)
-            update_user_meta( $sender_id, 'intersoccer_customer_credits', $sender_new );
-            update_user_meta( $recipient->ID, 'intersoccer_customer_credits', intersoccer_get_customer_credits( $recipient->ID ) + $amount );
+            $sender_new = $sender_balance - $amount + 20; // net: sender pays ($amount - 20)
+            update_user_meta( $sender_id, 'intersoccer_points_balance', $sender_new );
+            $recipient_balance = (int) get_user_meta( $recipient->ID, 'intersoccer_points_balance', true );
+            update_user_meta( $recipient->ID, 'intersoccer_points_balance', $recipient_balance + $amount );
 
             if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-                intersoccer_referral_log( 'InterSoccer Referral: Credits gifted - ' . $amount . ' from user ' . $sender_id . ' to ' . $recipient->ID );
+                intersoccer_referral_log( 'InterSoccer Referral: Points gifted - ' . $amount . ' from user ' . $sender_id . ' to ' . $recipient->ID );
             }
 
-            wp_send_json_success( [ 'message' => 'Credits gifted! You earned a 20-point bonus!' ] );
+            wp_send_json_success( [ 'message' => 'Points gifted! You earned a 20-point bonus!' ] );
         }
 
         wp_send_json_error( [ 'message' => 'Invalid gift request' ] );
     }
 
     public function render_gift_form() {
-        $credits = (float) intersoccer_get_customer_credits();
-        $credits_escaped = esc_attr( number_format( $credits, 0, '.', '' ) );
+        // Use canonical intersoccer_points_balance (issue #36)
+        $points = (int) get_user_meta( get_current_user_id(), 'intersoccer_points_balance', true );
+        $points_escaped = esc_attr( number_format( $points, 0, '.', '' ) );
         ?>
         <form id="gift-credits" method="post">
-            <label>Gift Points (Max <?php echo esc_html( number_format( $credits, 0 ) ); ?>):</label>
-            <input type="number" name="gift_amount" max="<?php echo $credits_escaped; ?>" min="50" step="10">
+            <label>Gift Points (Max <?php echo esc_html( number_format( $points, 0 ) ); ?>):</label>
+            <input type="number" name="gift_amount" max="<?php echo $points_escaped; ?>" min="50" step="10">
             <label>To User (Email):</label>
             <input type="email" name="recipient_email">
             <button type="submit">Gift</button>
@@ -657,12 +660,11 @@ class InterSoccer_Referral_Handler {
 
         // Continue with existing referral processing...
         if ($referrer_reward_points > 0) {
-            // Credit referrer with Loyalty Points (intersoccer_points_balance) so they can redeem at checkout
+            // Credit referrer with Loyalty Points (intersoccer_points_balance) — canonical redeemable balance
             $current_points = (float) get_user_meta($referrer['id'], 'intersoccer_points_balance', true);
             update_user_meta($referrer['id'], 'intersoccer_points_balance', $current_points + $referrer_reward_points);
-            // Also keep customer_credits for backward compatibility / admin views
-            $customer_credits = (float) get_user_meta($referrer['id'], 'intersoccer_customer_credits', true);
-            update_user_meta($referrer['id'], 'intersoccer_customer_credits', $customer_credits + $referrer_reward_points);
+            // NOTE: Dual-write to intersoccer_customer_credits stopped per issue #36.
+            // Legacy reads should migrate to intersoccer_points_balance.
             $referrals_made = get_user_meta($referrer['id'], 'intersoccer_referrals_made', true) ?: [];
             $referrals_made[] = ['order_id' => $order_id, 'date' => current_time('mysql')];
             update_user_meta($referrer['id'], 'intersoccer_referrals_made', $referrals_made);
@@ -676,11 +678,10 @@ class InterSoccer_Referral_Handler {
 
         $customer_bonus_points = $eligibility['eligible'] ? intval(get_option('intersoccer_new_customer_credits', 50)) : 0;
         if ($customer_bonus_points > 0 && $customer_id) {
-            $customer_credits = (float) get_user_meta($customer_id, 'intersoccer_customer_credits', true);
-            update_user_meta($customer_id, 'intersoccer_customer_credits', $customer_credits + $customer_bonus_points);
-            // Also update points_balance for consistency with checkout redemption system
+            // Award bonus points to canonical intersoccer_points_balance only (issue #36)
             $customer_points = (int) get_user_meta($customer_id, 'intersoccer_points_balance', true);
             update_user_meta($customer_id, 'intersoccer_points_balance', $customer_points + $customer_bonus_points);
+            // NOTE: Dual-write to intersoccer_customer_credits stopped per issue #36.
         }
 
         // Apply first-time customer benefits (email notification)
@@ -1221,29 +1222,31 @@ class InterSoccer_Referral_Handler {
         <?php
     }
 
-    // Apply credit discount
+    // Apply credit discount (DISABLED — replaced by admin dashboard system using intersoccer_points_balance)
     public function apply_credit_discount($cart) {
         if (is_admin() && !defined('DOING_AJAX')) return;
         if (did_action('woocommerce_cart_calculate_fees') >= 2) return;
 
-        $apply_credits = isset($_POST['intersoccer_apply_credits']) ? floatval($_POST['intersoccer_apply_credits']) : 0;
+        $apply_credits = isset($_POST['intersoccer_apply_credits']) ? (int) floatval($_POST['intersoccer_apply_credits']) : 0;
         if ($apply_credits > 0 && is_user_logged_in()) {
             $user_id = get_current_user_id();
-            $credits = (float) get_user_meta($user_id, 'intersoccer_customer_credits', true);
-            $apply_credits = min($apply_credits, $credits, $cart->get_subtotal());
+            // Use canonical intersoccer_points_balance (issue #36)
+            $points = (int) get_user_meta($user_id, 'intersoccer_points_balance', true);
+            $apply_credits = min($apply_credits, $points, (int) $cart->get_subtotal());
             if ($apply_credits > 0) {
                 $cart->add_fee('Credits Applied', -$apply_credits, false);
             }
         }
     }
 
-    // Update order with credits used
+    // Update order with credits used (DISABLED — replaced by admin dashboard system using intersoccer_points_balance)
     public function update_order_with_credits($order_id) {
-        $apply_credits = isset($_POST['intersoccer_apply_credits']) ? floatval($_POST['intersoccer_apply_credits']) : 0;
+        $apply_credits = isset($_POST['intersoccer_apply_credits']) ? (int) floatval($_POST['intersoccer_apply_credits']) : 0;
         if ($apply_credits > 0 && is_user_logged_in()) {
             $user_id = get_current_user_id();
-            $credits = (float) get_user_meta($user_id, 'intersoccer_customer_credits', true);
-            update_user_meta($user_id, 'intersoccer_customer_credits', $credits - $apply_credits);
+            // Use canonical intersoccer_points_balance (issue #36)
+            $points = (int) get_user_meta($user_id, 'intersoccer_points_balance', true);
+            update_user_meta($user_id, 'intersoccer_points_balance', $points - $apply_credits);
             update_post_meta($order_id, '_intersoccer_credits_used', $apply_credits);
         }
     }

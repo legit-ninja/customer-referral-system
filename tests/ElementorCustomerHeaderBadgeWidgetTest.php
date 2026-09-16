@@ -5,6 +5,9 @@ use PHPUnit\Framework\TestCase;
 class ElementorCustomerHeaderBadgeWidgetTest extends TestCase {
 
     protected function setUp(): void {
+        if (!class_exists('Elementor\Widget_Base')) {
+            $this->markTestSkipped('Elementor not available in test environment');
+        }
         require_once __DIR__ . '/../includes/class-elementor-widgets.php';
 
         if (!function_exists('wp_get_current_user')) {
