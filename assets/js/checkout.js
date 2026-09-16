@@ -11,7 +11,7 @@
  * - Enable toggle: #intersoccer_use_points
  * - Details panel: .intersoccer-points-redemption .points-details
  * - Available balance: .points-available [data-field="points_balance"]
- * - Apply all CTA: .apply-all-points
+ * - Apply CTA: .apply-all-points (visible label: Apply; calculates on click)
  * - Custom input: #intersoccer_points_to_redeem [data-field="points_to_redeem"]
  * 
  * TC-REDEEM-02 (applied discount confirmation):
@@ -36,6 +36,9 @@
 (function ($) {
     'use strict';
 
+    // Ignore a stale update_points_session if Apply is clicked twice.
+    let pointsApplySeq = 0;
+
     function getConfig() {
         return (typeof window.intersoccer_checkout !== 'undefined' && window.intersoccer_checkout)
             ? window.intersoccer_checkout
@@ -59,7 +62,6 @@
         const $pointsPanel = $('.intersoccer-points-redemption .points-details');
         const $confirmation = $('.intersoccer-points-redemption .applied-amount');
         const $confirmationText = $('.intersoccer-points-redemption .applied-text');
-        const $applyAllBtn = $('.apply-all-points');
 
         /**
          * Sync points panel visibility with checkbox state.
@@ -143,6 +145,9 @@
          * AJAX: action=update_points_session
          */
         function applyPointsAmount(pointsAmount) {
+            const $liveInput = $('#intersoccer_points_to_redeem');
+            const $liveConfirmation = $('.intersoccer-points-redemption .applied-amount');
+            const $liveConfirmationText = $('.intersoccer-points-redemption .applied-text');
             const availablePoints = parseInt(config.available_points, 10) || 0;
             let amount = parseInt(pointsAmount, 10) || 0;
 
@@ -151,23 +156,24 @@
             if (amount > availablePoints) amount = availablePoints;
 
             // Get credit value (CHF per point) from input data attribute or default to 1.00
-            const creditValue = parseFloat($pointsInput.data('credit-value')) || 1.00;
+            const creditValue = parseFloat($liveInput.data('credit-value')) || 1.00;
             const discountAmount = (amount * creditValue).toFixed(2);
+            const seq = ++pointsApplySeq;
 
             // Update input value
-            $pointsInput.val(amount);
+            $liveInput.val(amount);
 
             // Update confirmation display (TC-REDEEM-02)
             // Uses .applied-amount + .applied-text (existing selectors)
             // Lane pattern: muted label ("Applied:") + strong/green amount only
             if (amount > 0) {
                 // Only the amount goes in .applied-text (green); label is separate muted element
-                $confirmationText.text(amount + ' pts = CHF ' + discountAmount);
-                $confirmation
+                $liveConfirmationText.text(amount + ' pts = CHF ' + discountAmount);
+                $liveConfirmation
                     .removeClass('applied-amount--hidden')
                     .addClass('applied-amount--visible');
             } else {
-                $confirmation
+                $liveConfirmation
                     .removeClass('applied-amount--visible')
                     .addClass('applied-amount--hidden');
             }
@@ -182,6 +188,9 @@
                     nonce: config.nonce
                 }
             }).done(function (response) {
+                if (seq !== pointsApplySeq) {
+                    return;
+                }
                 if (response && response.success) {
                     // Trigger WooCommerce checkout update to show discount in order summary
                     // Fee shows as "Referral Credits Discount" via apply_points_discount_as_fee
@@ -284,17 +293,14 @@
             }
         });
 
-        // Apply all points button
-        // Selector: .apply-all-points (existing class - DO NOT RENAME)
+        // Apply typed amount (class .apply-all-points is locked; label is Apply).
         $(document).off('click', '.apply-all-points').on('click', '.apply-all-points', function (e) {
             e.preventDefault();
-            const maxPoints = parseInt($(this).data('max-points'), 10) || parseInt(config.available_points, 10) || 0;
-            applyPointsAmount(maxPoints);
-        });
-
-        // Custom points input change
-        $(document).off('input', '#intersoccer_points_to_redeem').on('input', '#intersoccer_points_to_redeem', function () {
-            applyPointsAmount($(this).val());
+            const typed = parseInt($('#intersoccer_points_to_redeem').val(), 10);
+            if (!typed || typed <= 0) {
+                return;
+            }
+            applyPointsAmount(typed);
         });
 
         // Click handler for points toggle (belt-and-suspenders with change)
