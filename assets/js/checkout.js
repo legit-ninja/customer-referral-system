@@ -36,6 +36,11 @@
 (function ($) {
     'use strict';
 
+    // Survive WooCommerce checkout fragment replace so typing "500" does not
+    // apply "5" then lose the later request to an out-of-order update_checkout.
+    let pointsApplyTimer = null;
+    let pointsApplySeq = 0;
+
     function getConfig() {
         return (typeof window.intersoccer_checkout !== 'undefined' && window.intersoccer_checkout)
             ? window.intersoccer_checkout
@@ -60,6 +65,29 @@
         const $confirmation = $('.intersoccer-points-redemption .applied-amount');
         const $confirmationText = $('.intersoccer-points-redemption .applied-text');
         const $applyAllBtn = $('.apply-all-points');
+
+        /**
+         * Sync points panel visibility with checkbox state.
+         * Fixes race condition where WooCommerce updated_checkout replaces the
+         * order-review fragment, resetting the panel to --hidden while the
+         * checkbox remains checked.
+         */
+        function syncPointsPanelVisibility() {
+            const $toggle = $('#intersoccer_use_points');
+            const $panel = $('.intersoccer-points-redemption .points-details');
+            if (!$toggle.length || !$panel.length) {
+                return;
+            }
+            if ($toggle.is(':checked')) {
+                $panel
+                    .removeClass('points-details--hidden')
+                    .addClass('points-details--visible');
+            } else {
+                $panel
+                    .removeClass('points-details--visible')
+                    .addClass('points-details--hidden');
+            }
+        }
 
         function applyReferralCode() {
             const referralCode = ($referralInput.val() || '').trim();
@@ -120,6 +148,9 @@
          * AJAX: action=update_points_session
          */
         function applyPointsAmount(pointsAmount) {
+            const $liveInput = $('#intersoccer_points_to_redeem');
+            const $liveConfirmation = $('.intersoccer-points-redemption .applied-amount');
+            const $liveConfirmationText = $('.intersoccer-points-redemption .applied-text');
             const availablePoints = parseInt(config.available_points, 10) || 0;
             let amount = parseInt(pointsAmount, 10) || 0;
 
@@ -128,23 +159,24 @@
             if (amount > availablePoints) amount = availablePoints;
 
             // Get credit value (CHF per point) from input data attribute or default to 1.00
-            const creditValue = parseFloat($pointsInput.data('credit-value')) || 1.00;
+            const creditValue = parseFloat($liveInput.data('credit-value')) || 1.00;
             const discountAmount = (amount * creditValue).toFixed(2);
+            const seq = ++pointsApplySeq;
 
             // Update input value
-            $pointsInput.val(amount);
+            $liveInput.val(amount);
 
             // Update confirmation display (TC-REDEEM-02)
             // Uses .applied-amount + .applied-text (existing selectors)
             // Lane pattern: muted label ("Applied:") + strong/green amount only
             if (amount > 0) {
                 // Only the amount goes in .applied-text (green); label is separate muted element
-                $confirmationText.text(amount + ' pts = CHF ' + discountAmount);
-                $confirmation
+                $liveConfirmationText.text(amount + ' pts = CHF ' + discountAmount);
+                $liveConfirmation
                     .removeClass('applied-amount--hidden')
                     .addClass('applied-amount--visible');
             } else {
-                $confirmation
+                $liveConfirmation
                     .removeClass('applied-amount--visible')
                     .addClass('applied-amount--hidden');
             }
@@ -159,12 +191,22 @@
                     nonce: config.nonce
                 }
             }).done(function (response) {
+                if (seq !== pointsApplySeq) {
+                    return;
+                }
                 if (response && response.success) {
                     // Trigger WooCommerce checkout update to show discount in order summary
                     // Fee shows as "Referral Credits Discount" via apply_points_discount_as_fee
                     $(document.body).trigger('update_checkout');
                 }
             });
+        }
+
+        function applyPointsAmountDebounced(pointsAmount) {
+            clearTimeout(pointsApplyTimer);
+            pointsApplyTimer = setTimeout(function () {
+                applyPointsAmount(pointsAmount);
+            }, 400);
         }
 
         // Referral code state on load
@@ -257,6 +299,7 @@
                     .removeClass('points-details--visible')
                     .addClass('points-details--hidden');
                 // Clear points when unchecked
+                clearTimeout(pointsApplyTimer);
                 applyPointsAmount(0);
             }
         });
@@ -265,14 +308,23 @@
         // Selector: .apply-all-points (existing class - DO NOT RENAME)
         $(document).off('click', '.apply-all-points').on('click', '.apply-all-points', function (e) {
             e.preventDefault();
+            clearTimeout(pointsApplyTimer);
             const maxPoints = parseInt($(this).data('max-points'), 10) || parseInt(config.available_points, 10) || 0;
             applyPointsAmount(maxPoints);
         });
 
-        // Custom points input change
+        // Custom points input: debounce so typing 500 does not redeem 5 then 50.
         $(document).off('input', '#intersoccer_points_to_redeem').on('input', '#intersoccer_points_to_redeem', function () {
-            applyPointsAmount($(this).val());
+            applyPointsAmountDebounced($(this).val());
         });
+
+        // Click handler for points toggle (belt-and-suspenders with change)
+        $(document).off('click', '#intersoccer_use_points').on('click', '#intersoccer_use_points', function () {
+            syncPointsPanelVisibility();
+        });
+
+        // Sync panel visibility at end of init to handle post-fragment-replace state
+        syncPointsPanelVisibility();
     }
 
     $(document).ready(function () {

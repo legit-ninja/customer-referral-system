@@ -690,8 +690,9 @@ class InterSoccer_Referral_Admin_Dashboard {
             return;
         }
 
-        // Get cart total for max redeemable calculation
-        $cart_total = WC()->cart ? (float) WC()->cart->get_total('edit') : 0;
+        // Cap uses payable + the points fee already on the cart (1 point = 1 CHF).
+        $session_points = $this->get_session_points_to_redeem();
+        $cart_total = $this->get_points_cart_cap();
         $max_redeemable = min($available_credits, (int) floor($cart_total));
         
         // CHF per point (from admin settings, default 1.00)
@@ -705,13 +706,14 @@ class InterSoccer_Referral_Admin_Dashboard {
         
         // Toggle: #intersoccer_use_points (existing ID - DO NOT RENAME)
         echo '<div class="intersoccer-points-redemption-toggle">';
-        echo '<input type="checkbox" name="intersoccer_use_points" id="intersoccer_use_points">';
+        echo '<input type="checkbox" name="intersoccer_use_points" id="intersoccer_use_points"' . ($session_points > 0 ? ' checked' : '') . '>';
         echo '<label for="intersoccer_use_points">' . esc_html__('Use Loyalty Points', 'intersoccer-referral') . '</label>';
         echo '</div>';
 
         // Details panel: .intersoccer-points-redemption .points-details
         // Hidden by default via class, shown when checkbox is checked
-        echo '<div class="points-details points-details--hidden">';
+        $details_class = $session_points > 0 ? 'points-details points-details--visible' : 'points-details points-details--hidden';
+        echo '<div class="' . esc_attr($details_class) . '">';
         
         // Available balance: .points-available + data-field="points_balance"
         // Value from intersoccer_points_balance user meta
@@ -737,7 +739,9 @@ class InterSoccer_Referral_Admin_Dashboard {
         echo '<div class="custom-amount-input-group">';
         echo '<input type="number" name="intersoccer_points_to_redeem" id="intersoccer_points_to_redeem" ';
         echo 'data-field="points_to_redeem" data-credit-value="' . esc_attr($credit_value) . '" ';
-        echo 'min="0" max="' . esc_attr($max_redeemable) . '" step="1" placeholder="0">';
+        echo 'min="0" max="' . esc_attr($max_redeemable) . '" step="1" placeholder="0"';
+        echo $session_points > 0 ? ' value="' . esc_attr($session_points) . '"' : '';
+        echo '>';
         echo '<span class="points-unit">' . esc_html__('points', 'intersoccer-referral') . '</span>';
         echo '</div>';
         echo '</div>';
@@ -752,10 +756,14 @@ class InterSoccer_Referral_Admin_Dashboard {
         // Applied confirmation: .applied-amount + .applied-text (existing classes - DO NOT RENAME)
         // TC-REDEEM-02: Add id="intersoccer-points-applied" + data-field="points_applied_confirm"
         // Lane pattern: muted label ("Applied:") + strong/green amount only
-        echo '<div class="applied-amount applied-amount--hidden" id="intersoccer-points-applied" data-field="points_applied_confirm">';
+        $applied_class = $session_points > 0 ? 'applied-amount applied-amount--visible' : 'applied-amount applied-amount--hidden';
+        $applied_text = $session_points > 0
+            ? sprintf('%d pts = CHF %s', $session_points, number_format($session_points * $credit_value, 2))
+            : '';
+        echo '<div class="' . esc_attr($applied_class) . '" id="intersoccer-points-applied" data-field="points_applied_confirm">';
         echo '<span class="applied-icon">✓</span>';
         echo '<span class="applied-label">' . esc_html__('Applied:', 'intersoccer-referral') . '</span>';
-        echo '<span class="applied-text"></span>';
+        echo '<span class="applied-text">' . esc_html($applied_text) . '</span>';
         echo '</div>';
 
         echo '</div>'; // .points-details
@@ -787,9 +795,11 @@ class InterSoccer_Referral_Admin_Dashboard {
             return;
         }
 
-        // Validate against cart total (not against arbitrary 100-point limit)
-        $cart_total = WC()->cart->get_total('edit');
-        if ($points_to_redeem > $cart_total) {
+        // Compare to payable + the points fee already on the cart (1 point = 1 CHF).
+        // Do not use get_total('edit') alone — it is already reduced by the fee.
+        $cart_cap = $this->get_points_cart_cap();
+
+        if ($points_to_redeem > $cart_cap) {
             wc_add_notice(__('Points redemption cannot exceed your cart total.', 'intersoccer-referral'), 'error');
             return;
         }
@@ -853,6 +863,69 @@ class InterSoccer_Referral_Admin_Dashboard {
 
         $wc = WC();
         return (is_object($wc) && isset($wc->session) && $wc->session) ? $wc->session : null;
+    }
+
+    /**
+     * Session points to redeem, always an integer (1 point = 1 CHF).
+     *
+     * @return int
+     */
+    private function get_session_points_to_redeem() {
+        $session = $this->get_wc_session();
+        if (!$session) {
+            return 0;
+        }
+
+        return max(0, (int) $session->get('intersoccer_points_to_redeem', 0));
+    }
+
+    /**
+     * Points fee already included in the cart total (absolute CHF).
+     *
+     * @return float
+     */
+    private function get_applied_points_fee_amount() {
+        if (!function_exists('WC') || !WC()->cart || !method_exists(WC()->cart, 'get_fees')) {
+            return 0.0;
+        }
+
+        $fee_label = __('Referral Credits Discount', 'intersoccer-referral');
+        foreach ((array) WC()->cart->get_fees() as $fee) {
+            if (!is_object($fee) || !isset($fee->name) || $fee->name !== $fee_label) {
+                continue;
+            }
+            $amount = (isset($fee->total) && (float) $fee->total !== 0.0)
+                ? (float) $fee->total
+                : (isset($fee->amount) ? (float) $fee->amount : 0.0);
+            return abs($amount);
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * Max CHF/points redeemable: payable total plus the points fee already
+     * included in that total. Do not add session points when the fee is absent
+     * (that inflated the cap to 525+403).
+     *
+     * @return float
+     */
+    private function get_points_cart_cap() {
+        $payable = 0.0;
+        $subtotal = 0.0;
+        if (function_exists('WC') && WC()->cart) {
+            if (method_exists(WC()->cart, 'get_total')) {
+                $payable = (float) WC()->cart->get_total('edit');
+            }
+            if (method_exists(WC()->cart, 'get_subtotal')) {
+                $subtotal = (float) WC()->cart->get_subtotal();
+            }
+        }
+        if ($payable <= 0 && $subtotal > 0) {
+            $payable = $subtotal;
+        }
+
+        return max(0, $payable + $this->get_applied_points_fee_amount());
     }
 
     /**
@@ -1236,8 +1309,10 @@ class InterSoccer_Referral_Admin_Dashboard {
 
         intersoccer_referral_log("Points session update - User: $user_id, Requested: $points_to_redeem, Available: $available_points, Cart Total: $cart_total");
 
-        // Limit to available points AND cart total (no 100-point limit)
-        $points_to_redeem = min($points_to_redeem, $available_points, $cart_total);
+        $cart_cap = $this->get_points_cart_cap();
+
+        // Limit to available points AND cart cap (payable + points fee already applied)
+        $points_to_redeem = (int) min($points_to_redeem, (int) $available_points, (int) floor($cart_cap));
 
         // Update session
         WC()->session->set('intersoccer_points_to_redeem', $points_to_redeem);
@@ -1357,7 +1432,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         }
 
         // Apply points discount
-        $points_to_redeem = $session->get('intersoccer_points_to_redeem', 0);
+        $points_to_redeem = $this->get_session_points_to_redeem();
         $is_checkout_context = (function_exists('is_checkout') && is_checkout());
 
         if (!$is_checkout_context && wp_doing_ajax() && isset($_REQUEST['wc-ajax'])) {
