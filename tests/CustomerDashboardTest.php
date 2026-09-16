@@ -189,7 +189,7 @@ class CustomerDashboardTest extends TestCase {
         $output = $this->renderCustomerDashboardFresh();
 
         $this->assertStringContainsString('social-share-buttons', $output);
-        $this->assertStringContainsString('copy-link-btn', $output);
+        $this->assertStringContainsString('share-link-btn', $output);
     }
 
     public function testRenderCustomerDashboard_ResponsiveLayout() {
