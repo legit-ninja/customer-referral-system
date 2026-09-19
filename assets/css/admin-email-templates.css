@@ -1,0 +1,560 @@
+/**
+ * Admin Email Template Builder Styles
+ * 
+ * @package InterSoccer_Referral
+ * @since 1.9.17
+ */
+
+/* Base Layout */
+.intersoccer-email-templates {
+    max-width: 1400px;
+}
+
+.intersoccer-email-templates .back-link {
+    display: inline-block;
+    margin: 10px 0 20px;
+    text-decoration: none;
+    color: #2271b1;
+}
+
+.intersoccer-email-templates .back-link:hover {
+    color: #135e96;
+}
+
+/* Toolbar */
+.email-templates-toolbar {
+    margin-bottom: 20px;
+    padding: 12px 15px;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+}
+
+/* Empty State */
+.email-templates-empty {
+    text-align: center;
+    padding: 60px 20px;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    margin-top: 20px;
+}
+
+.email-templates-empty .empty-icon {
+    font-size: 48px;
+    margin-bottom: 15px;
+}
+
+.email-templates-empty h3 {
+    margin: 0 0 10px;
+    font-size: 18px;
+    color: #1d2327;
+}
+
+.email-templates-empty p {
+    margin: 0 0 20px;
+    color: #646970;
+}
+
+/* Template List Table */
+.email-templates-table {
+    margin-top: 20px;
+}
+
+.email-templates-table .column-name {
+    width: 25%;
+}
+
+.email-templates-table .column-subject {
+    width: 30%;
+}
+
+.email-templates-table .column-subject code {
+    font-size: 12px;
+    background: #f0f0f1;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.email-templates-table .column-status {
+    width: 10%;
+}
+
+.email-templates-table .column-updated {
+    width: 15%;
+}
+
+.email-templates-table .column-actions {
+    width: 20%;
+}
+
+.email-templates-table tr.archived {
+    opacity: 0.7;
+}
+
+.email-templates-table .default-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    background: #2271b1;
+    color: #fff;
+    border-radius: 3px;
+    vertical-align: middle;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 12px;
+}
+
+.status-badge.status-active {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.status-badge.status-archived {
+    background: #f3f4f6;
+    color: #6b7280;
+}
+
+.row-actions .sep {
+    color: #c3c4c7;
+    margin: 0 4px;
+}
+
+.row-actions .trash {
+    color: #b32d2e;
+}
+
+.row-actions .trash:hover {
+    color: #a00;
+}
+
+/* Editor Layout */
+.email-template-editor {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 24px;
+    margin-top: 20px;
+}
+
+@media (max-width: 1200px) {
+    .email-template-editor {
+        grid-template-columns: 1fr;
+    }
+}
+
+.editor-main {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 24px;
+}
+
+.editor-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Form Fields */
+.email-template-form .form-field {
+    margin-bottom: 24px;
+}
+
+.email-template-form label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.email-template-form input[type="text"],
+.email-template-form textarea {
+    width: 100%;
+    padding: 10px 12px;
+    font-size: 14px;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.email-template-form input[type="text"]:focus,
+.email-template-form textarea:focus {
+    border-color: #2271b1;
+    box-shadow: 0 0 0 1px #2271b1;
+    outline: none;
+}
+
+.email-template-form textarea {
+    font-family: Monaco, Consolas, "Andale Mono", "DejaVu Sans Mono", monospace;
+    line-height: 1.6;
+    resize: vertical;
+    min-height: 300px;
+}
+
+.email-template-form .description {
+    margin-top: 6px;
+    color: #646970;
+    font-size: 13px;
+}
+
+/* Input with Insert Button */
+.input-with-insert {
+    display: flex;
+    gap: 8px;
+}
+
+.input-with-insert input {
+    flex: 1;
+}
+
+/* Body Toolbar */
+.body-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    background: #f6f7f7;
+    border: 1px solid #c3c4c7;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+}
+
+.body-toolbar + textarea {
+    border-radius: 0 0 4px 4px;
+}
+
+.formatting-hint {
+    font-size: 12px;
+    color: #646970;
+}
+
+/* Merge Field Dropdown */
+.merge-field-dropdown {
+    position: relative;
+}
+
+.insert-merge-field-btn {
+    white-space: nowrap;
+}
+
+.merge-field-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    z-index: 100;
+    min-width: 280px;
+    margin: 4px 0 0;
+    padding: 0;
+    list-style: none;
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.merge-field-dropdown.open .merge-field-menu {
+    display: block;
+}
+
+.merge-field-menu li {
+    margin: 0;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.merge-field-menu li:last-child {
+    border-bottom: none;
+}
+
+.merge-field-menu a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    text-decoration: none;
+    color: #1d2327;
+}
+
+.merge-field-menu a:hover {
+    background: #f0f6fc;
+}
+
+.merge-field-menu code {
+    font-size: 12px;
+    background: #f0f0f1;
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: #1e40af;
+}
+
+.merge-field-menu span {
+    flex: 1;
+    color: #646970;
+    font-size: 13px;
+}
+
+.merge-field-menu .required {
+    font-size: 11px;
+    color: #b91c1c;
+    font-style: italic;
+}
+
+/* Form Actions */
+.form-actions {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding-top: 16px;
+    border-top: 1px solid #f0f0f1;
+}
+
+.save-status {
+    font-size: 13px;
+    color: #646970;
+}
+
+.save-status.success {
+    color: #00a32a;
+}
+
+.save-status.error {
+    color: #d63638;
+}
+
+/* Sidebar Sections */
+.sidebar-section {
+    background: #fff;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 16px;
+}
+
+.sidebar-section h3 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: #1d2327;
+}
+
+.sidebar-section .description {
+    margin: 0 0 12px;
+    font-size: 12px;
+    color: #646970;
+}
+
+/* Merge Fields Reference */
+.merge-field-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.merge-field-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f1;
+}
+
+.merge-field-item:last-child {
+    border-bottom: none;
+}
+
+.merge-field-item code.copy-field {
+    font-size: 11px;
+    background: #f0f0f1;
+    padding: 3px 8px;
+    border-radius: 3px;
+    color: #1e40af;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.merge-field-item code.copy-field:hover {
+    background: #e0e0e1;
+}
+
+.merge-field-item code.copy-field.copied {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.merge-field-item .field-label {
+    flex: 1;
+    font-size: 12px;
+    color: #1d2327;
+}
+
+.merge-field-item .required-star {
+    color: #b91c1c;
+    font-weight: bold;
+}
+
+.merge-field-item .field-sample {
+    width: 100%;
+    font-size: 11px;
+    color: #94a3b8;
+    font-style: italic;
+}
+
+.required-note {
+    margin: 12px 0 0;
+    padding: 8px 10px;
+    font-size: 11px;
+    background: #fef2f2;
+    border-radius: 4px;
+    color: #991b1b;
+}
+
+/* Preview Section */
+.preview-options,
+.preview-campaign-options,
+.test-send-options {
+    margin-bottom: 12px;
+}
+
+.preview-options label,
+.preview-campaign-options label,
+.test-send-options label {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    color: #646970;
+}
+
+.preview-options select,
+.preview-options input,
+.preview-campaign-options input,
+.test-send-options input {
+    width: 100%;
+    padding: 6px 10px;
+    font-size: 13px;
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.preview-campaign-options label {
+    margin-top: 10px;
+}
+
+.preview-campaign-options label:first-child {
+    margin-top: 0;
+}
+
+.preview-content {
+    margin-top: 16px;
+    padding: 16px;
+    background: #f6f7f7;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+}
+
+.preview-subject-wrap {
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #c3c4c7;
+}
+
+.preview-subject-wrap strong {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 11px;
+    text-transform: uppercase;
+    color: #646970;
+}
+
+#preview-subject {
+    display: block;
+    font-size: 14px;
+    color: #1d2327;
+}
+
+.preview-body-wrap {
+    font-size: 13px;
+    line-height: 1.6;
+    color: #1d2327;
+}
+
+#preview-body {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+#preview-body a {
+    color: #2271b1;
+}
+
+/* Test Send Section */
+.test-send-status {
+    margin-top: 12px;
+    padding: 10px;
+    font-size: 13px;
+    border-radius: 4px;
+    display: none;
+}
+
+.test-send-status.visible {
+    display: block;
+}
+
+.test-send-status.success {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.test-send-status.error {
+    background: #fef2f2;
+    color: #991b1b;
+}
+
+/* Loading States */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.button.loading::after {
+    content: "";
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-left: 8px;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Responsive */
+@media (max-width: 782px) {
+    .email-template-editor {
+        grid-template-columns: 1fr;
+    }
+
+    .input-with-insert {
+        flex-direction: column;
+    }
+
+    .body-toolbar {
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
+    }
+}
