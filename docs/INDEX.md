@@ -34,7 +34,7 @@ See also:
 User-facing guides and how-to documentation:
 
 - **[COACH-EMAIL-TEMPLATE-BUILDER.md](guides/COACH-EMAIL-TEMPLATE-BUILDER.md)** - Admin guide for coach email templates: six merge fields, friendly-coach tone, preview/test send (v1.9.20)
-- **[INTERN-TUTORIAL.md](guides/INTERN-TUTORIAL.md)** - Intern/support staff guide: understanding the system, adjusting points, and troubleshooting
+- **[ADMIN-TUTORIAL.md](guides/ADMIN-TUTORIAL.md)** - Admin/support staff guide: understanding the system, adjusting points, and troubleshooting
 - **[TEST-PLAN.md](guides/TEST-PLAN.md)** - Functional QA test plan covering all referral and points scenarios
 - **[TESTING.md](guides/TESTING.md)** - Developer testing guide (PHPUnit & Cypress setup)
 - **[TESTS-QUICK-START.md](guides/TESTS-QUICK-START.md)** - Quick start guide for running tests
@@ -75,7 +75,7 @@ Historical documentation and migration notes:
 - **`intersoccer_points_balance`** — canonical loyalty-points balance (redeemable at checkout)
 - **`intersoccer_customer_credits`** — legacy referral-credits key; kept in sync by older flows
 
-For details, see the README "Technical Notes" section or [INTERN-TUTORIAL.md](guides/INTERN-TUTORIAL.md).
+For details, see the README "Technical Notes" section or [ADMIN-TUTORIAL.md](guides/ADMIN-TUTORIAL.md).
 
 ### Import / Export
 - **CSV only** in this plugin — see [CSV-IMPORT-FORMATS.md](guides/CSV-IMPORT-FORMATS.md)
@@ -94,8 +94,8 @@ For details, see the README "Technical Notes" section or [INTERN-TUTORIAL.md](gu
 - Setup multilingual support: [WPML-SETUP.md](guides/WPML-SETUP.md)
 - Import coaches: [CSV-IMPORT-FORMATS.md](guides/CSV-IMPORT-FORMATS.md)
 
-### For Interns & Support Staff
-- Understanding the system and troubleshooting: [INTERN-TUTORIAL.md](guides/INTERN-TUTORIAL.md)
+### For Admins & Support Staff
+- Understanding the system and troubleshooting: [ADMIN-TUTORIAL.md](guides/ADMIN-TUTORIAL.md)
 
 ### For QA/Testing
 - Functional test plan: [TEST-PLAN.md](guides/TEST-PLAN.md)

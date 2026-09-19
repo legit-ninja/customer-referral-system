@@ -1,6 +1,6 @@
-# InterSoccer Referral System — Intern Tutorial
+# InterSoccer Referral System — Admin Tutorial
 
-**Audience:** InterSoccer interns and support staff  
+**Audience:** InterSoccer admins and support staff  
 **Purpose:** Understand how the referral and points system works, so you can troubleshoot issues and make manual adjustments when needed.  
 **Last Updated:** February 2026
 
@@ -39,7 +39,7 @@ The InterSoccer Customer Referral System is a WordPress plugin that runs on the 
 |--------|---------------------|
 | **Coach** | Did my referral code get used? Did I get my commission? Am I earning points from my partnership customers? |
 | **Customer** | How many points do I have? Can I use them for a discount? Did my referral link give my friend a discount? |
-| **Admin / Intern** | Adjusting points, troubleshooting missing commissions, overriding eligibility, marking commissions as paid |
+| **Admin / Support Staff** | Adjusting points, troubleshooting missing commissions, overriding eligibility, marking commissions as paid |
 
 ---
 
