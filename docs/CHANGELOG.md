@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.9.20 — 2026-09-19
+
+### Added
+- Coach email template builder with friendly coach tone (Epic #12)
+  - Admin CRUD: create, edit, duplicate, archive templates (#13)
+  - Six merge fields: coach_name, referral_code, campaign_name, share_url, campaign_end_date, cta_url (#14)
+  - Preview with sample resolved values + EU d-m-y date format (#15)
+  - Test send to admin address with same merge behavior as production (#15)
+  - Default friendly-coach starter templates (#16)
+- PHPUnit test coverage for merge field resolution and missing-data validation
+
+### Changed
+- Version bump to 1.9.20 (same-day second cut 2026-09-19)
+
+### Soft Approvals
+- Soft-OK: Insert six fields, preview+EU date, test send, missing-data fail, archive/restore, starter tone (#17)
+
+**Related:** Epic #12 Coach Email Template Builder; closes #13, #14, #15, #16
+
+---
+
 ## 1.9.19 — 2026-09-19
 
 ### Added

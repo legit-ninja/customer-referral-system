@@ -3,7 +3,7 @@
  * Plugin Name: InterSoccer Referral System
  * Plugin URI: https://intersoccer.ch
  * Description: Advanced coach referral program with gamification and comprehensive analytics.
- * Version: 1.9.19
+ * Version: 1.9.20
  * Author: Jeremy Lee
  * Author URI: https://github.com/legit-ninja
  * License: GPL-2.0+
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('INTERSOCCER_REFERRAL_VERSION', '1.9.19');
+define('INTERSOCCER_REFERRAL_VERSION', '1.9.20');
 define('INTERSOCCER_REFERRAL_PATH', plugin_dir_path(__FILE__));
 define('INTERSOCCER_REFERRAL_URL', plugin_dir_url(__FILE__));
 define('INTERSOCCER_REFERRAL_BASENAME', plugin_basename(__FILE__));
@@ -97,6 +97,8 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-dashboard.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-admin-dashboard.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-user-roles.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-utils.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-email-templates.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-coach-email-templates.php';
 intersoccer_referral_log('All plugin files loaded, Referral Handler exists: ' . class_exists('InterSoccer_Referral_Handler'));
 
 // Main plugin class
@@ -186,6 +188,9 @@ class InterSoccer_Referral_System {
 
         // Initialize audit logging system
         InterSoccer_Audit_Logger::get_instance();
+
+        // Initialize coach email templates
+        InterSoccer_Coach_Email_Templates::get_instance();
 
         // Add custom user roles
         $this->add_custom_roles();

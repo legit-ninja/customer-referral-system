@@ -1082,6 +1082,22 @@ if (!function_exists('sanitize_textarea_field')) {
     }
 }
 
+if (!function_exists('wp_kses_post')) {
+    function wp_kses_post($data) {
+        // Passthrough for tests - in production WP filters allowed HTML
+        return $data;
+    }
+}
+
+if (!function_exists('date_i18n')) {
+    function date_i18n($format, $timestamp = false, $gmt = false) {
+        if ($timestamp === false) {
+            $timestamp = time();
+        }
+        return date($format, $timestamp);
+    }
+}
+
 if (!function_exists('__')) {
     function __($text, $domain = 'default') {
         return $text;
@@ -1105,8 +1121,21 @@ if (!function_exists('home_url')) {
 }
 
 if (!function_exists('add_query_arg')) {
-    function add_query_arg($args, $url = '') {
-        $url = $url ?: home_url('/');
+    function add_query_arg($args, $value_or_url = '', $url = '') {
+        // Handle both calling conventions:
+        // add_query_arg($key, $value, $url) - single key/value
+        // add_query_arg($args_array, $url) - array of args
+        if (is_string($args)) {
+            // Single key/value mode: add_query_arg($key, $value, $url)
+            $key = $args;
+            $val = $value_or_url;
+            $url = $url ?: home_url('/');
+            $args = [$key => $val];
+        } else {
+            // Array mode: add_query_arg($args_array, $url)
+            $url = $value_or_url ?: home_url('/');
+        }
+
         $parsed = parse_url($url);
         $query = [];
         if (!empty($parsed['query'])) {

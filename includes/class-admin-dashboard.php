@@ -11,6 +11,7 @@ class InterSoccer_Referral_Admin_Dashboard {
     private $points;
     private $coach_assignments;
     private $coach_events;
+    private $email_templates;
 
     public function __construct() {
         // Initialize modular classes
@@ -32,6 +33,11 @@ class InterSoccer_Referral_Admin_Dashboard {
             $this->coach_events = new InterSoccer_Admin_Coach_Events();
         } else {
             $this->coach_events = null;
+        }
+
+        // Initialize email templates admin
+        if (class_exists('InterSoccer_Admin_Coach_Email_Templates')) {
+            $this->email_templates = new InterSoccer_Admin_Coach_Email_Templates();
         }
 
         add_action('admin_menu', [$this, 'add_admin_menus']);
@@ -171,6 +177,18 @@ class InterSoccer_Referral_Admin_Dashboard {
             );
         }
 
+        // Coach Email Templates submenu
+        if ($this->email_templates) {
+            add_submenu_page(
+                'intersoccer-referrals',
+                __('Email Templates', 'intersoccer-referral'),
+                __('Email Templates', 'intersoccer-referral'),
+                'manage_options',
+                'intersoccer-email-templates',
+                [$this->email_templates, 'render_page']
+            );
+        }
+
         add_submenu_page(
             'intersoccer-referrals',
             __('Settings', 'intersoccer-referral'),
@@ -273,6 +291,36 @@ class InterSoccer_Referral_Admin_Dashboard {
                     INTERSOCCER_REFERRAL_VERSION,
                     true
                 );
+            }
+            // Email templates page assets
+            if (strpos($hook, 'intersoccer-email-templates') !== false) {
+                wp_enqueue_style(
+                    'intersoccer-admin-email-templates-css',
+                    INTERSOCCER_REFERRAL_URL . 'assets/css/admin-email-templates.css',
+                    ['intersoccer-admin-css'],
+                    INTERSOCCER_REFERRAL_VERSION
+                );
+                wp_enqueue_script(
+                    'intersoccer-admin-email-templates-js',
+                    INTERSOCCER_REFERRAL_URL . 'assets/js/admin-email-templates.js',
+                    ['jquery'],
+                    INTERSOCCER_REFERRAL_VERSION,
+                    true
+                );
+                wp_localize_script('intersoccer-admin-email-templates-js', 'intersoccer_email_templates', [
+                    'i18n' => [
+                        'saving' => __('Saving...', 'intersoccer-referral'),
+                        'save_error' => __('Error saving template', 'intersoccer-referral'),
+                        'save_first' => __('Please save the template first', 'intersoccer-referral'),
+                        'confirm_archive' => __('Archive this template? You can restore it later.', 'intersoccer-referral'),
+                        'confirm_delete' => __('Permanently delete this template? This cannot be undone.', 'intersoccer-referral'),
+                        'duplicate_error' => __('Error duplicating template', 'intersoccer-referral'),
+                        'archive_error' => __('Error archiving template', 'intersoccer-referral'),
+                        'delete_error' => __('Error deleting template', 'intersoccer-referral'),
+                        'preview_error' => __('Error generating preview', 'intersoccer-referral'),
+                        'send_error' => __('Error sending test email', 'intersoccer-referral'),
+                    ],
+                ]);
             }
             wp_enqueue_script('intersoccer-admin-js', INTERSOCCER_REFERRAL_URL . 'assets/js/admin-dashboard.js', ['jquery', 'chart-js'], INTERSOCCER_REFERRAL_VERSION, true);
 
