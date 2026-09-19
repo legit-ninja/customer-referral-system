@@ -12,6 +12,7 @@
  * Requires PHP: 7.4
  * Text Domain: intersoccer-referral
  * Domain Path: /languages
+ * Update URI: https://plugins.underdogunlimited.com
  */
 
 // Exit if accessed directly
