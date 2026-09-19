@@ -17,7 +17,11 @@
 ### Soft Approvals
 - Soft-OK: Insert six fields, preview+EU date, test send, missing-data fail, archive/restore, starter tone (#17)
 
-**Related:** Epic #12 Coach Email Template Builder; closes #13, #14, #15, #16
+### Documentation
+- Coach email template builder field reference guide (closes #18)
+- INDEX.md and README.md updated with guide links
+
+**Related:** Epic #12 Coach Email Template Builder; closes #13, #14, #15, #16, #18
 
 ---
 

@@ -45,6 +45,7 @@ A comprehensive WordPress plugin that implements an advanced coach referral prog
 ### 🔧 Administration
 - **Admin Dashboard**: Complete system management interface
 - **Coach Management**: User role management and performance oversight
+- **Coach Email Template Builder**: Create referral campaign emails with six merge fields and friendly-coach tone — see [guide](docs/guides/COACH-EMAIL-TEMPLATE-BUILDER.md)
 - **Settings Configuration**: Flexible configuration of all system parameters
 - **Demo Data Tools**: Populate and clear demo data for testing
 
