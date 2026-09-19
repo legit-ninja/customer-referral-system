@@ -139,15 +139,15 @@ class InterSoccer_Admin_Coach_Email_Templates {
                                     </a>
                                     <span class="sep">|</span>
                                     <?php if ($template['status'] === 'archived') : ?>
-                                        <a href="#" class="restore-template" data-id="<?php echo esc_attr($template['id']); ?>">
+                                        <a href="#" class="restore-template" data-id="<?php echo esc_attr($template['id']); ?>" data-testid="restore-template-<?php echo esc_attr($template['id']); ?>">
                                             <?php esc_html_e('Restore', 'intersoccer-referral'); ?>
                                         </a>
                                         <span class="sep">|</span>
-                                        <a href="#" class="delete-template trash" data-id="<?php echo esc_attr($template['id']); ?>">
+                                        <a href="#" class="delete-template trash" data-id="<?php echo esc_attr($template['id']); ?>" data-testid="delete-template-<?php echo esc_attr($template['id']); ?>">
                                             <?php esc_html_e('Delete Permanently', 'intersoccer-referral'); ?>
                                         </a>
                                     <?php else : ?>
-                                        <a href="#" class="archive-template" data-id="<?php echo esc_attr($template['id']); ?>">
+                                        <a href="#" class="archive-template" data-id="<?php echo esc_attr($template['id']); ?>" data-testid="archive-template-<?php echo esc_attr($template['id']); ?>">
                                             <?php esc_html_e('Archive', 'intersoccer-referral'); ?>
                                         </a>
                                     <?php endif; ?>
@@ -208,28 +208,28 @@ class InterSoccer_Admin_Coach_Email_Templates {
 
         <div class="email-template-editor">
             <div class="editor-main">
-                <form id="email-template-form" class="email-template-form">
-                    <input type="hidden" name="id" value="<?php echo esc_attr($template_id); ?>">
+                <form id="email-template-form" class="email-template-form" data-testid="email-template-form">
+                    <input type="hidden" name="id" value="<?php echo esc_attr($template_id); ?>" data-testid="template-id">
                     <?php wp_nonce_field('intersoccer_admin_nonce', 'nonce'); ?>
 
                     <div class="form-field">
                         <label for="template-name"><?php esc_html_e('Template Name', 'intersoccer-referral'); ?></label>
-                        <input type="text" id="template-name" name="name" value="<?php echo $template ? esc_attr($template['name']) : ''; ?>" placeholder="<?php esc_attr_e('e.g., Welcome Campaign', 'intersoccer-referral'); ?>" required>
+                        <input type="text" id="template-name" name="name" value="<?php echo $template ? esc_attr($template['name']) : ''; ?>" placeholder="<?php esc_attr_e('e.g., Welcome Campaign', 'intersoccer-referral'); ?>" required data-testid="template-name">
                         <p class="description"><?php esc_html_e('Give your template a friendly name to find it later.', 'intersoccer-referral'); ?></p>
                     </div>
 
                     <div class="form-field">
                         <label for="template-subject"><?php esc_html_e('Email Subject', 'intersoccer-referral'); ?></label>
                         <div class="input-with-insert">
-                            <input type="text" id="template-subject" name="subject" value="<?php echo $template ? esc_attr($template['subject']) : ''; ?>" placeholder="<?php esc_attr_e('e.g., Hey {{coach_name}}, share the soccer love!', 'intersoccer-referral'); ?>" required>
+                            <input type="text" id="template-subject" name="subject" value="<?php echo $template ? esc_attr($template['subject']) : ''; ?>" placeholder="<?php esc_attr_e('e.g., Hey {{coach_name}}, share the soccer love!', 'intersoccer-referral'); ?>" required data-testid="template-subject">
                             <div class="merge-field-dropdown">
                                 <button type="button" class="button insert-merge-field-btn" data-target="template-subject">
                                     <?php esc_html_e('Insert Field', 'intersoccer-referral'); ?> ▾
                                 </button>
-                                <ul class="merge-field-menu" data-target="template-subject">
+                                <ul class="merge-field-menu" data-target="template-subject" data-testid="merge-field-menu-subject">
                                     <?php foreach ($merge_fields as $key => $field) : ?>
                                         <li>
-                                            <a href="#" data-field="<?php echo esc_attr($key); ?>" title="<?php echo esc_attr($field['description']); ?>">
+                                            <a href="#" data-field="<?php echo esc_attr($key); ?>" data-testid="insert-field-<?php echo esc_attr($key); ?>" title="<?php echo esc_attr($field['description']); ?>">
                                                 <code>{{<?php echo esc_html($key); ?>}}</code>
                                                 <span><?php echo esc_html($field['label']); ?></span>
                                                 <?php if ($field['required']) : ?>
@@ -250,10 +250,10 @@ class InterSoccer_Admin_Coach_Email_Templates {
                                 <button type="button" class="button insert-merge-field-btn" data-target="template-body">
                                     <?php esc_html_e('Insert Merge Field', 'intersoccer-referral'); ?> ▾
                                 </button>
-                                <ul class="merge-field-menu" data-target="template-body">
+                                <ul class="merge-field-menu" data-target="template-body" data-testid="merge-field-menu-body">
                                     <?php foreach ($merge_fields as $key => $field) : ?>
                                         <li>
-                                            <a href="#" data-field="<?php echo esc_attr($key); ?>" title="<?php echo esc_attr($field['description']); ?>">
+                                            <a href="#" data-field="<?php echo esc_attr($key); ?>" data-testid="insert-field-body-<?php echo esc_attr($key); ?>" title="<?php echo esc_attr($field['description']); ?>">
                                                 <code>{{<?php echo esc_html($key); ?>}}</code>
                                                 <span><?php echo esc_html($field['label']); ?></span>
                                                 <?php if ($field['required']) : ?>
@@ -268,7 +268,7 @@ class InterSoccer_Admin_Coach_Email_Templates {
                                 <?php esc_html_e('Use **bold** for emphasis, URLs auto-link', 'intersoccer-referral'); ?>
                             </span>
                         </div>
-                        <textarea id="template-body" name="body" rows="15" placeholder="<?php esc_attr_e("Hi {{coach_name}},\n\nWe're excited to have you on board! Your referral code is ready:\n\n**{{referral_code}}**\n\nShare your link: {{share_url}}\n\nCheers,\nThe Team", 'intersoccer-referral'); ?>" required><?php echo $template ? esc_textarea($template['body']) : ''; ?></textarea>
+                        <textarea id="template-body" name="body" rows="15" placeholder="<?php esc_attr_e("Hi {{coach_name}},\n\nWe're excited to have you on board! Your referral code is ready:\n\n**{{referral_code}}**\n\nShare your link: {{share_url}}\n\nCheers,\nThe Team", 'intersoccer-referral'); ?>" required data-testid="template-body"><?php echo $template ? esc_textarea($template['body']) : ''; ?></textarea>
                     </div>
 
                     <div class="form-actions">
@@ -330,16 +330,16 @@ class InterSoccer_Admin_Coach_Email_Templates {
                         <label for="preview-cta-url"><?php esc_html_e('CTA URL:', 'intersoccer-referral'); ?></label>
                         <input type="url" id="preview-cta-url" placeholder="https://intersoccer.ch/enroll">
                     </div>
-                    <button type="button" id="preview-btn" class="button">
+                    <button type="button" id="preview-btn" class="button" data-testid="preview-btn">
                         <?php esc_html_e('Update Preview', 'intersoccer-referral'); ?>
                     </button>
-                    <div class="preview-content">
+                    <div class="preview-content" data-testid="preview-content">
                         <div class="preview-subject-wrap">
                             <strong><?php esc_html_e('Subject:', 'intersoccer-referral'); ?></strong>
-                            <span id="preview-subject"></span>
+                            <span id="preview-subject" data-testid="preview-subject"></span>
                         </div>
                         <div class="preview-body-wrap">
-                            <div id="preview-body"></div>
+                            <div id="preview-body" data-testid="preview-body"></div>
                         </div>
                     </div>
                 </div>
@@ -352,10 +352,10 @@ class InterSoccer_Admin_Coach_Email_Templates {
                         <label for="test-email"><?php esc_html_e('Send to:', 'intersoccer-referral'); ?></label>
                         <input type="email" id="test-email" value="<?php echo esc_attr(get_option('admin_email')); ?>" placeholder="admin@example.com">
                     </div>
-                    <button type="button" id="test-send-btn" class="button">
+                    <button type="button" id="test-send-btn" class="button" data-testid="test-send-btn">
                         <?php esc_html_e('Send Test Email', 'intersoccer-referral'); ?>
                     </button>
-                    <div class="test-send-status"></div>
+                    <div class="test-send-status" data-testid="test-send-status"></div>
                 </div>
             </div>
         </div>

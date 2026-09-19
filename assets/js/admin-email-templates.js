@@ -396,13 +396,22 @@
 
                     if (response.success) {
                         $status.removeClass('error').addClass('success visible').text(response.data.message);
+                        $status.attr('data-status', 'success');
                     } else {
-                        $status.removeClass('success').addClass('error visible').text(response.data.message || intersoccer_email_templates.i18n.send_error);
+                        var errorMsg = response.data.message || intersoccer_email_templates.i18n.send_error;
+                        $status.removeClass('success').addClass('error visible').text(errorMsg);
+                        $status.attr('data-status', 'error');
+                        
+                        // Add data attributes for missing fields (for Tess's Soft-glance tests)
+                        if (response.data.missing_fields) {
+                            $status.attr('data-missing-fields', response.data.missing_fields.join(','));
+                        }
                     }
                 },
                 error: function() {
                     $btn.removeClass('loading').prop('disabled', false);
                     $status.removeClass('success').addClass('error visible').text(intersoccer_email_templates.i18n.send_error);
+                    $status.attr('data-status', 'error');
                 }
             });
         }
