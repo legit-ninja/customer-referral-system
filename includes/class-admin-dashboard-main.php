@@ -183,8 +183,8 @@ class InterSoccer_Admin_Dashboard_Main {
                                 <span class="breakdown-value"><?php echo number_format($chart_data['program_roi']['total_program_cost'], 0); ?> CHF</span>
                             </div>
                             <div class="roi-breakdown-item">
-                                <span class="breakdown-label">Active Credits:</span>
-                                <span class="breakdown-value"><?php echo number_format($chart_data['program_roi']['active_credits'], 0); ?> CHF</span>
+                                <span class="breakdown-label">Active Points (Liability):</span>
+                                <span class="breakdown-value"><?php echo number_format($chart_data['program_roi']['active_credits'], 0); ?> PTS</span>
                             </div>
                         </div>
                     </div>

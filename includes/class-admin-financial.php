@@ -64,6 +64,25 @@ class InterSoccer_Admin_Financial {
                 </div>
             </div>
 
+            <?php
+            $liability_mismatch = abs($financial_data['active_credits'] - $financial_data['points_balance']);
+            if ($liability_mismatch > 0):
+            ?>
+            <div class="intersoccer-notice intersoccer-notice-warning" style="margin-top: 16px;">
+                <span class="dashicons dashicons-warning"></span>
+                <p>
+                    <?php
+                    printf(
+                        esc_html__('Points balance mismatch: Active Points Liability (%1$s PTS) differs from Total Points Balance (%2$s PTS) by %3$s PTS. Consider running a balance synchronization.', 'intersoccer-referral'),
+                        number_format($financial_data['active_credits'], 0),
+                        number_format($financial_data['points_balance'], 0),
+                        number_format($liability_mismatch, 0)
+                    );
+                    ?>
+                </p>
+            </div>
+            <?php endif; ?>
+
             <div class="intersoccer-export-actions">
                 <button class="button button-primary" id="export-financial-report">
                     <span class="dashicons dashicons-download"></span>
