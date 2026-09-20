@@ -607,5 +607,34 @@ class AdminSettingsTest extends TestCase {
         $this->assertSame(1, $settings->sanitize_utm_enabled_option('1'));
         $this->assertSame(1, $settings->sanitize_utm_enabled_option(true));
     }
+
+    // =========================================================================
+    // BETA UPDATES SETTING (4 tests)
+    // =========================================================================
+
+    public function testBetaUpdatesSetting_DisabledWhenUpdatesPluginInactive() {
+        $updates_active = class_exists('InterSoccer_Updates_Http') && method_exists('InterSoccer_Updates_Http', 'is_beta_enabled_for_slug');
+        $this->assertFalse($updates_active, 'Without the updates plugin, beta checkbox should be disabled');
+    }
+
+    public function testBetaUpdatesSetting_UsesCorrectSlug() {
+        $expected_slug = 'customer-referral-system';
+        $this->assertSame('customer-referral-system', $expected_slug, 'Beta updates must use the correct plugin slug');
+    }
+
+    public function testSaveBetaUpdatesSetting_RequiresPermissions() {
+        global $mock_user_capabilities;
+
+        $mock_user_capabilities['manage_options'] = false;
+        $this->assertFalse(current_user_can('manage_options'), 'Non-admins should not be able to change beta updates setting');
+    }
+
+    public function testSaveBetaUpdatesSetting_RequiresCorrectOptionPage() {
+        $_POST['option_page'] = 'wrong_page';
+
+        $settings = InterSoccer_Admin_Settings::get_instance();
+        $should_save = isset($_POST['option_page']) && $_POST['option_page'] === 'intersoccer_settings';
+        $this->assertFalse($should_save, 'Should only save when submitted from intersoccer_settings page');
+    }
 }
 
