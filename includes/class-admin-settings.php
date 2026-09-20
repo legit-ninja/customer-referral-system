@@ -30,6 +30,7 @@ class InterSoccer_Admin_Settings {
         add_action('wp_ajax_get_points_statistics', [$this, 'get_points_statistics_ajax']);
         add_action('wp_ajax_get_points_ledger', [$this, 'get_points_ledger_ajax']);
         add_action('admin_init', [$this, 'register_settings']);
+        add_action('admin_init', [$this, 'save_beta_updates_setting']);
         add_action('show_user_profile', [$this, 'render_coach_referral_code_profile_field']);
         add_action('edit_user_profile', [$this, 'render_coach_referral_code_profile_field']);
         add_action('personal_options_update', [$this, 'save_coach_referral_code_profile_field']);
@@ -267,6 +268,33 @@ class InterSoccer_Admin_Settings {
                                 <p class="description">
                                     <?php esc_html_e('Disable to suppress plugin-generated emails (weekly reports, coach notifications, and referral code emails).', 'intersoccer-referral'); ?>
                                 </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php esc_html_e('Enable beta updates', 'intersoccer-referral'); ?></th>
+                            <td>
+                                <?php
+                                $updates_active = class_exists('InterSoccer_Updates_Http') && method_exists('InterSoccer_Updates_Http', 'is_beta_enabled_for_slug');
+                                $beta_enabled = false;
+                                if ($updates_active) {
+                                    $beta_enabled = InterSoccer_Updates_Http::is_beta_enabled_for_slug('customer-referral-system');
+                                }
+                                ?>
+                                <input type="hidden" name="intersoccer_beta_updates_enabled" value="0">
+                                <input type="checkbox"
+                                       name="intersoccer_beta_updates_enabled"
+                                       id="intersoccer_beta_updates_enabled"
+                                       value="1"
+                                       <?php checked($beta_enabled, true); ?>
+                                       <?php disabled(!$updates_active, true); ?>>
+                                <p class="description">
+                                    <?php esc_html_e('When enabled, this plugin prefers the latest beta or release candidate from Underdog Updates. When disabled, only stable releases are installed.', 'intersoccer-referral'); ?>
+                                </p>
+                                <?php if (!$updates_active): ?>
+                                <p class="description" style="color: #d63638; font-weight: 500;">
+                                    <?php esc_html_e('InterSoccer Updates plugin is required to enable beta updates.', 'intersoccer-referral'); ?>
+                                </p>
+                                <?php endif; ?>
                             </td>
                         </tr>
                     </table>
@@ -4191,6 +4219,34 @@ class InterSoccer_Admin_Settings {
      */
     public function sanitize_utm_enabled_option($value) {
         return (int) (!empty($value));
+    }
+
+    /**
+     * Save the beta updates setting via the InterSoccer Updates plugin API.
+     *
+     * Fires on admin_init. When the General Settings form is submitted
+     * and the Updates plugin is active, this persists the checkbox value.
+     *
+     * @return void
+     */
+    public function save_beta_updates_setting() {
+        if (!isset($_POST['option_page']) || $_POST['option_page'] !== 'intersoccer_settings') {
+            return;
+        }
+
+        if (!current_user_can('manage_options')) {
+            return;
+        }
+
+        if (!class_exists('InterSoccer_Updates_Http') || !method_exists('InterSoccer_Updates_Http', 'set_beta_enabled_for_slug')) {
+            return;
+        }
+
+        check_admin_referer('intersoccer_settings-options');
+
+        $enabled = isset($_POST['intersoccer_beta_updates_enabled']) && $_POST['intersoccer_beta_updates_enabled'] === '1';
+
+        InterSoccer_Updates_Http::set_beta_enabled_for_slug('customer-referral-system', $enabled);
     }
 
     /**
