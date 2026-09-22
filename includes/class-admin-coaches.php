@@ -274,9 +274,8 @@ class InterSoccer_Admin_Coaches {
             $recent_referrals = $this->get_coach_recent_referrals($coach->ID, 3);
             $active_partnerships = $this->get_coach_active_partnerships($coach->ID);
             $search_tokens = strtolower($coach->display_name . ' ' . $coach->user_email);
-
-            <?php
             $referral_code = InterSoccer_Referral_Handler::get_coach_referral_code($coach->ID);
+
             ?>
             <div class="coach-card" data-coach-id="<?php echo $coach->ID; ?>" data-search="<?php echo esc_attr($search_tokens); ?>">
                 <div class="coach-card-header">
