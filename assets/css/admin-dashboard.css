@@ -767,62 +767,40 @@
 
 /* Coach referral code display on card */
 .coach-card .coach-referral-code {
-    display: flex;
-    flex-wrap: nowrap;
+    display: inline-flex;
     align-items: center;
-    gap: 6px;
     margin: 8px 0;
-    padding: 6px 10px;
-    background: linear-gradient(135deg, #e8f4fc 0%, #e8e6ff 100%);
-    border-radius: 6px;
-    border: 1px solid #d4e5f7;
     max-width: 100%;
     overflow: hidden;
 }
 
 @media (min-width: 782px) {
     .coach-card .coach-referral-code {
-        gap: 10px;
         margin: 10px 0;
-        padding: 8px 14px;
-    }
-}
-
-.coach-card .coach-referral-code .referral-code-label {
-    flex-shrink: 0;
-    font-size: 11px;
-    color: #5a6a7a;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-}
-
-@media (min-width: 782px) {
-    .coach-card .coach-referral-code .referral-code-label {
-        font-size: 12px;
     }
 }
 
 .coach-card .coach-referral-code .referral-code-value {
-    flex-shrink: 1;
-    min-width: 0;
     font-family: 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
     font-size: 13px;
     font-weight: 600;
     color: #1e3a8a;
-    background: rgba(255, 255, 255, 0.7);
-    padding: 2px 8px;
-    border-radius: 4px;
+    background: linear-gradient(135deg, #e8f4fc 0%, #e8e6ff 100%);
+    border: 1px solid #d4e5f7;
+    padding: 6px 12px;
+    border-radius: 6px;
     letter-spacing: 0.5px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    cursor: text;
+    user-select: all;
 }
 
 @media (min-width: 782px) {
     .coach-card .coach-referral-code .referral-code-value {
         font-size: 14px;
-        padding: 3px 10px;
+        padding: 8px 14px;
     }
 }
 

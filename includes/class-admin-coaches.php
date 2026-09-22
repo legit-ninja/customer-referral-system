@@ -291,7 +291,6 @@ class InterSoccer_Admin_Coaches {
                         <p class="coach-email"><?php echo esc_html($coach->user_email); ?></p>
                         <?php if (!empty($referral_code)): ?>
                         <div class="coach-referral-code">
-                            <span class="referral-code-label"><?php esc_html_e('Referral Code:', 'intersoccer-referral'); ?></span>
                             <code class="referral-code-value"><?php echo esc_html($referral_code); ?></code>
                         </div>
                         <?php endif; ?>
