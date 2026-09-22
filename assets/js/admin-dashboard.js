@@ -17,6 +17,7 @@
         initCoachSearchFilter();
         initCoachImportModal();
         initCoachCardActions();
+        initAddCoachModal();
         initCoachEventsAdmin();
         initCoachAssignmentsAdmin();
     });
@@ -1220,7 +1221,125 @@
 
         $(document).on('click', '#add-new-coach-link', function(e) {
             e.preventDefault();
+            openAddCoachModal();
+        });
+
+        $(document).on('click', '#add-new-coach', function(e) {
+            e.preventDefault();
+            openAddCoachModal();
+        });
+    }
+
+    /**
+     * Open the Add New Coach modal.
+     */
+    function openAddCoachModal() {
+        const $modal = $('#add-coach-modal');
+        if ($modal.length === 0) {
             window.location.href = 'user-new.php';
+            return;
+        }
+        $modal.show();
+        $('#coach_first_name').focus();
+    }
+
+    /**
+     * Close the Add New Coach modal.
+     */
+    function closeAddCoachModal() {
+        const $modal = $('#add-coach-modal');
+        $modal.hide();
+        $('#add-coach-form')[0].reset();
+        $('#add-coach-message').hide().removeClass('success error').text('');
+    }
+
+    /**
+     * Initialize the Add New Coach modal handlers.
+     */
+    function initAddCoachModal() {
+        if (typeof intersoccer_admin === 'undefined') {
+            return;
+        }
+
+        const $modal = $('#add-coach-modal');
+        const $form = $('#add-coach-form');
+
+        if ($modal.length === 0 || $form.length === 0) {
+            return;
+        }
+
+        $modal.on('click', '.intersoccer-modal-overlay, .intersoccer-modal-close, .intersoccer-modal-cancel', function(e) {
+            e.preventDefault();
+            closeAddCoachModal();
+        });
+
+        $(document).on('keydown', function(e) {
+            if (e.key === 'Escape' && $modal.is(':visible')) {
+                closeAddCoachModal();
+            }
+        });
+
+        $form.on('submit', function(e) {
+            e.preventDefault();
+
+            const $submitBtn = $('#add-coach-submit');
+            const $message = $('#add-coach-message');
+            const originalText = $submitBtn.html();
+
+            const firstName = $('#coach_first_name').val().trim();
+            const lastName = $('#coach_last_name').val().trim();
+            const email = $('#coach_email').val().trim();
+
+            if (!firstName || !lastName || !email) {
+                $message.removeClass('success').addClass('error')
+                    .text('Please fill in all required fields.')
+                    .show();
+                return;
+            }
+
+            $submitBtn.prop('disabled', true).html('<span class="dashicons dashicons-update spin"></span> Adding...');
+            $message.hide();
+
+            $.ajax({
+                url: intersoccer_admin.ajax_url,
+                type: 'POST',
+                dataType: 'json',
+                data: {
+                    action: 'intersoccer_add_new_coach',
+                    nonce: $('#add_coach_nonce').val(),
+                    first_name: firstName,
+                    last_name: lastName,
+                    email: email,
+                    referral_code: $('#coach_referral_code').val().trim(),
+                    send_notification: $('#coach_send_notification').is(':checked') ? '1' : '0'
+                }
+            }).done(function(response) {
+                if (response && response.success) {
+                    $message.removeClass('error').addClass('success')
+                        .text(response.data.message || 'Coach added successfully!')
+                        .show();
+                    
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 1500);
+                } else {
+                    const errorMsg = response && response.data && response.data.message
+                        ? response.data.message
+                        : 'An error occurred. Please try again.';
+                    $message.removeClass('success').addClass('error')
+                        .text(errorMsg)
+                        .show();
+                    $submitBtn.prop('disabled', false).html(originalText);
+                }
+            }).fail(function(xhr) {
+                const errorMsg = xhr && xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message
+                    ? xhr.responseJSON.data.message
+                    : 'Network error. Please try again.';
+                $message.removeClass('success').addClass('error')
+                    .text(errorMsg)
+                    .show();
+                $submitBtn.prop('disabled', false).html(originalText);
+            });
         });
     }
 

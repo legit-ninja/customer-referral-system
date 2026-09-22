@@ -126,6 +126,106 @@ class InterSoccer_Admin_Coaches {
                 </div>
             </div>
 
+            <!-- Add New Coach Modal -->
+            <div id="add-coach-modal" class="intersoccer-modal" style="display: none;">
+                <div class="intersoccer-modal-overlay"></div>
+                <div class="intersoccer-modal-content">
+                    <div class="intersoccer-modal-header">
+                        <h2><?php esc_html_e('Add New Coach', 'intersoccer-referral'); ?></h2>
+                        <button type="button" class="intersoccer-modal-close" aria-label="<?php esc_attr_e('Close', 'intersoccer-referral'); ?>">
+                            <span class="dashicons dashicons-no-alt"></span>
+                        </button>
+                    </div>
+                    <form id="add-coach-form" method="post">
+                        <?php wp_nonce_field('add_new_coach', 'add_coach_nonce'); ?>
+                        
+                        <div class="intersoccer-modal-body">
+                            <table class="form-table" role="presentation">
+                                <tbody>
+                                    <tr>
+                                        <th scope="row">
+                                            <label for="coach_first_name"><?php esc_html_e('First Name', 'intersoccer-referral'); ?> <span class="required">*</span></label>
+                                        </th>
+                                        <td>
+                                            <input type="text" 
+                                                   id="coach_first_name" 
+                                                   name="first_name" 
+                                                   class="regular-text"
+                                                   required>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">
+                                            <label for="coach_last_name"><?php esc_html_e('Last Name', 'intersoccer-referral'); ?> <span class="required">*</span></label>
+                                        </th>
+                                        <td>
+                                            <input type="text" 
+                                                   id="coach_last_name" 
+                                                   name="last_name" 
+                                                   class="regular-text"
+                                                   required>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">
+                                            <label for="coach_email"><?php esc_html_e('Email', 'intersoccer-referral'); ?> <span class="required">*</span></label>
+                                        </th>
+                                        <td>
+                                            <input type="email" 
+                                                   id="coach_email" 
+                                                   name="email" 
+                                                   class="regular-text"
+                                                   required>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">
+                                            <label for="coach_referral_code"><?php esc_html_e('Referral Code', 'intersoccer-referral'); ?></label>
+                                        </th>
+                                        <td>
+                                            <input type="text" 
+                                                   id="coach_referral_code" 
+                                                   name="referral_code" 
+                                                   class="regular-text"
+                                                   placeholder="<?php esc_attr_e('Leave blank to auto-generate', 'intersoccer-referral'); ?>">
+                                            <p class="description">
+                                                <?php esc_html_e('Optional. If left blank, a unique code will be generated automatically.', 'intersoccer-referral'); ?>
+                                            </p>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th scope="row">
+                                            <label for="coach_send_notification"><?php esc_html_e('Send Welcome Email', 'intersoccer-referral'); ?></label>
+                                        </th>
+                                        <td>
+                                            <label>
+                                                <input type="checkbox" 
+                                                       id="coach_send_notification" 
+                                                       name="send_notification" 
+                                                       value="1"
+                                                       checked>
+                                                <?php esc_html_e('Send welcome email with login credentials', 'intersoccer-referral'); ?>
+                                            </label>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div class="intersoccer-modal-footer">
+                            <div id="add-coach-message" style="display: none;"></div>
+                            <button type="button" class="button button-secondary intersoccer-modal-cancel">
+                                <?php esc_html_e('Cancel', 'intersoccer-referral'); ?>
+                            </button>
+                            <button type="submit" id="add-coach-submit" class="button button-primary">
+                                <span class="dashicons dashicons-plus-alt2"></span>
+                                <?php esc_html_e('Add Coach', 'intersoccer-referral'); ?>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
             <div class="intersoccer-coaches-search">
                 <label for="coach-search-input" class="screen-reader-text">Search coaches</label>
                 <span class="dashicons dashicons-search"></span>
@@ -175,6 +275,8 @@ class InterSoccer_Admin_Coaches {
             $active_partnerships = $this->get_coach_active_partnerships($coach->ID);
             $search_tokens = strtolower($coach->display_name . ' ' . $coach->user_email);
 
+            <?php
+            $referral_code = InterSoccer_Referral_Handler::get_coach_referral_code($coach->ID);
             ?>
             <div class="coach-card" data-coach-id="<?php echo $coach->ID; ?>" data-search="<?php echo esc_attr($search_tokens); ?>">
                 <div class="coach-card-header">
@@ -188,6 +290,12 @@ class InterSoccer_Admin_Coaches {
                     <div class="coach-info">
                         <h3><?php echo esc_html($coach->display_name); ?></h3>
                         <p class="coach-email"><?php echo esc_html($coach->user_email); ?></p>
+                        <?php if (!empty($referral_code)): ?>
+                        <div class="coach-referral-code">
+                            <span class="referral-code-label"><?php esc_html_e('Referral Code:', 'intersoccer-referral'); ?></span>
+                            <code class="referral-code-value"><?php echo esc_html($referral_code); ?></code>
+                        </div>
+                        <?php endif; ?>
                         <div class="coach-tier-badge <?php echo strtolower($tier); ?>">
                             <?php echo esc_html($tier); ?>
                         </div>

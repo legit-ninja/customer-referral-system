@@ -75,6 +75,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         add_action('wp_ajax_intersoccer_filter_coach_referrals', [$this->referrals, 'ajax_filter_coach_referrals']);
         add_action('wp_ajax_intersoccer_get_coach_monthly_report', [$this->referrals, 'ajax_get_coach_monthly_report']);
         add_action('admin_post_intersoccer_delete_referral', [$this->referrals, 'handle_delete_referral']);
+        add_action('wp_ajax_intersoccer_add_new_coach', [$this, 'ajax_add_new_coach']);
 
         // Debug action to test AJAX is working
         add_action('wp_ajax_test_ajax_connection', [$this, 'test_ajax_connection']);
@@ -505,6 +506,94 @@ class InterSoccer_Referral_Admin_Dashboard {
         }
 
         wp_send_json_success(['message' => 'Coach deactivated']);
+    }
+
+    /**
+     * AJAX handler: Add a new coach via the modal form.
+     */
+    public function ajax_add_new_coach() {
+        if (!check_ajax_referer('add_new_coach', 'nonce', false)) {
+            wp_send_json_error(['message' => __('Security check failed. Please refresh and try again.', 'intersoccer-referral')]);
+        }
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => __('You do not have permission to add coaches.', 'intersoccer-referral')]);
+        }
+
+        $first_name = isset($_POST['first_name']) ? sanitize_text_field(wp_unslash($_POST['first_name'])) : '';
+        $last_name = isset($_POST['last_name']) ? sanitize_text_field(wp_unslash($_POST['last_name'])) : '';
+        $email = isset($_POST['email']) ? sanitize_email(wp_unslash($_POST['email'])) : '';
+        $referral_code = isset($_POST['referral_code']) ? sanitize_text_field(wp_unslash($_POST['referral_code'])) : '';
+        $send_notification = isset($_POST['send_notification']) && $_POST['send_notification'] === '1';
+
+        if (empty($first_name) || empty($last_name) || empty($email)) {
+            wp_send_json_error(['message' => __('First name, last name, and email are required.', 'intersoccer-referral')]);
+        }
+
+        if (!is_email($email)) {
+            wp_send_json_error(['message' => __('Please enter a valid email address.', 'intersoccer-referral')]);
+        }
+
+        if (email_exists($email)) {
+            wp_send_json_error(['message' => __('A user with this email already exists.', 'intersoccer-referral')]);
+        }
+
+        $normalized_code = '';
+        if (!empty($referral_code)) {
+            $normalized_code = InterSoccer_Referral_Handler::normalize_coach_referral_code($referral_code);
+            if (!empty($normalized_code)) {
+                $conflict_user = InterSoccer_Referral_Handler::find_user_id_by_coach_referral_code($normalized_code);
+                if ($conflict_user) {
+                    wp_send_json_error(['message' => __('This referral code is already in use by another coach.', 'intersoccer-referral')]);
+                }
+            }
+        }
+
+        $username = sanitize_user(strtolower($first_name . '.' . $last_name), true);
+        $base_username = $username;
+        $counter = 1;
+        while (username_exists($username)) {
+            $username = $base_username . $counter;
+            $counter++;
+        }
+
+        $password = wp_generate_password(12, true, true);
+
+        $user_id = wp_insert_user([
+            'user_login' => $username,
+            'user_email' => $email,
+            'user_pass' => $password,
+            'first_name' => $first_name,
+            'last_name' => $last_name,
+            'display_name' => $first_name . ' ' . $last_name,
+            'role' => 'coach',
+        ]);
+
+        if (is_wp_error($user_id)) {
+            wp_send_json_error(['message' => $user_id->get_error_message()]);
+        }
+
+        if (!empty($normalized_code)) {
+            update_user_meta($user_id, InterSoccer_Referral_Handler::COACH_REFERRAL_CODE_META, $normalized_code);
+        } else {
+            InterSoccer_Referral_Handler::ensure_coach_referral_code($user_id);
+        }
+
+        if ($send_notification) {
+            wp_new_user_notification($user_id, null, 'user');
+        }
+
+        $final_code = InterSoccer_Referral_Handler::get_coach_referral_code($user_id);
+
+        wp_send_json_success([
+            'message' => sprintf(
+                __('Coach "%s" created successfully with referral code: %s', 'intersoccer-referral'),
+                $first_name . ' ' . $last_name,
+                $final_code
+            ),
+            'user_id' => $user_id,
+            'referral_code' => $final_code,
+        ]);
     }
 
     /**
