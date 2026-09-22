@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.9.21 — 2026-09-22
+
+### Added
+- Update URI header for Underdog-hosted plugin updates (`https://plugins.underdogunlimited.com`)
+- `publish-plugin.yml` workflow for Underdog staging/production deployment (#60)
+- Admin settings checkbox to enable beta/RC updates via InterSoccer Updates (#63)
+
+### Changed
+- Version bump to 1.9.21 (unreleased customer release cut 2026-09-22)
+- Intern Tutorial → Admin Tutorial in user-facing documentation
+
+### Fixed
+- Publish workflow: pass `target_environment` via `with:` instead of `environment:` on a `uses:` job (#62)
+
+### Soft Approvals
+- Soft-OK: Tip C Update URI → plugins.underdogunlimited.com
+- Soft-OK: Intern Tutorial → Admin Tutorial (accessibility docs)
+
+**Related:** #60, #62, #63; Update URI + intern→admin docs after 1.9.20
+
+---
+
 ## 1.9.20 — 2026-09-19
 
 ### Added
