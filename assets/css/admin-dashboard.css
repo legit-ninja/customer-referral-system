@@ -768,6 +768,7 @@
 /* Coach referral code display on card */
 .coach-card .coach-referral-code {
     display: flex;
+    flex-wrap: nowrap;
     align-items: center;
     gap: 6px;
     margin: 8px 0;
@@ -775,6 +776,8 @@
     background: linear-gradient(135deg, #e8f4fc 0%, #e8e6ff 100%);
     border-radius: 6px;
     border: 1px solid #d4e5f7;
+    max-width: 100%;
+    overflow: hidden;
 }
 
 @media (min-width: 782px) {
@@ -786,6 +789,7 @@
 }
 
 .coach-card .coach-referral-code .referral-code-label {
+    flex-shrink: 0;
     font-size: 11px;
     color: #5a6a7a;
     font-weight: 500;
@@ -800,6 +804,8 @@
 }
 
 .coach-card .coach-referral-code .referral-code-value {
+    flex-shrink: 1;
+    min-width: 0;
     font-family: 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
     font-size: 13px;
     font-weight: 600;
@@ -808,6 +814,9 @@
     padding: 2px 8px;
     border-radius: 4px;
     letter-spacing: 0.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 @media (min-width: 782px) {
@@ -815,6 +824,13 @@
         font-size: 14px;
         padding: 3px 10px;
     }
+}
+
+/* Ensure coach-tier-badge stays in document flow (overrides absolute positioning from other stylesheets) */
+.coach-card .coach-card-header .coach-info .coach-tier-badge {
+    position: static;
+    display: inline-block;
+    margin-top: 8px;
 }
 
 /* Add New Coach Modal */
