@@ -574,6 +574,189 @@
     letter-spacing: 0.5px;
 }
 
+/* Coach card stat-item alignment (Referrals > Coaches page) */
+.coach-card .coach-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 15px;
+    margin: 15px 0;
+}
+
+.coach-card .coach-stats .stat-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 8px 4px;
+}
+
+.coach-card .coach-stats .stat-label {
+    display: block;
+    font-size: 11px;
+    color: #7f8c8d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.coach-card .coach-stats .stat-value {
+    display: block;
+    font-size: 18px;
+    font-weight: 700;
+    color: #2c3e50;
+    line-height: 1.2;
+}
+
+/* Coach referral code display on card */
+.coach-card .coach-referral-code {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 0;
+    padding: 6px 10px;
+    background: linear-gradient(135deg, #e8f4fc 0%, #e8e6ff 100%);
+    border-radius: 6px;
+    border: 1px solid #d4e5f7;
+}
+
+.coach-card .coach-referral-code .referral-code-label {
+    font-size: 11px;
+    color: #5a6a7a;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.coach-card .coach-referral-code .referral-code-value {
+    font-family: 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: #1e3a8a;
+    background: rgba(255, 255, 255, 0.7);
+    padding: 2px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+}
+
+/* Add New Coach Modal */
+.intersoccer-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.intersoccer-modal-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.intersoccer-modal-content {
+    position: relative;
+    background: white;
+    border-radius: 8px;
+    max-width: 560px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.intersoccer-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 24px;
+    border-bottom: 1px solid #e1e5e9;
+}
+
+.intersoccer-modal-header h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: #1d2327;
+}
+
+.intersoccer-modal-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    color: #787c82;
+    border-radius: 4px;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.intersoccer-modal-close:hover {
+    background: #f0f0f1;
+    color: #1d2327;
+}
+
+.intersoccer-modal-close .dashicons {
+    font-size: 24px;
+    width: 24px;
+    height: 24px;
+}
+
+.intersoccer-modal-body {
+    padding: 24px;
+}
+
+.intersoccer-modal-body .form-table th {
+    width: 140px;
+    padding: 12px 10px 12px 0;
+    vertical-align: top;
+}
+
+.intersoccer-modal-body .form-table td {
+    padding: 12px 0;
+}
+
+.intersoccer-modal-body .required {
+    color: #d63638;
+}
+
+.intersoccer-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 24px;
+    border-top: 1px solid #e1e5e9;
+    background: #f6f7f7;
+    border-radius: 0 0 8px 8px;
+}
+
+#add-coach-message {
+    flex: 1;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+#add-coach-message.success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+#add-coach-message.error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
 .coach-actions {
     display: flex;
     gap: 10px;
