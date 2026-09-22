@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.9.22 — 2026-09-22
+
+### Changed
+- Version bump to 1.9.22 (customer release cut for UU channel=release publish)
+- Includes Coaches UI work merged in #65–#68
+
+**Related:** #65, #66, #67, #68; Coaches desktop layout and referral code UI fixes
+
+---
+
 ## 1.9.21 — 2026-09-22
 
 ### Added
