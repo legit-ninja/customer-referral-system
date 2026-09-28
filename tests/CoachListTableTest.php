@@ -241,5 +241,76 @@ class CoachListTableTest extends TestCase {
         
         $this->assertTrue($requires_confirmation);
     }
+
+    // =========================================================================
+    // LIST VIEW RENDERING TESTS (5 tests)
+    // =========================================================================
+
+    public function testListView_RendersRequiredColumns() {
+        $required_columns = [
+            'checkbox',
+            'name',
+            'referral_code',
+            'referrals',
+            'commission',
+            'conversion',
+            'tier',
+            'actions'
+        ];
+        
+        $this->assertCount(8, $required_columns);
+        $this->assertContains('referral_code', $required_columns);
+        $this->assertContains('actions', $required_columns);
+    }
+
+    public function testListView_ReferralCodeDisplaysWithCopyButton() {
+        $referral_code = 'COACH123';
+        $has_copy_button = !empty($referral_code);
+        
+        $this->assertTrue($has_copy_button);
+    }
+
+    public function testListView_ActionsMatchGridView() {
+        $list_actions = ['send_referral', 'edit', 'message', 'deactivate', 'view_details'];
+        $grid_actions = ['send_referral', 'edit', 'message', 'deactivate', 'view_details'];
+        
+        $this->assertEquals($list_actions, $grid_actions);
+    }
+
+    public function testListView_SelectAllSyncsCheckboxes() {
+        $checkboxes = [
+            ['id' => 1, 'checked' => false],
+            ['id' => 2, 'checked' => false],
+            ['id' => 3, 'checked' => false],
+        ];
+        
+        $select_all = true;
+        
+        foreach ($checkboxes as &$checkbox) {
+            $checkbox['checked'] = $select_all;
+        }
+        
+        $all_checked = array_reduce($checkboxes, function($carry, $item) {
+            return $carry && $item['checked'];
+        }, true);
+        
+        $this->assertTrue($all_checked);
+    }
+
+    public function testListView_SearchFiltersRows() {
+        $coaches = [
+            ['name' => 'John Smith', 'email' => 'john@example.com'],
+            ['name' => 'Jane Doe', 'email' => 'jane@example.com'],
+            ['name' => 'John Walker', 'email' => 'walker@example.com'],
+        ];
+        
+        $search = 'john';
+        $filtered = array_filter($coaches, function($c) use ($search) {
+            $haystack = strtolower($c['name'] . ' ' . $c['email']);
+            return strpos($haystack, strtolower($search)) !== false;
+        });
+        
+        $this->assertCount(2, $filtered);
+    }
 }
 

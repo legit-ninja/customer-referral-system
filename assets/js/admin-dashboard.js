@@ -20,6 +20,7 @@
         initAddCoachModal();
         initCoachEventsAdmin();
         initCoachAssignmentsAdmin();
+        initCoachesViewToggle();
     });
 
     let coachReferralsCommissionChart = null;
@@ -1014,14 +1015,16 @@
     }
 
     /**
-     * Coaches page: filter coach cards based on the search input.
+     * Coaches page: filter coach cards and list rows based on the search input.
+     * Both grid cards (.coach-card) and list rows (.coach-row) are filtered.
      */
     function initCoachSearchFilter() {
         const searchInput = document.getElementById('coach-search-input');
         const statusEl = document.querySelector('.coaches-search-status');
         const cards = Array.from(document.querySelectorAll('.coach-card'));
+        const rows = Array.from(document.querySelectorAll('.coach-row'));
 
-        if (!searchInput || cards.length === 0) {
+        if (!searchInput || (cards.length === 0 && rows.length === 0)) {
             return;
         }
 
@@ -1049,6 +1052,12 @@
                 if (matches) {
                     visible++;
                 }
+            });
+
+            rows.forEach(row => {
+                const haystack = (row.dataset.search || '').toLowerCase();
+                const matches = term === '' || haystack.includes(term);
+                row.style.display = matches ? '' : 'none';
             });
 
             updateStatus(visible);
@@ -1697,6 +1706,202 @@
                 }
             });
         });
+    }
+
+    /**
+     * Coaches page: Grid | List view toggle.
+     */
+    function initCoachesViewToggle() {
+        var $container = $('.intersoccer-coaches-container');
+        var $toggleBtns = $('.view-toggle-btn');
+
+        if ($toggleBtns.length === 0 || $container.length === 0) {
+            return;
+        }
+
+        $toggleBtns.on('click', function() {
+            var $btn = $(this);
+            var view = $btn.data('view');
+
+            if ($btn.hasClass('active')) {
+                return;
+            }
+
+            $toggleBtns.removeClass('active').attr('aria-pressed', 'false');
+            $btn.addClass('active').attr('aria-pressed', 'true');
+
+            $container.attr('data-view', view);
+
+            var $gridView = $container.find('.intersoccer-coaches-grid');
+            var $listView = $container.find('.intersoccer-coaches-list-view');
+
+            if (view === 'grid') {
+                $listView.addClass('hidden');
+                $gridView.removeClass('hidden');
+            } else {
+                $gridView.addClass('hidden');
+                $listView.removeClass('hidden');
+            }
+
+            saveViewPreference(view);
+
+            syncCheckboxSelections();
+        });
+
+        $('#cb-select-all-list, #cb-select-all-list-bottom').on('change', function() {
+            const isChecked = $(this).is(':checked');
+            $('#cb-select-all-list, #cb-select-all-list-bottom').prop('checked', isChecked);
+            $('.coaches-list-table .coach-checkbox').prop('checked', isChecked);
+            syncListToGridCheckboxes();
+            updateBulkActionsVisibility();
+        });
+
+        $('.coaches-list-table').on('change', '.coach-checkbox', function() {
+            syncListToGridCheckboxes();
+            updateBulkActionsVisibility();
+            updateSelectAllState();
+        });
+
+        initCopyCodeButtons();
+
+        $('#add-new-coach-link-list').on('click', function(e) {
+            e.preventDefault();
+            openAddCoachModal();
+        });
+    }
+
+    /**
+     * Save view preference via AJAX.
+     */
+    function saveViewPreference(view) {
+        if (typeof intersoccer_admin === 'undefined') {
+            return;
+        }
+
+        $.ajax({
+            url: intersoccer_admin.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'intersoccer_save_coaches_view_preference',
+                nonce: intersoccer_admin.nonce,
+                view: view
+            }
+        });
+    }
+
+    /**
+     * Sync checkbox selections between grid and list views.
+     */
+    function syncCheckboxSelections() {
+        var $container = $('.intersoccer-coaches-container');
+        if ($container.length === 0) {
+            return;
+        }
+        var currentView = $container.attr('data-view');
+
+        if (currentView === 'list') {
+            syncGridToListCheckboxes();
+        } else {
+            syncListToGridCheckboxes();
+        }
+    }
+
+    /**
+     * Sync checkbox state from grid cards to list table.
+     */
+    function syncGridToListCheckboxes() {
+        $('.coaches-grid .coach-checkbox').each(function() {
+            const coachId = $(this).val();
+            const isChecked = $(this).is(':checked');
+            $('.coaches-list-table .coach-checkbox[value="' + coachId + '"]').prop('checked', isChecked);
+        });
+        updateSelectAllState();
+    }
+
+    /**
+     * Sync checkbox state from list table to grid cards.
+     */
+    function syncListToGridCheckboxes() {
+        $('.coaches-list-table .coach-checkbox').each(function() {
+            const coachId = $(this).val();
+            const isChecked = $(this).is(':checked');
+            $('.coaches-grid .coach-checkbox[value="' + coachId + '"]').prop('checked', isChecked);
+        });
+    }
+
+    /**
+     * Update the "select all" checkbox state based on individual checkboxes.
+     */
+    function updateSelectAllState() {
+        const $checkboxes = $('.coaches-list-table tbody .coach-checkbox');
+        const totalCount = $checkboxes.length;
+        const checkedCount = $checkboxes.filter(':checked').length;
+
+        const isAllChecked = totalCount > 0 && checkedCount === totalCount;
+        $('#cb-select-all-list, #cb-select-all-list-bottom').prop('checked', isAllChecked);
+    }
+
+    /**
+     * Update bulk actions visibility based on checkbox state.
+     */
+    function updateBulkActionsVisibility() {
+        const checkedCount = $('.coach-checkbox:checked').length;
+        $('.coach-bulk-actions').toggle(checkedCount > 0);
+    }
+
+    /**
+     * Initialize copy code buttons in list view.
+     */
+    function initCopyCodeButtons() {
+        $(document).on('click', '.copy-code-btn', function() {
+            const $btn = $(this);
+            const code = $btn.data('code');
+
+            if (!code) {
+                return;
+            }
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(code).then(function() {
+                    showCopySuccess($btn);
+                }).catch(function() {
+                    fallbackCopy(code, $btn);
+                });
+            } else {
+                fallbackCopy(code, $btn);
+            }
+        });
+    }
+
+    /**
+     * Show copy success feedback on button.
+     */
+    function showCopySuccess($btn) {
+        $btn.addClass('copied');
+        const originalHtml = $btn.html();
+        $btn.html('<span class="dashicons dashicons-yes"></span>');
+
+        setTimeout(function() {
+            $btn.removeClass('copied').html(originalHtml);
+        }, 1500);
+    }
+
+    /**
+     * Fallback copy method for older browsers.
+     */
+    function fallbackCopy(text, $btn) {
+        const $temp = $('<input>');
+        $('body').append($temp);
+        $temp.val(text).select();
+
+        try {
+            document.execCommand('copy');
+            showCopySuccess($btn);
+        } catch (e) {
+            // Silent fail
+        }
+
+        $temp.remove();
     }
 
     /**
