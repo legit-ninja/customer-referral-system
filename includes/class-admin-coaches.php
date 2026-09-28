@@ -3,10 +3,105 @@
 
 class InterSoccer_Admin_Coaches {
 
+    /**
+     * Constructor - register AJAX handlers
+     */
+    public function __construct() {
+        add_action('wp_ajax_intersoccer_save_coaches_view_preference', [$this, 'ajax_save_view_preference']);
+    }
+
+    /**
+     * AJAX handler to save view preference
+     */
+    public function ajax_save_view_preference() {
+        check_ajax_referer('intersoccer_admin_nonce', 'nonce');
+
+        if (!current_user_can('list_users')) {
+            wp_send_json_error(['message' => __('Permission denied.', 'intersoccer-referral')]);
+        }
+
+        $view = isset($_POST['view']) ? sanitize_key($_POST['view']) : '';
+
+        if (!in_array($view, ['grid', 'list'], true)) {
+            wp_send_json_error(['message' => __('Invalid view mode.', 'intersoccer-referral')]);
+        }
+
+        $result = self::save_user_view_preference($view);
+
+        if ($result) {
+            wp_send_json_success(['view' => $view]);
+        } else {
+            wp_send_json_error(['message' => __('Failed to save preference.', 'intersoccer-referral')]);
+        }
+    }
+
+    /**
+     * Get the default view mode for coaches list
+     *
+     * @return string 'grid' or 'list'
+     */
+    public static function get_default_view_mode() {
+        return 'grid';
+    }
+
+    /**
+     * Get current user's preferred view mode
+     *
+     * @return string 'grid' or 'list'
+     */
+    public static function get_user_view_preference() {
+        $user_id = get_current_user_id();
+        if (!$user_id) {
+            return self::get_default_view_mode();
+        }
+
+        $preference = get_user_meta($user_id, 'intersoccer_coaches_view_mode', true);
+        if (!in_array($preference, ['grid', 'list'], true)) {
+            return self::get_default_view_mode();
+        }
+
+        return $preference;
+    }
+
+    /**
+     * Save user's view mode preference
+     *
+     * @param string $mode 'grid' or 'list'
+     * @return bool
+     */
+    public static function save_user_view_preference($mode) {
+        $user_id = get_current_user_id();
+        if (!$user_id || !in_array($mode, ['grid', 'list'], true)) {
+            return false;
+        }
+
+        return update_user_meta($user_id, 'intersoccer_coaches_view_mode', $mode);
+    }
+
     public function render_coaches_page() {
+        $current_view = self::get_user_view_preference();
         ?>
         <div class="wrap intersoccer-admin">
             <h1 class="wp-heading-inline">Coach Management</h1>
+
+            <div class="intersoccer-view-toggle" role="group" aria-label="<?php esc_attr_e('View mode', 'intersoccer-referral'); ?>">
+                <button type="button" 
+                        class="view-toggle-btn<?php echo $current_view === 'grid' ? ' active' : ''; ?>" 
+                        data-view="grid"
+                        aria-pressed="<?php echo $current_view === 'grid' ? 'true' : 'false'; ?>"
+                        title="<?php esc_attr_e('Grid view', 'intersoccer-referral'); ?>">
+                    <span class="dashicons dashicons-grid-view"></span>
+                    <?php esc_html_e('Grid', 'intersoccer-referral'); ?>
+                </button>
+                <button type="button" 
+                        class="view-toggle-btn<?php echo $current_view === 'list' ? ' active' : ''; ?>" 
+                        data-view="list"
+                        aria-pressed="<?php echo $current_view === 'list' ? 'true' : 'false'; ?>"
+                        title="<?php esc_attr_e('List view', 'intersoccer-referral'); ?>">
+                    <span class="dashicons dashicons-list-view"></span>
+                    <?php esc_html_e('List', 'intersoccer-referral'); ?>
+                </button>
+            </div>
 
             <div class="intersoccer-actions">
                 <button class="button button-primary" id="import-coaches-btn">
@@ -238,8 +333,13 @@ class InterSoccer_Admin_Coaches {
             </div>
             <p class="coaches-search-status" aria-live="polite"></p>
 
-            <div class="intersoccer-coaches-grid">
-                <?php $this->display_coaches_list(); ?>
+            <div class="intersoccer-coaches-container" data-view="<?php echo esc_attr($current_view); ?>">
+                <div class="intersoccer-coaches-grid<?php echo $current_view === 'list' ? ' hidden' : ''; ?>">
+                    <?php $this->display_coaches_list(); ?>
+                </div>
+                <div class="intersoccer-coaches-list-view<?php echo $current_view === 'grid' ? ' hidden' : ''; ?>">
+                    <?php $this->display_coaches_list_view(); ?>
+                </div>
             </div>
         </div>
         <?php
@@ -368,6 +468,128 @@ class InterSoccer_Admin_Coaches {
 
         echo '</div>';
 
+    }
+
+    /**
+     * Display coaches list in table/list view
+     */
+    private function display_coaches_list_view() {
+        global $wpdb;
+
+        $coaches = get_users([
+            'role' => 'coach',
+            'orderby' => 'display_name',
+            'order' => 'ASC'
+        ]);
+
+        if (empty($coaches)) {
+            echo '<div class="no-coaches-message">';
+            echo '<p>' . esc_html__('No coaches found.', 'intersoccer-referral') . ' <a href="#" id="add-new-coach-link-list">' . esc_html__('Add your first coach', 'intersoccer-referral') . '</a> ' . esc_html__('to get started.', 'intersoccer-referral') . '</p>';
+            echo '</div>';
+            return;
+        }
+
+        ?>
+        <table class="wp-list-table widefat fixed striped coaches-list-table">
+            <thead>
+                <tr>
+                    <th scope="col" class="check-column">
+                        <label class="screen-reader-text" for="cb-select-all-list"><?php esc_html_e('Select All', 'intersoccer-referral'); ?></label>
+                        <input type="checkbox" id="cb-select-all-list" aria-label="<?php esc_attr_e('Select all coaches', 'intersoccer-referral'); ?>">
+                    </th>
+                    <th scope="col" class="column-name"><?php esc_html_e('Coach', 'intersoccer-referral'); ?></th>
+                    <th scope="col" class="column-referral-code"><?php esc_html_e('Referral Code', 'intersoccer-referral'); ?></th>
+                    <th scope="col" class="column-referrals"><?php esc_html_e('Referrals', 'intersoccer-referral'); ?></th>
+                    <th scope="col" class="column-commission"><?php esc_html_e('Commission', 'intersoccer-referral'); ?></th>
+                    <th scope="col" class="column-conversion"><?php esc_html_e('Conversion', 'intersoccer-referral'); ?></th>
+                    <th scope="col" class="column-tier"><?php esc_html_e('Tier', 'intersoccer-referral'); ?></th>
+                    <th scope="col" class="column-actions"><?php esc_html_e('Actions', 'intersoccer-referral'); ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($coaches as $coach):
+                    $referral_count = $this->get_coach_referral_count($coach->ID);
+                    $total_commission = $this->get_coach_total_commission($coach->ID);
+                    $conversion_rate = $this->get_coach_conversion_rate($coach->ID);
+                    $tier = intersoccer_get_coach_tier($coach->ID);
+                    $referral_code = InterSoccer_Referral_Handler::get_coach_referral_code($coach->ID);
+                    $search_tokens = strtolower($coach->display_name . ' ' . $coach->user_email);
+                ?>
+                <tr class="coach-row" data-coach-id="<?php echo esc_attr($coach->ID); ?>" data-search="<?php echo esc_attr($search_tokens); ?>">
+                    <th scope="row" class="check-column">
+                        <label class="screen-reader-text" for="coach-select-list-<?php echo esc_attr($coach->ID); ?>"><?php esc_html_e('Select coach', 'intersoccer-referral'); ?></label>
+                        <input type="checkbox" class="coach-checkbox" id="coach-select-list-<?php echo esc_attr($coach->ID); ?>" value="<?php echo esc_attr($coach->ID); ?>">
+                    </th>
+                    <td class="column-name">
+                        <div class="coach-name-cell">
+                            <?php echo get_avatar($coach->ID, 36); ?>
+                            <div class="coach-name-info">
+                                <strong><?php echo esc_html($coach->display_name); ?></strong>
+                                <span class="coach-email"><?php echo esc_html($coach->user_email); ?></span>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="column-referral-code">
+                        <?php if (!empty($referral_code)): ?>
+                        <div class="referral-code-cell">
+                            <code class="referral-code-value"><?php echo esc_html($referral_code); ?></code>
+                            <button type="button" class="copy-code-btn" data-code="<?php echo esc_attr($referral_code); ?>" title="<?php esc_attr_e('Copy code', 'intersoccer-referral'); ?>">
+                                <span class="dashicons dashicons-clipboard"></span>
+                            </button>
+                        </div>
+                        <?php else: ?>
+                        <span class="no-code">&mdash;</span>
+                        <?php endif; ?>
+                    </td>
+                    <td class="column-referrals"><?php echo number_format($referral_count); ?></td>
+                    <td class="column-commission"><?php echo number_format($total_commission, 0); ?> CHF</td>
+                    <td class="column-conversion"><?php echo number_format($conversion_rate, 1); ?>%</td>
+                    <td class="column-tier">
+                        <span class="coach-tier-badge <?php echo esc_attr(strtolower($tier)); ?>"><?php echo esc_html($tier); ?></span>
+                    </td>
+                    <td class="column-actions">
+                        <div class="row-actions-list">
+                            <button type="button" class="coach-action-btn send-referral-code" data-coach-id="<?php echo esc_attr($coach->ID); ?>" title="<?php esc_attr_e('Send referral code', 'intersoccer-referral'); ?>">
+                                <span class="dashicons dashicons-email-alt"></span>
+                            </button>
+                            <button type="button" class="coach-action-btn edit-coach" data-coach-id="<?php echo esc_attr($coach->ID); ?>" title="<?php esc_attr_e('Edit Coach', 'intersoccer-referral'); ?>">
+                                <span class="dashicons dashicons-edit"></span>
+                            </button>
+                            <button type="button" 
+                                    class="coach-action-btn message-coach" 
+                                    data-coach-id="<?php echo esc_attr($coach->ID); ?>" 
+                                    data-coach-email="<?php echo esc_attr($coach->user_email); ?>" 
+                                    title="<?php esc_attr_e('Contact via MS Teams', 'intersoccer-referral'); ?>">
+                                <span class="dashicons dashicons-format-chat"></span>
+                            </button>
+                            <button type="button" class="coach-action-btn deactivate-coach" data-coach-id="<?php echo esc_attr($coach->ID); ?>" title="<?php esc_attr_e('Deactivate Coach', 'intersoccer-referral'); ?>">
+                                <span class="dashicons dashicons-no"></span>
+                            </button>
+                            <a href="<?php echo esc_url(admin_url('admin.php?page=intersoccer-coach-referrals&coach_id=' . $coach->ID)); ?>" class="coach-action-btn view-details" title="<?php esc_attr_e('View Details', 'intersoccer-referral'); ?>">
+                                <span class="dashicons dashicons-visibility"></span>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+            <tfoot>
+                <tr>
+                    <th scope="col" class="check-column">
+                        <label class="screen-reader-text" for="cb-select-all-list-bottom"><?php esc_html_e('Select All', 'intersoccer-referral'); ?></label>
+                        <input type="checkbox" id="cb-select-all-list-bottom" aria-label="<?php esc_attr_e('Select all coaches', 'intersoccer-referral'); ?>">
+                    </th>
+                    <th scope="col" class="column-name"><?php esc_html_e('Coach', 'intersoccer-referral'); ?></th>
+                    <th scope="col" class="column-referral-code"><?php esc_html_e('Referral Code', 'intersoccer-referral'); ?></th>
+                    <th scope="col" class="column-referrals"><?php esc_html_e('Referrals', 'intersoccer-referral'); ?></th>
+                    <th scope="col" class="column-commission"><?php esc_html_e('Commission', 'intersoccer-referral'); ?></th>
+                    <th scope="col" class="column-conversion"><?php esc_html_e('Conversion', 'intersoccer-referral'); ?></th>
+                    <th scope="col" class="column-tier"><?php esc_html_e('Tier', 'intersoccer-referral'); ?></th>
+                    <th scope="col" class="column-actions"><?php esc_html_e('Actions', 'intersoccer-referral'); ?></th>
+                </tr>
+            </tfoot>
+        </table>
+        <?php
     }
 
     /**

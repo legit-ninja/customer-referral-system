@@ -1906,3 +1906,361 @@
     color: #721c24 !important;
     border: 1px solid #f5c6cb !important;
 }
+
+/* ============================================================================
+   Coaches Page View Toggle (Grid | List)
+   ============================================================================ */
+
+.intersoccer-view-toggle {
+    display: inline-flex;
+    gap: 0;
+    margin-bottom: 20px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #fff;
+}
+
+@media (min-width: 782px) {
+    .intersoccer-view-toggle {
+        margin-bottom: 24px;
+    }
+}
+
+.view-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: none;
+    background: #fff;
+    color: #50575e;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.view-toggle-btn:not(:last-child) {
+    border-right: 1px solid #d1d5db;
+}
+
+.view-toggle-btn .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.view-toggle-btn:hover {
+    background: #f0f0f1;
+    color: #2271b1;
+}
+
+.view-toggle-btn.active {
+    background: #2271b1;
+    color: #fff;
+}
+
+.view-toggle-btn.active:hover {
+    background: #135e96;
+}
+
+@media (min-width: 782px) {
+    .view-toggle-btn {
+        padding: 10px 18px;
+        font-size: 14px;
+    }
+
+    .view-toggle-btn .dashicons {
+        font-size: 18px;
+        width: 18px;
+        height: 18px;
+    }
+}
+
+/* Coaches Container */
+.intersoccer-coaches-container {
+    position: relative;
+}
+
+.intersoccer-coaches-container .hidden {
+    display: none !important;
+}
+
+/* ============================================================================
+   Coaches List View (Table Layout)
+   ============================================================================ */
+
+.intersoccer-coaches-list-view {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.coaches-list-table {
+    border: none;
+    border-collapse: collapse;
+    margin: 0;
+}
+
+.coaches-list-table thead th,
+.coaches-list-table tfoot th {
+    background: #f8f9fa;
+    padding: 12px 10px;
+    font-weight: 600;
+    color: #1d2327;
+    text-align: left;
+    border-bottom: 1px solid #e1e5e9;
+}
+
+.coaches-list-table tfoot th {
+    border-top: 1px solid #e1e5e9;
+    border-bottom: none;
+}
+
+.coaches-list-table tbody tr {
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.coaches-list-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.coaches-list-table tbody tr:hover {
+    background: #f8fafc;
+}
+
+.coaches-list-table tbody td {
+    padding: 12px 10px;
+    vertical-align: middle;
+}
+
+.coaches-list-table .check-column {
+    width: 40px;
+    padding-left: 12px;
+}
+
+.coaches-list-table .column-name {
+    min-width: 220px;
+}
+
+.coaches-list-table .column-referral-code {
+    min-width: 140px;
+}
+
+.coaches-list-table .column-referrals,
+.coaches-list-table .column-commission,
+.coaches-list-table .column-conversion {
+    width: 100px;
+    text-align: center;
+}
+
+.coaches-list-table .column-tier {
+    width: 90px;
+    text-align: center;
+}
+
+.coaches-list-table .column-actions {
+    width: 200px;
+    text-align: right;
+    padding-right: 16px;
+}
+
+/* Coach name cell with avatar */
+.coach-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.coach-name-cell img {
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.coach-name-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.coach-name-info strong {
+    color: #1d2327;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.coach-name-info .coach-email {
+    font-size: 12px;
+    color: #6b7280;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Referral code cell */
+.referral-code-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.referral-code-cell .referral-code-value {
+    font-family: 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
+    font-size: 12px;
+    font-weight: 600;
+    color: #1e3a8a;
+    background: linear-gradient(135deg, #e8f4fc 0%, #e8e6ff 100%);
+    border: 1px solid #d4e5f7;
+    padding: 4px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.3px;
+}
+
+.copy-code-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: #fff;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.copy-code-btn:hover {
+    background: #f0f0f1;
+    border-color: #2271b1;
+    color: #2271b1;
+}
+
+.copy-code-btn .dashicons {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+}
+
+.copy-code-btn.copied {
+    background: #d4edda;
+    border-color: #28a745;
+    color: #28a745;
+}
+
+.no-code {
+    color: #9ca3af;
+}
+
+/* Tier badge in list view */
+.coaches-list-table .coach-tier-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.coaches-list-table .coach-tier-badge.bronze {
+    background: linear-gradient(135deg, #cd7f32, #a0522d);
+    color: #fff;
+}
+
+.coaches-list-table .coach-tier-badge.silver {
+    background: linear-gradient(135deg, #c0c0c0, #808080);
+    color: #fff;
+}
+
+.coaches-list-table .coach-tier-badge.gold {
+    background: linear-gradient(135deg, #ffd700, #ffb347);
+    color: #333;
+}
+
+.coaches-list-table .coach-tier-badge.platinum {
+    background: linear-gradient(135deg, #e5e4e2, #b8b8b8);
+    color: #333;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+/* Row actions in list view */
+.row-actions-list {
+    display: flex;
+    gap: 4px;
+    justify-content: flex-end;
+}
+
+.row-actions-list .coach-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background: #fff;
+    color: #50575e;
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.15s ease;
+}
+
+.row-actions-list .coach-action-btn:hover {
+    background: #f0f0f1;
+    border-color: #2271b1;
+    color: #2271b1;
+}
+
+.row-actions-list .coach-action-btn .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+}
+
+.row-actions-list .coach-action-btn.deactivate-coach:hover {
+    background: #fef2f2;
+    border-color: #dc2626;
+    color: #dc2626;
+}
+
+/* Select all checkbox styling */
+.coaches-list-table .check-column input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+/* Responsive: hide some columns on smaller screens */
+@media (max-width: 1200px) {
+    .coaches-list-table .column-conversion {
+        display: none;
+    }
+}
+
+@media (max-width: 960px) {
+    .coaches-list-table .column-tier {
+        display: none;
+    }
+    
+    .coaches-list-table .column-actions {
+        width: 150px;
+    }
+}
+
+@media (max-width: 782px) {
+    .intersoccer-coaches-list-view {
+        overflow-x: auto;
+    }
+    
+    .coaches-list-table {
+        min-width: 700px;
+    }
+}

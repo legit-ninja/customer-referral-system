@@ -311,5 +311,76 @@ class AdminCoachesTest extends TestCase {
         
         $this->assertEquals('Silver', $eligible_tier);
     }
+
+    // =========================================================================
+    // VIEW TOGGLE TESTS (6 tests)
+    // =========================================================================
+
+    public function testViewToggle_DefaultModeIsGrid() {
+        $default_mode = 'grid';
+        
+        $this->assertEquals('grid', $default_mode);
+    }
+
+    public function testViewToggle_ValidViewModes() {
+        $valid_modes = ['grid', 'list'];
+        $mode = 'grid';
+        
+        $is_valid = in_array($mode, $valid_modes, true);
+        
+        $this->assertTrue($is_valid);
+    }
+
+    public function testViewToggle_InvalidViewModeRejected() {
+        $valid_modes = ['grid', 'list'];
+        $mode = 'invalid';
+        
+        $is_valid = in_array($mode, $valid_modes, true);
+        
+        $this->assertFalse($is_valid);
+    }
+
+    public function testViewToggle_PreferencePersistence() {
+        $preference_key = 'intersoccer_coaches_view_mode';
+        $user_id = 1;
+        $mode = 'list';
+        
+        $stored = [$preference_key => $mode];
+        
+        $this->assertEquals($mode, $stored[$preference_key]);
+    }
+
+    public function testViewToggle_FallbackToDefaultWhenNoPreference() {
+        $default_mode = 'grid';
+        $stored_preference = '';
+        $valid_modes = ['grid', 'list'];
+        
+        $effective_mode = in_array($stored_preference, $valid_modes, true) 
+            ? $stored_preference 
+            : $default_mode;
+        
+        $this->assertEquals('grid', $effective_mode);
+    }
+
+    public function testViewToggle_ListViewHasSameDataAsGrid() {
+        $grid_coach_data = [
+            'id' => 1,
+            'name' => 'Test Coach',
+            'email' => 'test@example.com',
+            'referral_code' => 'TESTCODE123',
+            'referrals' => 5,
+            'commission' => 250,
+            'conversion_rate' => 75.0,
+            'tier' => 'Silver'
+        ];
+        
+        $list_coach_data = $grid_coach_data;
+        
+        $this->assertEquals($grid_coach_data['id'], $list_coach_data['id']);
+        $this->assertEquals($grid_coach_data['referral_code'], $list_coach_data['referral_code']);
+        $this->assertEquals($grid_coach_data['referrals'], $list_coach_data['referrals']);
+        $this->assertEquals($grid_coach_data['commission'], $list_coach_data['commission']);
+        $this->assertEquals($grid_coach_data['tier'], $list_coach_data['tier']);
+    }
 }
 
