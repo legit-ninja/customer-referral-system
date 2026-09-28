@@ -2102,11 +2102,12 @@
     text-overflow: ellipsis;
 }
 
-/* Referral code cell */
+/* Referral code cell in list view - must match #68 (no label, user-select: all, no truncation) */
 .referral-code-cell {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    max-width: 100%;
 }
 
 .referral-code-cell .referral-code-value {
@@ -2119,6 +2120,9 @@
     padding: 4px 8px;
     border-radius: 4px;
     letter-spacing: 0.3px;
+    cursor: text;
+    user-select: all;
+    white-space: nowrap;
 }
 
 .copy-code-btn {

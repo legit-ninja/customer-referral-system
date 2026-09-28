@@ -1015,14 +1015,16 @@
     }
 
     /**
-     * Coaches page: filter coach cards based on the search input.
+     * Coaches page: filter coach cards and list rows based on the search input.
+     * Both grid cards (.coach-card) and list rows (.coach-row) are filtered.
      */
     function initCoachSearchFilter() {
         const searchInput = document.getElementById('coach-search-input');
         const statusEl = document.querySelector('.coaches-search-status');
         const cards = Array.from(document.querySelectorAll('.coach-card'));
+        const rows = Array.from(document.querySelectorAll('.coach-row'));
 
-        if (!searchInput || cards.length === 0) {
+        if (!searchInput || (cards.length === 0 && rows.length === 0)) {
             return;
         }
 
@@ -1050,6 +1052,12 @@
                 if (matches) {
                     visible++;
                 }
+            });
+
+            rows.forEach(row => {
+                const haystack = (row.dataset.search || '').toLowerCase();
+                const matches = term === '' || haystack.includes(term);
+                row.style.display = matches ? '' : 'none';
             });
 
             updateStatus(visible);
