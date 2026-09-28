@@ -1712,18 +1712,16 @@
      * Coaches page: Grid | List view toggle.
      */
     function initCoachesViewToggle() {
-        const $container = $('.intersoccer-coaches-container');
-        const $toggleBtns = $('.view-toggle-btn');
-        const $gridView = $('.intersoccer-coaches-grid');
-        const $listView = $('.intersoccer-coaches-list-view');
+        var $container = $('.intersoccer-coaches-container');
+        var $toggleBtns = $('.view-toggle-btn');
 
         if ($toggleBtns.length === 0 || $container.length === 0) {
             return;
         }
 
         $toggleBtns.on('click', function() {
-            const $btn = $(this);
-            const view = $btn.data('view');
+            var $btn = $(this);
+            var view = $btn.data('view');
 
             if ($btn.hasClass('active')) {
                 return;
@@ -1733,6 +1731,9 @@
             $btn.addClass('active').attr('aria-pressed', 'true');
 
             $container.attr('data-view', view);
+
+            var $gridView = $container.find('.intersoccer-coaches-grid');
+            var $listView = $container.find('.intersoccer-coaches-list-view');
 
             if (view === 'grid') {
                 $listView.addClass('hidden');
@@ -1792,7 +1793,11 @@
      * Sync checkbox selections between grid and list views.
      */
     function syncCheckboxSelections() {
-        const currentView = $('.intersoccer-coaches-container').attr('data-view');
+        var $container = $('.intersoccer-coaches-container');
+        if ($container.length === 0) {
+            return;
+        }
+        var currentView = $container.attr('data-view');
 
         if (currentView === 'list') {
             syncGridToListCheckboxes();
