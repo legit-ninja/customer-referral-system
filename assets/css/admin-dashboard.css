@@ -1983,7 +1983,20 @@
     position: relative;
 }
 
-.intersoccer-coaches-container .hidden {
+/* Hidden class - applied via JS toggle */
+.intersoccer-coaches-container .hidden,
+.intersoccer-coaches-container > .hidden,
+.intersoccer-coaches-grid.hidden,
+.intersoccer-coaches-list-view.hidden {
+    display: none !important;
+}
+
+/* Fallback: data-view attribute on container controls visibility */
+.intersoccer-coaches-container[data-view="grid"] > .intersoccer-coaches-list-view {
+    display: none !important;
+}
+
+.intersoccer-coaches-container[data-view="list"] > .intersoccer-coaches-grid {
     display: none !important;
 }
 
