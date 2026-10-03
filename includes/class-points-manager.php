@@ -1053,6 +1053,10 @@ class InterSoccer_Points_Manager {
         // Store redemption details in order meta
         $order->update_meta_data('_intersoccer_points_redeemed', $points_to_redeem);
         $order->update_meta_data('_intersoccer_discount_amount', $discount_amount);
+        $order->update_meta_data('_intersoccer_credits_deducted_on_completion', 1);
+        if (method_exists($order, 'save')) {
+            $order->save();
+        }
 
         // Clear session
         WC()->session->set('intersoccer_points_to_redeem', 0);
