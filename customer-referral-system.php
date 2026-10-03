@@ -176,6 +176,7 @@ class InterSoccer_Referral_System {
     
     public function init() {
         $this->load_referral_textdomain();
+        $this->maybe_upgrade_referral_reward_unique_key();
 
         // Initialize core classes
         new InterSoccer_Referral_Handler();
@@ -635,11 +636,7 @@ class InterSoccer_Referral_System {
             return true;
         }
 
-        $found = $wpdb->get_var($wpdb->prepare(
-            'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s',
-            $table
-        ));
-        if ($found !== $table) {
+        if (!$this->referral_rewards_table_exists($table)) {
             return false;
         }
 
@@ -651,29 +648,78 @@ class InterSoccer_Referral_System {
     }
 
     /**
-     * Add the unique key when dbDelta did not, unless duplicate rows would make ALTER fail.
+     * Existing installs are not reactivated by deploy, so apply the unique key on load.
+     * The result is stored so later requests do not keep querying the schema.
+     *
+     * @return void
+     */
+    private function maybe_upgrade_referral_reward_unique_key() {
+        $flag = get_option('intersoccer_referral_rewards_unique_key', '');
+        if ($flag === 'ready' || $flag === 'skipped-duplicates') {
+            return;
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'intersoccer_referral_rewards';
+        $result = $this->ensure_referral_reward_unique_key($table);
+        if ($result === 'skipped') {
+            update_option('intersoccer_referral_rewards_unique_key', 'skipped-duplicates', false);
+            return;
+        }
+        if ($result === 'added' || $result === 'exists') {
+            update_option('intersoccer_referral_rewards_unique_key', 'ready', false);
+        }
+    }
+
+    /**
+     * Add the unique key when it is missing, unless duplicate rows would make ALTER fail.
      *
      * @param string $table
-     * @return void
+     * @return string exists|added|skipped|missing
      */
     private function ensure_referral_reward_unique_key($table) {
         global $wpdb;
 
         if (!preg_match('/^[A-Za-z0-9_]+$/', (string) $table)) {
-            return;
+            return 'missing';
+        }
+
+        if (!$this->referral_rewards_table_exists($table)) {
+            return 'missing';
         }
 
         $existing = $wpdb->get_results("SHOW INDEX FROM {$table} WHERE Key_name = 'unique_coach_customer_order'");
         if (!empty($existing)) {
-            return;
+            return 'exists';
         }
 
         if ($this->referral_reward_duplicate_rows_exist($table)) {
             error_log('InterSoccer referral: skipped ALTER TABLE for UNIQUE KEY unique_coach_customer_order because duplicate coach/customer/order rows already exist. No rows were deleted.');
-            return;
+            return 'skipped';
         }
 
-        $wpdb->query("ALTER TABLE {$table} ADD UNIQUE KEY unique_coach_customer_order (coach_id, customer_id, order_id)");
+        $added = $wpdb->query("ALTER TABLE {$table} ADD UNIQUE KEY unique_coach_customer_order (coach_id, customer_id, order_id)");
+        if ($added === false) {
+            error_log('InterSoccer referral: skipped ALTER TABLE for UNIQUE KEY unique_coach_customer_order because the database rejected it. No rows were deleted.');
+            return 'skipped';
+        }
+
+        return 'added';
+    }
+
+    /**
+     * @param string $table
+     * @return bool
+     */
+    private function referral_rewards_table_exists($table) {
+        global $wpdb;
+
+        $found = $wpdb->get_var($wpdb->prepare(
+            'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s',
+            $table
+        ));
+
+        return $found === $table;
     }
 
     private function add_custom_roles() {
