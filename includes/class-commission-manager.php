@@ -517,8 +517,25 @@ class InterSoccer_Commission_Manager {
             return;
         }
 
-        // INSERT IGNORE needs the unique coach/customer/order key. A repeat for the
-        // same order affects zero rows and must not add points again.
+        // A second call in the same request, or a later request, must not pay again
+        // even when the unique key was never added.
+        $existing_reward = $wpdb->get_row($wpdb->prepare(
+            "SELECT id FROM {$rewards_table} WHERE order_id = %d AND coach_id = %d LIMIT 1",
+            (int) $order_id,
+            (int) $referral_coach_id
+        ));
+        if ($existing_reward && !empty($existing_reward->id)) {
+            $this->log_first_order_reward_attempt($order_id, $source, 'skipped, reward row already stored');
+            return;
+        }
+
+        if (!$this->claim_coach_first_order_reward($order, (int) $referral_coach_id)) {
+            $this->log_first_order_reward_attempt($order_id, $source, 'skipped, reward already claimed');
+            return;
+        }
+
+        // INSERT IGNORE is a backstop when the unique key exists. The row check and
+        // the order claim above are what stop a second payment when it does not.
         $insert_result = $wpdb->query($wpdb->prepare(
             "INSERT IGNORE INTO {$rewards_table}
              (coach_id, customer_id, order_id, referral_code, points_awarded, discount_amount, created_at)
@@ -532,7 +549,7 @@ class InterSoccer_Commission_Manager {
             current_time('mysql')
         ));
 
-        if ($insert_result === 0 || $wpdb->insert_id === 0) {
+        if ($insert_result === false || (int) $insert_result === 0 || (int) $wpdb->insert_id === 0) {
             $this->log_first_order_reward_attempt($order_id, $source, 'skipped, reward row already stored');
             return;
         }
@@ -560,6 +577,53 @@ class InterSoccer_Commission_Manager {
         if (defined('WP_DEBUG') && WP_DEBUG) {
             intersoccer_referral_log("InterSoccer Referral: Referral reward - Coach {$referral_coach_id} earned {$points_to_award} points for referral code usage on order {$order_id}");
         }
+    }
+
+    /**
+     * Claim this order so a second call cannot pay the coach again.
+     *
+     * add_post_meta with unique true is the claim when orders live in posts.
+     * High-performance order storage keeps meta on the order, so that path
+     * saves the same key through the order object. A claim that already exists
+     * makes this return false.
+     *
+     * @param WC_Order $order
+     * @param int      $coach_id
+     * @return bool True when this call won the claim.
+     */
+    private function claim_coach_first_order_reward($order, $coach_id) {
+        $meta_key = '_intersoccer_coach_first_order_reward';
+        $coach_id = (int) $coach_id;
+
+        if ($this->orders_use_hpos() && is_object($order) && method_exists($order, 'add_meta_data') && method_exists($order, 'save')) {
+            $existing = method_exists($order, 'get_meta') ? $order->get_meta($meta_key, true) : '';
+            if ($existing !== '' && $existing !== null && $existing !== false) {
+                return false;
+            }
+            $order->add_meta_data($meta_key, $coach_id, true);
+            $order->save();
+            return true;
+        }
+
+        $order_id = is_object($order) && method_exists($order, 'get_id') ? (int) $order->get_id() : 0;
+        if ($order_id <= 0) {
+            return false;
+        }
+
+        return add_post_meta($order_id, $meta_key, $coach_id, true) !== false;
+    }
+
+    /**
+     * @return bool
+     */
+    private function orders_use_hpos() {
+        if (class_exists('\Automattic\WooCommerce\Utilities\OrderUtil')
+            && is_callable(['\Automattic\WooCommerce\Utilities\OrderUtil', 'custom_orders_table_usage_is_enabled'])
+        ) {
+            return (bool) \Automattic\WooCommerce\Utilities\OrderUtil::custom_orders_table_usage_is_enabled();
+        }
+
+        return get_option('woocommerce_custom_orders_table_enabled', 'no') === 'yes';
     }
 
     /**

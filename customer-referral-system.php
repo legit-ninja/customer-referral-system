@@ -649,13 +649,21 @@ class InterSoccer_Referral_System {
 
     /**
      * Existing installs are not reactivated by deploy, so apply the unique key on load.
-     * The result is stored so later requests do not keep querying the schema.
+     * "ready" means the key is there. "skipped-duplicates" is not final: it is tried
+     * again once a day so a later cleanup can still add the key. The option is autoloaded.
      *
      * @return void
      */
     private function maybe_upgrade_referral_reward_unique_key() {
-        $flag = get_option('intersoccer_referral_rewards_unique_key', '');
+        $option = 'intersoccer_referral_rewards_unique_key';
+        $flag = get_option($option, '');
         if ($flag === 'ready' || $flag === 'skipped-duplicates') {
+            $this->ensure_referral_reward_option_autoloads($option, $flag);
+        }
+        if ($flag === 'ready') {
+            return;
+        }
+        if ($flag === 'skipped-duplicates' && get_transient('intersoccer_referral_rewards_unique_key_retry')) {
             return;
         }
 
@@ -663,12 +671,59 @@ class InterSoccer_Referral_System {
         $table = $wpdb->prefix . 'intersoccer_referral_rewards';
         $result = $this->ensure_referral_reward_unique_key($table);
         if ($result === 'skipped') {
-            update_option('intersoccer_referral_rewards_unique_key', 'skipped-duplicates', false);
+            $this->remember_referral_reward_unique_key('skipped-duplicates');
+            set_transient('intersoccer_referral_rewards_unique_key_retry', '1', DAY_IN_SECONDS);
             return;
         }
         if ($result === 'added' || $result === 'exists') {
-            update_option('intersoccer_referral_rewards_unique_key', 'ready', false);
+            delete_transient('intersoccer_referral_rewards_unique_key_retry');
+            $this->remember_referral_reward_unique_key('ready');
         }
+    }
+
+    /**
+     * Store the unique-key flag with autoload on.
+     *
+     * If the value is already stored, write it again so an older autoload=false
+     * row does not stay that way.
+     *
+     * @param string $flag
+     * @return void
+     */
+    private function remember_referral_reward_unique_key($flag) {
+        $option = 'intersoccer_referral_rewards_unique_key';
+        if (get_option($option, '') === $flag) {
+            delete_option($option);
+        }
+        update_option($option, $flag, true);
+    }
+
+    /**
+     * Turn autoload on for a flag that was saved before this change.
+     *
+     * @param string $option
+     * @param string $flag
+     * @return void
+     */
+    private function ensure_referral_reward_option_autoloads($option, $flag) {
+        static $checked = false;
+        if ($checked || !function_exists('wp_load_alloptions')) {
+            return;
+        }
+        $checked = true;
+
+        $all = wp_load_alloptions();
+        if (is_array($all) && array_key_exists($option, $all)) {
+            return;
+        }
+
+        if (function_exists('wp_set_option_autoload')) {
+            wp_set_option_autoload($option, true);
+            return;
+        }
+
+        delete_option($option);
+        update_option($option, $flag, true);
     }
 
     /**
