@@ -1017,8 +1017,12 @@ $mock_referral_reward_unique_key_present = true;
         }
 
         public function update($table, $data, $where) {
-            global $mock_wpdb_last_update;
+            global $mock_wpdb_last_update, $mock_wpdb_updates;
             $mock_wpdb_last_update = compact('table', 'data', 'where');
+            if (!is_array($mock_wpdb_updates)) {
+                $mock_wpdb_updates = [];
+            }
+            $mock_wpdb_updates[] = $mock_wpdb_last_update;
             return 1;
         }
 
@@ -1027,6 +1031,11 @@ $mock_referral_reward_unique_key_present = true;
 
             static $insert_id = 1;
             $mock_wpdb_last_insert = compact('table', 'data');
+            global $mock_wpdb_inserts;
+            if (!is_array($mock_wpdb_inserts)) {
+                $mock_wpdb_inserts = [];
+            }
+            $mock_wpdb_inserts[] = $mock_wpdb_last_insert;
             if (!is_array($mock_wpdb_last_insert_by_table)) {
                 $mock_wpdb_last_insert_by_table = [];
             }
@@ -1051,8 +1060,12 @@ $mock_referral_reward_unique_key_present = true;
         }
 
         public function delete($table, $where) {
-            global $mock_wpdb_last_delete;
+            global $mock_wpdb_last_delete, $mock_wpdb_deletes;
             $mock_wpdb_last_delete = compact('table', 'where');
+            if (!is_array($mock_wpdb_deletes)) {
+                $mock_wpdb_deletes = [];
+            }
+            $mock_wpdb_deletes[] = $mock_wpdb_last_delete;
             return 1;
         }
     }
