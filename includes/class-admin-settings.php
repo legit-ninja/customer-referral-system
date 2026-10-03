@@ -1850,7 +1850,8 @@ class InterSoccer_Admin_Settings {
                 </p>
                 
                 <div class="coach-import-container" style="background: #fff; padding: 20px; border: 1px solid #ddd; border-radius: 4px; margin-top: 20px;">
-                    <form id="coach-import-form" method="post" enctype="multipart/form-data">
+                    <form id="coach-import-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
+                        <input type="hidden" name="action" value="import_coaches_from_csv">
                         <?php wp_nonce_field('import_coaches_from_csv', '_wpnonce'); ?>
                         
                         <table class="form-table" role="presentation">
@@ -3108,6 +3109,11 @@ class InterSoccer_Admin_Settings {
         // Handle regular form submission (legacy support)
         if (!current_user_can('manage_options')) {
             wp_die('Unauthorized');
+        }
+
+        $nonce = isset($_POST['_wpnonce']) ? $_POST['_wpnonce'] : '';
+        if (!wp_verify_nonce($nonce, 'import_coaches_from_csv')) {
+            wp_die('Invalid nonce');
         }
 
         if (!isset($_FILES['coaches_csv']) || $_FILES['coaches_csv']['error'] !== UPLOAD_ERR_OK) {
