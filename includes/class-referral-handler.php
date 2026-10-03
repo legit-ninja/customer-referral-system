@@ -426,10 +426,9 @@ class InterSoccer_Referral_Handler {
         $sender_balance = (int) get_user_meta( $sender_id, 'intersoccer_points_balance', true );
 
         if ( $recipient && $amount >= 50 && $amount <= $sender_balance ) {
-            // Deduct from sender first, then add bonus — using a single atomic-style update.
-            // The bonus (20 pts) is applied to the sender's balance AFTER the deduction so
-            // the net cost to the sender is ($amount - 20), not $amount.
-            $sender_new = $sender_balance - $amount + 20; // net: sender pays ($amount - 20)
+            // 20 points back is intentional, but only once per sender per Zurich day.
+            $kickback = intersoccer_claim_daily_gift_kickback( $sender_id );
+            $sender_new = $sender_balance - $amount + $kickback;
             update_user_meta( $sender_id, 'intersoccer_points_balance', $sender_new );
             $recipient_balance = (int) get_user_meta( $recipient->ID, 'intersoccer_points_balance', true );
             update_user_meta( $recipient->ID, 'intersoccer_points_balance', $recipient_balance + $amount );
@@ -438,7 +437,10 @@ class InterSoccer_Referral_Handler {
                 intersoccer_referral_log( 'InterSoccer Referral: Points gifted - ' . $amount . ' from user ' . $sender_id . ' to ' . $recipient->ID );
             }
 
-            wp_send_json_success( [ 'message' => 'Points gifted! You earned a 20-point bonus!' ] );
+            $message = $kickback > 0
+                ? 'Points gifted! You earned a 20-point bonus!'
+                : 'Points gifted!';
+            wp_send_json_success( [ 'message' => $message ] );
         }
 
         wp_send_json_error( [ 'message' => 'Invalid gift request' ] );

@@ -741,4 +741,24 @@ class ReferralHandlerTest extends TestCase {
             'Customer bonus code should indicate it writes to points_balance only'
         );
     }
+
+    public function testGiftKickbackIsOncePerZurichDay() {
+        require_once __DIR__ . '/../includes/class-utils.php';
+
+        global $mock_user_meta;
+        $sender_id = 4242;
+        $mock_user_meta[$sender_id] = array();
+
+        $this->assertSame(20, intersoccer_claim_daily_gift_kickback($sender_id));
+        $this->assertSame(0, intersoccer_claim_daily_gift_kickback($sender_id));
+
+        $yesterday = (new DateTimeImmutable('now', new DateTimeZone('Europe/Zurich')))
+            ->modify('-1 day')
+            ->format('Y-m-d');
+        $mock_user_meta[$sender_id]['intersoccer_gift_kickback_zurich_date'] = $yesterday;
+
+        $this->assertSame(20, intersoccer_claim_daily_gift_kickback($sender_id));
+        $today = (new DateTimeImmutable('now', new DateTimeZone('Europe/Zurich')))->format('Y-m-d');
+        $this->assertSame($today, $mock_user_meta[$sender_id]['intersoccer_gift_kickback_zurich_date']);
+    }
 }

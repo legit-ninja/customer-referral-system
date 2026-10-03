@@ -1702,8 +1702,9 @@ function intersoccer_handle_gift_credits() {
         wp_send_json_error(['message' => 'Insufficient credits']);
     }
     
-    // Process gift - deduct from sender, add bonus back
-    $sender_new_credits = $current_credits - $gift_amount + 20; // 20 CHF back for gifting
+    // 20 points back is intentional, but only once per sender per Zurich day.
+    $kickback = intersoccer_claim_daily_gift_kickback($user_id);
+    $sender_new_credits = $current_credits - $gift_amount + $kickback;
     update_user_meta($user_id, 'intersoccer_points_balance', $sender_new_credits);
     
     // Credit the recipient (write only to intersoccer_points_balance)
@@ -1725,8 +1726,12 @@ function intersoccer_handle_gift_credits() {
     
     wp_mail($recipient_email, $subject, $message);
     
+    $message = $kickback > 0
+        ? 'Gift sent successfully! You earned 20 CHF back as a thank you.'
+        : 'Gift sent successfully!';
+
     wp_send_json_success([
-        'message' => 'Gift sent successfully! You earned 20 CHF back as a thank you.',
+        'message' => $message,
         'new_credits' => $sender_new_credits
     ]);
 }

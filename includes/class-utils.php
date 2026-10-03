@@ -654,3 +654,32 @@ if (!function_exists('intersoccer_map_coach_csv_headers')) {
         return $field_map;
     }
 }
+
+if (!function_exists('intersoccer_claim_daily_gift_kickback')) {
+    /**
+     * 20-point thank-you on a gift of 50 or more, once per sender per Zurich day.
+     *
+     * Stores the Europe/Zurich calendar date on the sender. A later gift the same
+     * day still transfers points, but does not mint another 20.
+     *
+     * @param int $sender_id
+     * @return int 20 when this claim is the first today, otherwise 0.
+     */
+    function intersoccer_claim_daily_gift_kickback($sender_id) {
+        $sender_id = (int) $sender_id;
+        if ($sender_id <= 0) {
+            return 0;
+        }
+
+        $today = (new DateTimeImmutable('now', new DateTimeZone('Europe/Zurich')))->format('Y-m-d');
+        $meta_key = 'intersoccer_gift_kickback_zurich_date';
+        $last = (string) get_user_meta($sender_id, $meta_key, true);
+
+        if ($last === $today) {
+            return 0;
+        }
+
+        update_user_meta($sender_id, $meta_key, $today);
+        return 20;
+    }
+}
