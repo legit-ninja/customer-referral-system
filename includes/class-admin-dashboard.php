@@ -1296,16 +1296,15 @@ class InterSoccer_Referral_Admin_Dashboard {
         intersoccer_referral_log("Checking referral bonus: code=$referral_code, coach_id=$referral_coach_id");
 
         if ($referral_code && $referral_coach_id && !$this->referral_reward_already_recorded($order_id)) {
-            // Check if this is the customer's first completed order
-            $customer_orders = wc_get_orders([
-                'customer_id' => $order->get_customer_id(),
-                'status' => 'completed',
-                'limit' => 1,
-            ]);
-            intersoccer_referral_log('Customer completed orders count: ' . count($customer_orders));
+            // Same first-order rule as the commission manager. Do not treat the
+            // newest completed order as the only completed order.
+            $is_first_completed_order = class_exists('InterSoccer_Commission_Manager')
+                && InterSoccer_Commission_Manager::is_customer_first_completed_order(
+                    (int) $order->get_customer_id(),
+                    (int) $order_id
+                );
 
-            // If this is their first completed order, award bonus points to coach
-            if (count($customer_orders) === 1 && $customer_orders[0]->get_id() === $order_id) {
+            if ($is_first_completed_order) {
                 intersoccer_referral_log("Awarding referral bonus to coach $referral_coach_id");
                 $points_to_award = intersoccer_referral_get_coach_referral_bonus_points();
 

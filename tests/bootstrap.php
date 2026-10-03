@@ -357,9 +357,15 @@ if (!function_exists('get_option')) {
 }
 
 if (!function_exists('update_option')) {
-    function update_option($key, $value) {
-        global $mock_options;
+    function update_option($key, $value, $autoload = null) {
+        global $mock_options, $mock_option_autoload;
         $mock_options[$key] = $value;
+        if ($autoload !== null) {
+            if (!is_array($mock_option_autoload)) {
+                $mock_option_autoload = [];
+            }
+            $mock_option_autoload[$key] = $autoload;
+        }
         return true;
     }
 }
@@ -472,6 +478,21 @@ if (!function_exists('update_post_meta')) {
         }
         $mock_post_meta[$post_id][$key] = $value;
         return true;
+    }
+}
+
+if (!function_exists('add_post_meta')) {
+    function add_post_meta($post_id, $key, $value, $unique = false) {
+        global $mock_post_meta;
+        $post_id = (int) $post_id;
+        if (!isset($mock_post_meta[$post_id]) || !is_array($mock_post_meta[$post_id])) {
+            $mock_post_meta[$post_id] = [];
+        }
+        if ($unique && array_key_exists($key, $mock_post_meta[$post_id])) {
+            return false;
+        }
+        $mock_post_meta[$post_id][$key] = $value;
+        return 1;
     }
 }
 
@@ -770,8 +791,42 @@ if (!class_exists('Mock_WPDB')) {
         }
 
         public function query($query) {
-            global $mock_wpdb_last_query;
+            global $mock_wpdb_last_query, $mock_referral_reward_inserts;
             $mock_wpdb_last_query = $query;
+
+            if (stripos($query, 'INSERT') !== false && strpos($query, 'intersoccer_referral_rewards') !== false) {
+                global $mock_referral_reward_rows, $mock_referral_reward_unique_key_present;
+                if (!is_array($mock_referral_reward_inserts)) {
+                    $mock_referral_reward_inserts = [];
+$mock_referral_reward_rows = [];
+$mock_referral_reward_unique_key_present = true;
+                }
+                if (!is_array($mock_referral_reward_rows)) {
+                    $mock_referral_reward_rows = [];
+                }
+                if (preg_match('/VALUES\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i', $query, $matches)) {
+                    $coach_id = (int) $matches[1];
+                    $customer_id = (int) $matches[2];
+                    $order_id = (int) $matches[3];
+                    $key = $coach_id . ':' . $customer_id . ':' . $order_id;
+                    $unique_key_present = !isset($mock_referral_reward_unique_key_present) || $mock_referral_reward_unique_key_present !== false;
+                    if ($unique_key_present && isset($mock_referral_reward_inserts[$key])) {
+                        $this->insert_id = 0;
+                        return 0;
+                    }
+                    $store_key = $unique_key_present ? $key : $key . '#' . (count($mock_referral_reward_rows) + 1);
+                    $mock_referral_reward_inserts[$store_key] = true;
+                    $mock_referral_reward_rows[] = (object) [
+                        'id' => count($mock_referral_reward_rows) + 1,
+                        'coach_id' => $coach_id,
+                        'customer_id' => $customer_id,
+                        'order_id' => $order_id,
+                    ];
+                    $this->insert_id = count($mock_referral_reward_rows);
+                    return 1;
+                }
+            }
+
             return true;
         }
 
@@ -861,7 +916,22 @@ if (!class_exists('Mock_WPDB')) {
         }
 
         public function get_row($query) {
-            global $mock_wpdb_get_row_results;
+            global $mock_wpdb_get_row_results, $mock_referral_reward_rows;
+
+            if (is_string($query)
+                && strpos($query, 'intersoccer_referral_rewards') !== false
+                && preg_match('/order_id\s*=\s*(\d+)/', $query, $order_match)
+                && preg_match('/coach_id\s*=\s*(\d+)/', $query, $coach_match)
+            ) {
+                $order_id = (int) $order_match[1];
+                $coach_id = (int) $coach_match[1];
+                foreach ((array) $mock_referral_reward_rows as $row) {
+                    if ((int) $row->order_id === $order_id && (int) $row->coach_id === $coach_id) {
+                        return $row;
+                    }
+                }
+                return null;
+            }
 
             foreach ($mock_wpdb_get_row_results as $needle => $result) {
                 if ($needle === '__queue__') {
@@ -1424,6 +1494,7 @@ $mock_wpdb_get_row_results = [];
 $mock_wpdb_get_results = [];
 $mock_wpdb_get_var_results = [];
 $mock_wpdb_last_insert = null;
+$mock_referral_reward_inserts = [];
 $mock_wpdb_last_update = null;
 $mock_wpdb_last_delete = null;
 $mock_points_balances = [];

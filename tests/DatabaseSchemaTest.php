@@ -271,5 +271,29 @@ class DatabaseSchemaTest extends TestCase {
             'Audit log table should include event_type column'
         );
     }
+
+    public function testReferralRewardsUniqueKeySkipsAlterWhenDuplicatesExist() {
+        $plugin_file = __DIR__ . '/../customer-referral-system.php';
+        $content = file_get_contents($plugin_file);
+
+        $this->assertStringContainsString(
+            'UNIQUE KEY unique_coach_customer_order (coach_id, customer_id, order_id)',
+            $content,
+            'New installs must reject a second reward row for the same coach, customer, and order'
+        );
+        $this->assertStringContainsString(
+            'duplicate coach/customer/order rows already exist',
+            $content,
+            'Upgrades must skip the unique key when duplicate rows already exist'
+        );
+        $start = strpos($content, 'function dbdelta_referral_rewards');
+        $end = strpos($content, 'function add_custom_roles');
+        $upgrade = substr($content, $start, $end - $start);
+        $this->assertStringNotContainsString(
+            'DROP TABLE',
+            $upgrade,
+            'The referral reward upgrade must not drop the table'
+        );
+    }
 }
 
