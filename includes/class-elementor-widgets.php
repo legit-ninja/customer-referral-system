@@ -830,7 +830,7 @@ class InterSoccer_Customer_Dashboard_Widget extends \Elementor\Widget_Base {
     private function render_gift_credits_section($credits) {
         echo '<div class="gift-section">';
         echo '<h3>🎁 Gift Credits</h3>';
-        echo '<p>Spread the joy! Gift credits to friends and family (you get 20 points back!)</p>';
+        echo '<p>Spread the joy! Gift credits to friends and family. The points move to them, and you do not get any back.</p>';
         
         echo '<form id="gift-credits" method="post" class="gift-form">';
         echo '<div class="form-row">';
@@ -1574,7 +1574,6 @@ class InterSoccer_Customer_Progress_Widget extends \Elementor\Widget_Base {
 // Add missing AJAX handlers for customer dashboard functionality
 add_action('wp_ajax_get_available_coaches', 'intersoccer_handle_get_available_coaches');
 add_action('wp_ajax_select_coach_partner', 'intersoccer_handle_select_coach_partner');
-add_action('wp_ajax_gift_credits', 'intersoccer_handle_gift_credits');
 add_action('wp_ajax_intersoccer_get_customer_widget_summary', 'intersoccer_handle_customer_widget_summary');
 
 function intersoccer_handle_get_available_coaches() {
@@ -1662,72 +1661,6 @@ function intersoccer_handle_select_coach_partner() {
     
     wp_send_json_success([
         'message' => sprintf('Successfully connected with coach %s!', $coach->display_name)
-    ]);
-}
-
-function intersoccer_handle_gift_credits() {
-    check_ajax_referer('intersoccer_dashboard_nonce', 'nonce');
-    
-    if (!is_user_logged_in()) {
-        wp_send_json_error(['message' => 'Not logged in']);
-    }
-    
-    $user_id = get_current_user_id();
-    $gift_amount = (int) $_POST['gift_amount'];
-    $recipient_email = sanitize_email($_POST['recipient_email']);
-    
-    // Validate inputs
-    if ($gift_amount < 50 || $gift_amount > 500) {
-        wp_send_json_error(['message' => 'Invalid gift amount']);
-    }
-    
-    if (!is_email($recipient_email)) {
-        wp_send_json_error(['message' => 'Invalid email address']);
-    }
-    
-    // Find recipient user
-    $recipient = get_user_by('email', $recipient_email);
-    if (!$recipient) {
-        wp_send_json_error(['message' => 'Recipient not found. They must have an account first.']);
-    }
-    
-    // Prevent self-gifting
-    if ((int) $recipient->ID === $user_id) {
-        wp_send_json_error(['message' => 'Cannot gift credits to yourself']);
-    }
-    
-    // Issue #36: Read from and write only to intersoccer_points_balance
-    $current_credits = (int) (get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0);
-    if ($current_credits < $gift_amount) {
-        wp_send_json_error(['message' => 'Insufficient credits']);
-    }
-    
-    // Process gift - deduct from sender, add bonus back
-    $sender_new_credits = $current_credits - $gift_amount + 20; // 20 CHF back for gifting
-    update_user_meta($user_id, 'intersoccer_points_balance', $sender_new_credits);
-    
-    // Credit the recipient (write only to intersoccer_points_balance)
-    $recipient_current = (int) (get_user_meta($recipient->ID, 'intersoccer_points_balance', true) ?: 0);
-    $recipient_new = $recipient_current + $gift_amount;
-    update_user_meta($recipient->ID, 'intersoccer_points_balance', $recipient_new);
-    
-    // Send gift notification email
-    $user = wp_get_current_user();
-    $subject = sprintf('You received %d CHF credit gift from %s', $gift_amount, $user->display_name);
-    $message = sprintf(
-        "Hi %s!\n\n%s has gifted you %d CHF in InterSoccer credits!\n\nYour new balance: %d CHF\n\nLog in to your account to use them: %s\n\nBest regards,\nThe InterSoccer Team",
-        $recipient->display_name,
-        $user->display_name,
-        $gift_amount,
-        $recipient_new,
-        home_url('/my-account/')
-    );
-    
-    wp_mail($recipient_email, $subject, $message);
-    
-    wp_send_json_success([
-        'message' => 'Gift sent successfully! You earned 20 CHF back as a thank you.',
-        'new_credits' => $sender_new_credits
     ]);
 }
 

@@ -2,6 +2,14 @@
 
 use PHPUnit\Framework\TestCase;
 
+if (!function_exists('sanitize_email')) {
+    function sanitize_email($email) {
+        $email = trim((string) $email);
+        return filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : '';
+    }
+}
+
+
 /**
  * Test suite for InterSoccer Referral Handler
  */
@@ -740,5 +748,93 @@ class ReferralHandlerTest extends TestCase {
             $handler_file,
             'Customer bonus code should indicate it writes to points_balance only'
         );
+    }
+
+    /**
+     * Two accounts gift 50 points back and forth on more than one Zurich day.
+     * Points may move from one account to the other. Their combined balance must not grow.
+     */
+    public function testTwoAccountsGiftingBackAndForthDoesNotGrowCombinedBalance() {
+        global $mock_users, $mock_user_meta, $mock_current_user_id;
+        $previous_user_id = $mock_current_user_id;
+
+        $account_a = 8101;
+        $account_b = 8102;
+        $mock_users[$account_a] = (object) [
+            'ID' => $account_a,
+            'roles' => ['customer'],
+            'user_email' => 'gift-a@example.com',
+            'display_name' => 'Gift A',
+        ];
+        $mock_users[$account_b] = (object) [
+            'ID' => $account_b,
+            'roles' => ['customer'],
+            'user_email' => 'gift-b@example.com',
+            'display_name' => 'Gift B',
+        ];
+        $mock_user_meta[$account_a] = ['intersoccer_points_balance' => 150];
+        $mock_user_meta[$account_b] = ['intersoccer_points_balance' => 70];
+        $combined = 220;
+
+        $zurich = new DateTimeZone('Europe/Zurich');
+        $days = [
+            (new DateTimeImmutable('now', $zurich))->format('Y-m-d'),
+            (new DateTimeImmutable('now', $zurich))->modify('+1 day')->format('Y-m-d'),
+        ];
+
+        try {
+            foreach ($days as $day) {
+                // The old daily cap stored a Zurich date. A later day must not pay anyone.
+                $mock_user_meta[$account_a]['intersoccer_gift_kickback_zurich_date'] = $day;
+                $mock_user_meta[$account_b]['intersoccer_gift_kickback_zurich_date'] = $day;
+
+                $before_a = (int) $mock_user_meta[$account_a]['intersoccer_points_balance'];
+                $before_b = (int) $mock_user_meta[$account_b]['intersoccer_points_balance'];
+
+                $to_b = $this->giftPoints($account_a, 'gift-b@example.com', 50);
+                $this->assertTrue($to_b['success'], isset($to_b['data']['message']) ? $to_b['data']['message'] : 'gift failed');
+                $this->assertSame($before_a - 50, (int) $mock_user_meta[$account_a]['intersoccer_points_balance']);
+                $this->assertSame($before_b + 50, (int) $mock_user_meta[$account_b]['intersoccer_points_balance']);
+                $this->assertSame($before_a - 50, (int) $to_b['data']['new_credits']);
+                $this->assertSame(
+                    $combined,
+                    (int) $mock_user_meta[$account_a]['intersoccer_points_balance']
+                    + (int) $mock_user_meta[$account_b]['intersoccer_points_balance']
+                );
+
+                $to_a = $this->giftPoints($account_b, 'gift-a@example.com', 50);
+                $this->assertTrue($to_a['success'], isset($to_a['data']['message']) ? $to_a['data']['message'] : 'gift failed');
+                $this->assertSame($before_a, (int) $mock_user_meta[$account_a]['intersoccer_points_balance']);
+                $this->assertSame($before_b, (int) $mock_user_meta[$account_b]['intersoccer_points_balance']);
+                $this->assertSame(
+                    $combined,
+                    (int) $mock_user_meta[$account_a]['intersoccer_points_balance']
+                    + (int) $mock_user_meta[$account_b]['intersoccer_points_balance']
+                );
+
+                $this->assertStringNotContainsString('20', $to_b['data']['message']);
+                $this->assertStringNotContainsString('thank', strtolower($to_b['data']['message']));
+                $this->assertStringNotContainsString('20', $to_a['data']['message']);
+                $this->assertStringNotContainsString('thank', strtolower($to_a['data']['message']));
+            }
+        } finally {
+            $mock_current_user_id = $previous_user_id;
+            unset($_POST['gift_amount'], $_POST['recipient_email'], $_POST['nonce']);
+        }
+    }
+
+    private function giftPoints($sender_id, $recipient_email, $amount) {
+        global $mock_current_user_id, $mock_wp_json_response;
+
+        $mock_current_user_id = $sender_id;
+        $_POST['gift_amount'] = (string) $amount;
+        $_POST['recipient_email'] = $recipient_email;
+        $_POST['nonce'] = 'test-nonce';
+        $mock_wp_json_response = null;
+
+        $handler = new InterSoccer_Referral_Handler();
+        $handler->handle_gift_credits();
+
+        return $mock_wp_json_response;
     }
 }
