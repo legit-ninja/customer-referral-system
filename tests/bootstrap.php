@@ -770,8 +770,25 @@ if (!class_exists('Mock_WPDB')) {
         }
 
         public function query($query) {
-            global $mock_wpdb_last_query;
+            global $mock_wpdb_last_query, $mock_referral_reward_inserts;
             $mock_wpdb_last_query = $query;
+
+            if (stripos($query, 'INSERT') !== false && strpos($query, 'intersoccer_referral_rewards') !== false) {
+                if (!is_array($mock_referral_reward_inserts)) {
+                    $mock_referral_reward_inserts = [];
+                }
+                if (preg_match('/VALUES\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i', $query, $matches)) {
+                    $key = $matches[1] . ':' . $matches[2] . ':' . $matches[3];
+                    if (isset($mock_referral_reward_inserts[$key])) {
+                        $this->insert_id = 0;
+                        return 0;
+                    }
+                    $mock_referral_reward_inserts[$key] = true;
+                    $this->insert_id = count($mock_referral_reward_inserts);
+                    return 1;
+                }
+            }
+
             return true;
         }
 
@@ -1424,6 +1441,7 @@ $mock_wpdb_get_row_results = [];
 $mock_wpdb_get_results = [];
 $mock_wpdb_get_var_results = [];
 $mock_wpdb_last_insert = null;
+$mock_referral_reward_inserts = [];
 $mock_wpdb_last_update = null;
 $mock_wpdb_last_delete = null;
 $mock_points_balances = [];

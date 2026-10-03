@@ -25,7 +25,7 @@ class CommissionManagerTest extends TestCase {
     }
 
     protected function tearDown(): void {
-        global $mock_wpdb_get_var_results, $mock_users;
+        global $mock_wpdb_get_var_results, $mock_users, $mock_wc_get_orders, $mock_wc_order_override, $mock_referral_reward_inserts, $mock_post_meta;
 
         delete_option('intersoccer_commission_tiers_coach');
         delete_option('intersoccer_commission_tiers_partner');
@@ -40,6 +40,10 @@ class CommissionManagerTest extends TestCase {
 
         $mock_wpdb_get_var_results = [];
         $mock_users = [];
+        $mock_wc_get_orders = null;
+        $mock_wc_order_override = null;
+        $mock_referral_reward_inserts = [];
+        $mock_post_meta = [];
     }
 
     private function mockCoachCustomerCount(int $count): void {
@@ -1398,5 +1402,69 @@ class CommissionManagerTest extends TestCase {
         // (points fee excluded per §9.7 oracle)
         $commission = InterSoccer_Commission_Manager::calculate_referral_code_commission($order, 1);
         $this->assertEquals(48.0, $commission, 'Commission should be 10% of 480 (points fee excluded, coupon fee included)');
+    }
+
+
+    /**
+     * A coach first-order bonus is paid once for the first completed order,
+     * even if the reward method runs twice, and a later completed order pays nothing.
+     */
+    public function testCoachFirstOrderBonusPaidOnceAndNotOnLaterOrder() {
+        global $mock_wc_get_orders, $mock_wc_order_override, $mock_wc_orders_by_id, $mock_referral_reward_inserts, $mock_session;
+
+        $mock_wc_order_override = null;
+        $mock_referral_reward_inserts = [];
+        $mock_session = [];
+
+        $coach_id = 42;
+        $customer_id = 7;
+        update_option('intersoccer_coach_referral_bonus_points', 50);
+        update_user_meta($coach_id, 'intersoccer_points_balance', 0);
+
+        $first = new WC_Order(501);
+        $first->set_customer_id($customer_id);
+        $first->set_status('completed');
+        $second = new WC_Order(502);
+        $second->set_customer_id($customer_id);
+        $second->set_status('completed');
+        $mock_wc_orders_by_id[501] = $first;
+        $mock_wc_orders_by_id[502] = $second;
+
+        update_post_meta(501, '_intersoccer_referral_code', 'COACH42');
+        update_post_meta(501, '_intersoccer_referring_coach_id', $coach_id);
+        update_post_meta(502, '_intersoccer_referral_code', 'COACH42');
+        update_post_meta(502, '_intersoccer_referring_coach_id', $coach_id);
+
+        $completed_ids = [501];
+        $mock_wc_get_orders = function ($args) use (&$completed_ids) {
+            $exclude = array_map('intval', (array) ($args['exclude'] ?? []));
+            $customer = (int) ($args['customer'] ?? $args['customer_id'] ?? 0);
+            if ($customer !== 7) {
+                return [];
+            }
+            $ids = array_values(array_diff(array_map('intval', $completed_ids), $exclude));
+            return $ids;
+        };
+
+        $manager = InterSoccer_Commission_Manager::get_instance();
+        $manager->process_referral_code_rewards(501);
+        $manager->process_referral_code_rewards(501, 'process-referral-order');
+
+        $this->assertSame(
+            50,
+            (int) get_user_meta($coach_id, 'intersoccer_points_balance', true),
+            'The first completed order should pay the coach bonus once'
+        );
+        $this->assertCount(1, $mock_referral_reward_inserts, 'A repeat call must not store a second reward row');
+
+        $completed_ids[] = 502;
+        $manager->process_referral_code_rewards(502);
+
+        $this->assertSame(
+            50,
+            (int) get_user_meta($coach_id, 'intersoccer_points_balance', true),
+            'A later completed order must not pay the coach first-order bonus again'
+        );
+        $this->assertCount(1, $mock_referral_reward_inserts);
     }
 }

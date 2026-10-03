@@ -744,7 +744,7 @@ class InterSoccer_Referral_Handler {
                 $commission_manager->process_referral_commissions($order_id);
             }
             if (method_exists($commission_manager, 'process_referral_code_rewards')) {
-                $commission_manager->process_referral_code_rewards($order_id);
+                $commission_manager->process_referral_code_rewards($order_id, 'process-referral-order');
             }
         }
         

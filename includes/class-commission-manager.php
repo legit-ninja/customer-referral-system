@@ -416,14 +416,69 @@ class InterSoccer_Commission_Manager {
     }
 
     /**
-     * Process referral code rewards (coach points from referral codes)
+     * Whether this order is the customer's first completed order.
+     *
+     * A one-row "newest completed order" query is not a count. Ask whether any
+     * other completed order exists, and treat an empty result as the first order.
+     *
+     * @param int $customer_id
+     * @param int $order_id
+     * @return bool
      */
-    public function process_referral_code_rewards($order_id) {
+    public static function is_customer_first_completed_order($customer_id, $order_id) {
+        $customer_id = (int) $customer_id;
+        $order_id = (int) $order_id;
+        if ($customer_id <= 0 || $order_id <= 0 || !function_exists('wc_get_orders')) {
+            return false;
+        }
+
+        $previous_orders = wc_get_orders([
+            'customer' => $customer_id,
+            'status' => ['completed', 'wc-completed'],
+            'exclude' => [$order_id],
+            'limit' => 1,
+            'return' => 'ids',
+        ]);
+
+        return empty($previous_orders);
+    }
+
+    /**
+     * Temporary trace for issue 78. Remove after the site log shows whether
+     * this method runs once or twice for one completed order.
+     *
+     * @param int    $order_id
+     * @param string $source
+     * @param string $outcome
+     * @return void
+     */
+    private function log_first_order_reward_attempt($order_id, $source, $outcome) {
+        error_log(sprintf(
+            'InterSoccer referral temporary issue 78: coach first-order reward order %d via %s: %s',
+            (int) $order_id,
+            (string) $source,
+            (string) $outcome
+        ));
+    }
+
+    /**
+     * Process referral code rewards (coach points from referral codes)
+     *
+     * @param int    $order_id
+     * @param string $source completed-hook, or process-referral-order for the direct call
+     */
+    public function process_referral_code_rewards($order_id, $source = 'completed-hook') {
         $order = wc_get_order($order_id);
-        if (!$order) return;
+        if (!$order) {
+            $this->log_first_order_reward_attempt($order_id, $source, 'skipped, order missing');
+            return;
+        }
 
         $customer_id = $order->get_customer_id();
-        if (!$customer_id) return;
+        if (!$customer_id) {
+            $this->log_first_order_reward_attempt($order_id, $source, 'skipped, no customer');
+            return;
+        }
 
         $referral_code = null;
         $referral_coach_id = null;
@@ -441,69 +496,69 @@ class InterSoccer_Commission_Manager {
             $referral_coach_id = get_post_meta($order_id, '_intersoccer_referring_coach_id', true);
         }
 
-        if ($referral_code && $referral_coach_id) {
-            global $wpdb;
-            $rewards_table = $wpdb->prefix . 'intersoccer_referral_rewards';
-            
-            // Check if this is the customer's first completed order
-            $customer_orders = wc_get_orders([
-                'customer_id' => $customer_id,
-                'status' => 'completed',
-                'limit' => 1
-            ]);
+        if (!$referral_code || !$referral_coach_id) {
+            $this->log_first_order_reward_attempt($order_id, $source, 'skipped, no coach referral code');
+            return;
+        }
 
-            // If this is their first completed order, award points to coach
-            if (count($customer_orders) === 1 && $customer_orders[0]->get_id() === $order_id) {
-                $points_to_award = intersoccer_referral_get_coach_referral_bonus_points();
-                $discount_amount = intersoccer_referral_get_first_order_discount_amount($order);
+        global $wpdb;
+        $rewards_table = $wpdb->prefix . 'intersoccer_referral_rewards';
 
-                if ($points_to_award <= 0) {
-                    return;
-                }
+        if (!self::is_customer_first_completed_order($customer_id, $order_id)) {
+            $this->log_first_order_reward_attempt($order_id, $source, 'skipped, not the first completed order');
+            return;
+        }
 
-                // Use INSERT IGNORE to prevent duplicate rewards in case of concurrent processing
-                // This is safer than SELECT + INSERT which has a race condition window
-                $insert_result = $wpdb->query($wpdb->prepare(
-                    "INSERT IGNORE INTO {$rewards_table} 
-                     (coach_id, customer_id, order_id, referral_code, points_awarded, discount_amount, created_at)
-                     VALUES (%d, %d, %d, %s, %d, %f, %s)",
-                    (int) $referral_coach_id,
-                    (int) $customer_id,
-                    (int) $order_id,
-                    $referral_code,
-                    (int) $points_to_award,
-                    (float) $discount_amount,
-                    current_time('mysql')
-                ));
+        $points_to_award = intersoccer_referral_get_coach_referral_bonus_points();
+        $discount_amount = intersoccer_referral_get_first_order_discount_amount($order);
 
-                // If insert_result is 0, the row already existed (duplicate) - skip points award
-                if ($insert_result === 0 || $wpdb->insert_id === 0) {
-                    return;
-                }
+        if ($points_to_award <= 0) {
+            $this->log_first_order_reward_attempt($order_id, $source, 'skipped, bonus points are zero');
+            return;
+        }
 
-                // Get current coach points balance (note: this is different from commission credits)
-                $current_coach_points = (int) (get_user_meta($referral_coach_id, 'intersoccer_points_balance', true) ?: 0);
-                $new_coach_points = $current_coach_points + $points_to_award;
-                update_user_meta($referral_coach_id, 'intersoccer_points_balance', $new_coach_points);
+        // INSERT IGNORE needs the unique coach/customer/order key. A repeat for the
+        // same order affects zero rows and must not add points again.
+        $insert_result = $wpdb->query($wpdb->prepare(
+            "INSERT IGNORE INTO {$rewards_table}
+             (coach_id, customer_id, order_id, referral_code, points_awarded, discount_amount, created_at)
+             VALUES (%d, %d, %d, %s, %d, %f, %s)",
+            (int) $referral_coach_id,
+            (int) $customer_id,
+            (int) $order_id,
+            $referral_code,
+            (int) $points_to_award,
+            (float) $discount_amount,
+            current_time('mysql')
+        ));
 
-                // Add order note
-                $coach_info = get_userdata($referral_coach_id);
-                $order->add_order_note(sprintf(
-                    __('Awarded %d referral points to coach %s. New balance: %d points', 'intersoccer-referral'),
-                    $points_to_award,
-                    $coach_info->display_name,
-                    $new_coach_points
-                ));
+        if ($insert_result === 0 || $wpdb->insert_id === 0) {
+            $this->log_first_order_reward_attempt($order_id, $source, 'skipped, reward row already stored');
+            return;
+        }
 
-                if (function_exists('WC') && WC()->session) {
-                    WC()->session->set('intersoccer_applied_referral_code', null);
-                    WC()->session->set('intersoccer_referral_coach_id', null);
-                }
+        $current_coach_points = (int) (get_user_meta($referral_coach_id, 'intersoccer_points_balance', true) ?: 0);
+        $new_coach_points = $current_coach_points + $points_to_award;
+        update_user_meta($referral_coach_id, 'intersoccer_points_balance', $new_coach_points);
 
-                if (defined('WP_DEBUG') && WP_DEBUG) {
-                    intersoccer_referral_log("InterSoccer Referral: Referral reward - Coach {$referral_coach_id} earned {$points_to_award} points for referral code usage on order {$order_id}");
-                }
-            }
+        $coach_info = get_userdata($referral_coach_id);
+        $coach_name = ($coach_info && !empty($coach_info->display_name)) ? $coach_info->display_name : (string) $referral_coach_id;
+        $order->add_order_note(sprintf(
+            __('Awarded %d referral points to coach %s. New balance: %d points', 'intersoccer-referral'),
+            $points_to_award,
+            $coach_name,
+            $new_coach_points
+        ));
+
+        if (function_exists('WC') && WC()->session) {
+            WC()->session->set('intersoccer_applied_referral_code', null);
+            WC()->session->set('intersoccer_referral_coach_id', null);
+        }
+
+        $this->log_first_order_reward_attempt($order_id, $source, 'paid ' . (int) $points_to_award . ' points');
+
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            intersoccer_referral_log("InterSoccer Referral: Referral reward - Coach {$referral_coach_id} earned {$points_to_award} points for referral code usage on order {$order_id}");
         }
     }
 

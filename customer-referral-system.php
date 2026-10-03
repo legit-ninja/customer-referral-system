@@ -551,6 +551,7 @@ class InterSoccer_Referral_System {
             discount_amount decimal(10,2) NOT NULL DEFAULT '0.00',
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
+            UNIQUE KEY unique_coach_customer_order (coach_id, customer_id, order_id),
             KEY idx_coach_id (coach_id),
             KEY idx_customer_id (customer_id),
             KEY idx_order_id (order_id),
@@ -581,7 +582,7 @@ class InterSoccer_Referral_System {
         dbDelta($performance_sql);
         dbDelta($achievements_sql);
         dbDelta($partnerships_sql);
-        dbDelta($referral_rewards_sql);
+        $this->dbdelta_referral_rewards($referral_rewards_table, $referral_rewards_sql);
         dbDelta($purchase_rewards_sql);
         dbDelta($activities_sql);
         dbDelta($credits_sql);
@@ -594,6 +595,87 @@ class InterSoccer_Referral_System {
         update_option('intersoccer_version', INTERSOCCER_REFERRAL_VERSION);
     }
     
+
+    /**
+     * Create or update referral rewards, including one row per coach, customer, and order.
+     *
+     * Existing duplicate rows are left in place. The unique key is still in the
+     * create statement for new installs, but the ALTER is skipped when duplicates exist.
+     *
+     * @param string $table
+     * @param string $create_sql
+     * @return void
+     */
+    private function dbdelta_referral_rewards($table, $create_sql) {
+        $sql = $create_sql;
+        if ($this->referral_reward_duplicate_rows_exist($table)) {
+            $sql = preg_replace(
+                '/\s*UNIQUE KEY unique_coach_customer_order \(coach_id, customer_id, order_id\),/',
+                '',
+                $create_sql,
+                1
+            );
+            error_log('InterSoccer referral: skipped UNIQUE KEY unique_coach_customer_order because duplicate coach/customer/order rows already exist. No rows were deleted.');
+            dbDelta($sql);
+            return;
+        }
+
+        dbDelta($sql);
+        $this->ensure_referral_reward_unique_key($table);
+    }
+
+    /**
+     * @param string $table
+     * @return bool
+     */
+    private function referral_reward_duplicate_rows_exist($table) {
+        global $wpdb;
+
+        if (!preg_match('/^[A-Za-z0-9_]+$/', (string) $table)) {
+            return true;
+        }
+
+        $found = $wpdb->get_var($wpdb->prepare(
+            'SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s',
+            $table
+        ));
+        if ($found !== $table) {
+            return false;
+        }
+
+        $duplicate = $wpdb->get_var(
+            "SELECT coach_id FROM {$table} GROUP BY coach_id, customer_id, order_id HAVING COUNT(*) > 1 LIMIT 1"
+        );
+
+        return $duplicate !== null && $duplicate !== false && $duplicate !== '';
+    }
+
+    /**
+     * Add the unique key when dbDelta did not, unless duplicate rows would make ALTER fail.
+     *
+     * @param string $table
+     * @return void
+     */
+    private function ensure_referral_reward_unique_key($table) {
+        global $wpdb;
+
+        if (!preg_match('/^[A-Za-z0-9_]+$/', (string) $table)) {
+            return;
+        }
+
+        $existing = $wpdb->get_results("SHOW INDEX FROM {$table} WHERE Key_name = 'unique_coach_customer_order'");
+        if (!empty($existing)) {
+            return;
+        }
+
+        if ($this->referral_reward_duplicate_rows_exist($table)) {
+            error_log('InterSoccer referral: skipped ALTER TABLE for UNIQUE KEY unique_coach_customer_order because duplicate coach/customer/order rows already exist. No rows were deleted.');
+            return;
+        }
+
+        $wpdb->query("ALTER TABLE {$table} ADD UNIQUE KEY unique_coach_customer_order (coach_id, customer_id, order_id)");
+    }
+
     private function add_custom_roles() {
         require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-role-registration.php';
         InterSoccer_Referral_Role_Registration::register_custom_roles();
