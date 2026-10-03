@@ -704,6 +704,7 @@ class InterSoccer_Referral_System {
             return 'skipped';
         }
 
+        error_log('InterSoccer referral: added UNIQUE KEY unique_coach_customer_order (coach_id, customer_id, order_id).');
         return 'added';
     }
 
