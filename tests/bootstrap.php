@@ -700,6 +700,18 @@ if (!class_exists('WC_Order')) {
         public function get_currency() {
             return 'CHF';
         }
+
+        public function get_items($type = '') {
+            if ($type === 'fee' || $type === '') {
+                return $this->fees;
+            }
+            return [];
+        }
+
+        public function save() {
+            $this->persisted_meta = $this->meta_data;
+            return $this->get_id();
+        }
     }
 }
 
@@ -1272,6 +1284,12 @@ if (!function_exists('get_posts')) {
 if (!function_exists('get_avatar_url')) {
     function get_avatar_url($user_id, $args = []) {
         return 'https://example.com/avatar/' . $user_id . '.jpg';
+    }
+}
+
+if (!function_exists('is_admin')) {
+    function is_admin() {
+        return false;
     }
 }
 
