@@ -638,7 +638,11 @@ if (!class_exists('WC_Order')) {
         }
 
         public function set_status($status) {
-            $this->status = ltrim((string) $status, 'wc-') ?: 'pending';
+            $status = (string) $status;
+            if (strpos($status, 'wc-') === 0) {
+                $status = substr($status, 3);
+            }
+            $this->status = $status !== '' ? $status : 'pending';
         }
 
         public function get_status() {
@@ -647,7 +651,9 @@ if (!class_exists('WC_Order')) {
 
         public function has_status($statuses) {
             $current = $this->get_status();
-            $current = ltrim($current, 'wc-');
+            if (strpos($current, 'wc-') === 0) {
+                $current = substr($current, 3);
+            }
 
             if (is_string($statuses)) {
                 $statuses = [$statuses];
@@ -658,7 +664,10 @@ if (!class_exists('WC_Order')) {
             }
 
             foreach ($statuses as $status) {
-                $normalized = ltrim((string) $status, 'wc-');
+                $normalized = (string) $status;
+                if (strpos($normalized, 'wc-') === 0) {
+                    $normalized = substr($normalized, 3);
+                }
                 if ($normalized === $current) {
                     return true;
                 }
@@ -711,6 +720,12 @@ if (!class_exists('WC_Order')) {
         public function save() {
             $this->persisted_meta = $this->meta_data;
             return $this->get_id();
+        }
+
+        public function reload() {
+            if (isset($this->persisted_meta) && is_array($this->persisted_meta)) {
+                $this->meta_data = $this->persisted_meta;
+            }
         }
     }
 }

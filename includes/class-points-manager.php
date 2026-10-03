@@ -39,7 +39,8 @@ class InterSoccer_Points_Manager {
             add_action('woocommerce_order_status_completed', [$this, 'queue_order_for_points_allocation'], 10, 1);
         }
         
-        add_action('woocommerce_order_status_refunded', [$this, 'deduct_points_for_refund'], 10, 1);
+        add_action('woocommerce_order_status_refunded', [$this, 'reverse_earned_points_on_cancel_or_full_refund'], 10, 1);
+        add_action('woocommerce_order_status_cancelled', [$this, 'reverse_earned_points_on_cancel_or_full_refund'], 10, 1);
         add_action('wp_ajax_get_points_balance', [$this, 'get_points_balance_ajax']);
         add_action('wp_ajax_get_points_history', [$this, 'get_points_history_ajax']);
 
@@ -351,9 +352,37 @@ class InterSoccer_Points_Manager {
     /**
      * Deduct points when an order is refunded
      */
+    /**
+     * Take back purchase points after a cancel or a full refund.
+     * A partial refund keeps the original status and is not reversed proportionally.
+     *
+     * @param int $order_id
+     */
+    public function reverse_earned_points_on_cancel_or_full_refund($order_id) {
+        $order = wc_get_order($order_id);
+        if (!$order || !method_exists($order, 'get_status')) {
+            return;
+        }
+
+        $status = (string) $order->get_status();
+        if (strpos($status, 'wc-') === 0) {
+            $status = substr($status, 3);
+        }
+        // Partial refunds stay on processing or completed and are left alone.
+        if (!in_array($status, ['cancelled', 'refunded'], true)) {
+            return;
+        }
+
+        $this->deduct_points_for_refund($order_id);
+    }
+
     public function deduct_points_for_refund($order_id) {
         $order = wc_get_order($order_id);
         if (!$order) return;
+
+        if ((int) $order->get_meta('_intersoccer_purchase_points_reversed', true) === 1) {
+            return;
+        }
 
         $customer_id = $order->get_customer_id();
         if (!$customer_id) return;
@@ -373,6 +402,11 @@ class InterSoccer_Points_Manager {
                 'original_allocation' => $allocated_points
             ]
         );
+
+        $order->update_meta_data('_intersoccer_purchase_points_reversed', 1);
+        if (method_exists($order, 'save')) {
+            $order->save();
+        }
 
         // Update user meta
         $this->update_user_points_balance($customer_id);
@@ -1079,8 +1113,17 @@ class InterSoccer_Points_Manager {
         $order = wc_get_order($order_id);
         if (!$order) return;
 
-        $points_redeemed = $order->get_meta('_intersoccer_points_redeemed', true);
-        if (!$points_redeemed || $points_redeemed <= 0) return;
+        if ((int) $order->get_meta('_intersoccer_redeemed_points_returned', true) === 1) {
+            return;
+        }
+
+        // Only points that were actually taken off the balance can be given back.
+        if ((int) $order->get_meta('_intersoccer_credits_deducted_on_completion', true) !== 1) {
+            return;
+        }
+
+        $points_redeemed = (int) $order->get_meta('_intersoccer_points_redeemed', true);
+        if ($points_redeemed <= 0) return;
 
         $user_id = $order->get_customer_id();
         $discount_amount = $order->get_meta('_intersoccer_discount_amount', true);
@@ -1101,9 +1144,10 @@ class InterSoccer_Points_Manager {
         // Update user meta
         $this->update_user_points_balance($user_id);
 
-        // Clear order meta
-        $order->delete_meta_data('_intersoccer_points_redeemed');
-        $order->delete_meta_data('_intersoccer_discount_amount');
+        $order->update_meta_data('_intersoccer_redeemed_points_returned', 1);
+        if (method_exists($order, 'save')) {
+            $order->save();
+        }
 
         intersoccer_referral_log("InterSoccer: Refunded {$points_redeemed} points for {$reason} order {$order_id}");
     }
