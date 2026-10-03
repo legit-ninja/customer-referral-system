@@ -138,7 +138,8 @@ class InterSoccer_Admin_Coaches {
                         </a>
                     </p>
                     
-                    <form id="coach-import-form-modal" method="post" enctype="multipart/form-data">
+                    <form id="coach-import-form-modal" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" enctype="multipart/form-data">
+                        <input type="hidden" name="action" value="import_coaches_from_csv">
                         <?php wp_nonce_field('import_coaches_from_csv', '_wpnonce'); ?>
                         
                         <table class="form-table" role="presentation">

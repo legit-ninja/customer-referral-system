@@ -43,6 +43,36 @@ class AdminSettingsTest extends TestCase {
         $this->assertFalse(wp_verify_nonce('', 'import_coaches_from_csv'));
     }
 
+    public function testAdminPostImportCoaches_RejectsRequestWithoutNonce() {
+        global $mock_wp_verify_nonce_result, $mock_user_capabilities, $mock_wp_doing_ajax, $mock_users;
+
+        $mock_wp_doing_ajax = false;
+        $mock_wp_verify_nonce_result = false;
+        $mock_user_capabilities['manage_options'] = true;
+        $users_before = is_array($mock_users) ? count($mock_users) : 0;
+
+        $_POST = array();
+        $_FILES['coaches_csv'] = array(
+            'name' => 'coaches.csv',
+            'type' => 'text/csv',
+            'tmp_name' => '/tmp/coaches-should-not-import.csv',
+            'error' => UPLOAD_ERR_OK,
+            'size' => 32,
+        );
+
+        $settings = new InterSoccer_Admin_Settings();
+
+        try {
+            $settings->import_coaches_from_csv();
+            $this->fail('A coach import without a valid nonce must stop.');
+        } catch (Exception $e) {
+            $this->assertStringContainsString('nonce', strtolower($e->getMessage()));
+        }
+
+        $users_after = is_array($mock_users) ? count($mock_users) : 0;
+        $this->assertSame($users_before, $users_after);
+    }
+
     public function testAjaxImportCoaches_RequiresPermissions() {
         global $mock_user_capabilities;
 

@@ -997,6 +997,20 @@ if (!function_exists('check_ajax_referer')) {
     }
 }
 
+if (!function_exists('wp_doing_ajax')) {
+    function wp_doing_ajax() {
+        global $mock_wp_doing_ajax;
+        return !empty($mock_wp_doing_ajax);
+    }
+}
+
+if (!function_exists('wp_die')) {
+    function wp_die($message = '', $title = '', $args = array()) {
+        $text = is_string($message) ? $message : 'wp_die';
+        throw new Exception($text);
+    }
+}
+
 if (!function_exists('wp_verify_nonce')) {
     function wp_verify_nonce($nonce, $action = -1) {
         global $mock_wp_verify_nonce_result;
