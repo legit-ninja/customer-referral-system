@@ -550,6 +550,7 @@ class InterSoccer_Referral_System {
             referral_code varchar(100) NOT NULL,
             points_awarded int(11) NOT NULL DEFAULT 0 COMMENT 'Integer points only - updated Nov 4, 2025',
             discount_amount decimal(10,2) NOT NULL DEFAULT '0.00',
+            status varchar(20) NOT NULL DEFAULT 'paid',
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
             UNIQUE KEY unique_coach_customer_order (coach_id, customer_id, order_id),
