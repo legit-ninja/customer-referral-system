@@ -1230,6 +1230,8 @@ class InterSoccer_Referral_Admin_Dashboard {
                 $current_credits = $points_manager->get_points_balance($user_id);
                 $debit = min((int) $points_to_redeem, max(0, $current_credits));
                 if ($debit > 0) {
+                    // add_points_transaction changes the stored balance by this
+                    // amount. It must not write back a balance read earlier.
                     $points_manager->add_points_transaction(
                         $user_id,
                         'points_redemption',

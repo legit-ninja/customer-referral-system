@@ -41,6 +41,8 @@ class PointsManagerTest extends TestCase {
         $mock_order_points_allocated = [];
         $mock_points_log_rows = [];
         $mock_user_meta = [];
+        $mock_force_points_balance_read = [];
+        $mock_fail_points_balance_change_for = null;
         $mock_wc_orders_by_id = [];
         $mock_wc_get_orders = null;
         $mock_user_roles = [];
@@ -1431,5 +1433,74 @@ class PointsManagerTest extends TestCase {
             $balance_after_second,
             'Two Points_Manager instances must not double-allocate points for the same order'
         );
+    }
+
+    /**
+     * The shared helper adds and takes points on the stored balance.
+     * A frozen read must not make the second change overwrite the first.
+     */
+    public function testChangePointsBalanceAddsAndSubtractsWithoutAStaleRead() {
+        global $mock_user_meta, $mock_force_points_balance_read;
+
+        $user_id = 8401;
+        $mock_user_meta[$user_id] = ['intersoccer_points_balance' => 40];
+        $mock_force_points_balance_read = [$user_id => 40];
+        $points = new InterSoccer_Points_Manager();
+
+        $this->assertSame(70, $points->change_points_balance($user_id, 30, false));
+        $this->assertSame(100, $points->change_points_balance($user_id, 30, false));
+        $this->assertSame(85, $points->change_points_balance($user_id, -15, false));
+        $this->assertFalse($points->change_points_balance($user_id, -90, true));
+        $this->assertSame(85, (int) $mock_user_meta[$user_id]['intersoccer_points_balance']);
+
+        $fresh = 8402;
+        unset($mock_user_meta[$fresh]);
+        $this->assertSame(25, $points->change_points_balance($fresh, 25, false));
+        $this->assertSame(25, (int) $mock_user_meta[$fresh]['intersoccer_points_balance']);
+    }
+
+    /**
+     * Earning points after a gift must not put the gifted points back.
+     */
+    public function testAddingPointsDoesNotPutAGiftDebitBack() {
+        global $mock_user_meta, $mock_force_points_balance_read;
+
+        $user_id = 8410;
+        $mock_user_meta[$user_id] = ['intersoccer_points_balance' => 100];
+        $points = new InterSoccer_Points_Manager();
+        $this->assertSame(20, $points->change_points_balance($user_id, -80, true));
+
+        $mock_force_points_balance_read = [$user_id => 100];
+        $id = $points->add_points_transaction($user_id, 'order_purchase', 10, 84101, 'Earned after a gift');
+
+        $this->assertGreaterThan(0, $id);
+        $this->assertSame(30, (int) $mock_user_meta[$user_id]['intersoccer_points_balance']);
+    }
+
+    /**
+     * An admin adjustment must not write an old balance back over a gift debit.
+     */
+    public function testAdminAdjustDoesNotPutAGiftDebitBack() {
+        global $mock_user_meta, $mock_force_points_balance_read, $mock_wp_json_response;
+
+        require_once __DIR__ . '/../includes/class-admin-points.php';
+
+        $user_id = 8420;
+        $mock_user_meta[$user_id] = ['intersoccer_points_balance' => 100];
+        $points = new InterSoccer_Points_Manager();
+        $this->assertSame(20, $points->change_points_balance($user_id, -80, true));
+        $mock_force_points_balance_read = [$user_id => 100];
+
+        $_POST = [
+            'nonce' => 'test',
+            'user_id' => (string) $user_id,
+            'adjustment_type' => 'add',
+            'points_amount' => '10',
+            'reason' => 'Goodwill',
+        ];
+        (new InterSoccer_Admin_Points())->adjust_user_points_ajax();
+
+        $this->assertTrue($mock_wp_json_response['success']);
+        $this->assertSame(30, (int) $mock_user_meta[$user_id]['intersoccer_points_balance']);
     }
 }
