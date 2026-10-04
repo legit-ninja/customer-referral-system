@@ -3020,6 +3020,10 @@ class InterSoccer_Admin_Settings {
                     AND meta_value > 0
                 )";
                 break;
+            default:
+                // Unknown types must not fall through to every user.
+                wp_send_json_error(['message' => 'Unknown allocation type.']);
+                return;
         }
 
         $users = $wpdb->get_results("SELECT ID, user_email FROM {$wpdb->users} {$where_clause}");
