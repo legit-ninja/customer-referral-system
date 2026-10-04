@@ -7,6 +7,8 @@ class InterSoccer_Referral_Handler {
         add_action('init', [$this, 'handle_referral_cookie']);
         add_action('woocommerce_thankyou', [$this, 'process_referral_order']);
         add_action('woocommerce_order_status_completed', [$this, 'process_referral_order']);
+        add_action('woocommerce_order_status_cancelled', [$this, 'reverse_paid_rewards_on_cancel_or_full_refund']);
+        add_action('woocommerce_order_status_refunded', [$this, 'reverse_paid_rewards_on_cancel_or_full_refund']);
         // Disabled old credit discount system - replaced with points system in admin dashboard
         // add_action('woocommerce_cart_calculate_fees', [$this, 'apply_credit_discount']);
         // Disabled old slider interface - replaced with Amazon Prime style in admin dashboard
@@ -686,6 +688,15 @@ class InterSoccer_Referral_Handler {
 
         // Continue with existing referral processing...
         if ($referrer_reward_points > 0) {
+            update_post_meta($order_id, '_intersoccer_referrer_reward_points', (int) $referrer_reward_points);
+            update_post_meta($order_id, '_intersoccer_referrer_reward_user_id', (int) $referrer['id']);
+            if (is_object($order) && method_exists($order, 'update_meta_data')) {
+                $order->update_meta_data('_intersoccer_referrer_reward_points', (int) $referrer_reward_points);
+                $order->update_meta_data('_intersoccer_referrer_reward_user_id', (int) $referrer['id']);
+                if (method_exists($order, 'save')) {
+                    $order->save();
+                }
+            }
             // Credit referrer with Loyalty Points (intersoccer_points_balance) — canonical redeemable balance
             $current_points = (float) get_user_meta($referrer['id'], 'intersoccer_points_balance', true);
             update_user_meta($referrer['id'], 'intersoccer_points_balance', $current_points + $referrer_reward_points);
@@ -756,6 +767,18 @@ class InterSoccer_Referral_Handler {
         }
 
         $this->clear_referral_cookie();
+    }
+
+    /**
+     * Full refund or cancel after the rewards were paid. Partial refunds are ignored.
+     *
+     * @param int $order_id
+     */
+    public function reverse_paid_rewards_on_cancel_or_full_refund($order_id) {
+        if (!class_exists('InterSoccer_Commission_Manager')) {
+            require_once dirname(__FILE__) . '/class-commission-manager.php';
+        }
+        InterSoccer_Commission_Manager::get_instance()->reverse_paid_rewards($order_id);
     }
 
     /**
