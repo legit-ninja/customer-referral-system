@@ -556,15 +556,20 @@ class InterSoccer_Commission_Manager {
             return;
         }
 
-        // Add the bonus on the stored balance. Writing a balance read earlier
-        // can put a gift debit back on the coach.
-        $new_coach_points = InterSoccer_Points_Manager::get_instance()->change_points_balance(
+        // Add the bonus on the stored balance and write the ledger row.
+        // Writing a balance read earlier can put a gift debit back on the coach.
+        $points_manager = InterSoccer_Points_Manager::get_instance();
+        $coach_tx = $points_manager->add_points_transaction(
             (int) $referral_coach_id,
+            'coach_referral_bonus',
             (int) $points_to_award,
-            false
+            (int) $order_id,
+            'Coach first-order referral bonus'
         );
-        if ($new_coach_points === false) {
+        if ($coach_tx === false) {
             $new_coach_points = (int) (get_user_meta($referral_coach_id, 'intersoccer_points_balance', true) ?: 0);
+        } else {
+            $new_coach_points = (int) $points_manager->get_balance_after_last_transaction();
         }
 
         $coach_info = get_userdata($referral_coach_id);

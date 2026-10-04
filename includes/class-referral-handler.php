@@ -446,18 +446,44 @@ class InterSoccer_Referral_Handler {
             require_once __DIR__ . '/class-points-manager.php';
         }
         $points = InterSoccer_Points_Manager::get_instance();
-        $sender_new_credits = $points->change_points_balance($user_id, -$gift_amount, true);
-        if ($sender_new_credits === false) {
+        // The sender debit still happens in one balance update, and only when the
+        // stored balance covers the gift. The ledger row is written in that same path.
+        $sender_tx = $points->add_points_transaction(
+            $user_id,
+            'gift_sent',
+            -$gift_amount,
+            null,
+            'Gifted points',
+            ['recipient_id' => (int) $recipient->ID],
+            true
+        );
+        if ($sender_tx === false) {
             wp_send_json_error(['message' => 'Insufficient credits']);
             return;
         }
+        $sender_new_credits = $points->get_balance_after_last_transaction();
 
-        $recipient_new = $points->change_points_balance((int) $recipient->ID, $gift_amount, false);
-        if ($recipient_new === false) {
-            $points->change_points_balance($user_id, $gift_amount, false);
+        $recipient_tx = $points->add_points_transaction(
+            (int) $recipient->ID,
+            'gift_received',
+            $gift_amount,
+            null,
+            'Gifted points received',
+            ['sender_id' => (int) $user_id]
+        );
+        if ($recipient_tx === false) {
+            $points->add_points_transaction(
+                $user_id,
+                'gift_returned',
+                $gift_amount,
+                null,
+                'Gift returned because the recipient credit failed',
+                ['recipient_id' => (int) $recipient->ID]
+            );
             wp_send_json_error(['message' => 'Could not send the gift. Your points were returned.']);
             return;
         }
+        $recipient_new = $points->get_balance_after_last_transaction();
 
         if (defined('WP_DEBUG') && WP_DEBUG) {
             intersoccer_referral_log('InterSoccer Referral: Points gifted - ' . $gift_amount . ' from user ' . $user_id . ' to ' . $recipient->ID);
@@ -707,11 +733,13 @@ class InterSoccer_Referral_Handler {
                 }
             }
             // Credit referrer with Loyalty Points (intersoccer_points_balance) — canonical redeemable balance.
-            // Add on the stored balance so a gift debit is not written back.
-            InterSoccer_Points_Manager::get_instance()->change_points_balance(
+            // Add on the stored balance so a gift debit is not written back, and record the ledger row.
+            InterSoccer_Points_Manager::get_instance()->add_points_transaction(
                 (int) $referrer['id'],
+                'customer_referral_reward',
                 (int) $referrer_reward_points,
-                false
+                $order_id,
+                'Customer referral reward'
             );
             // NOTE: Dual-write to intersoccer_customer_credits stopped per issue #36.
             // Legacy reads should migrate to intersoccer_points_balance.
@@ -729,11 +757,13 @@ class InterSoccer_Referral_Handler {
         $customer_bonus_points = $eligibility['eligible'] ? intval(get_option('intersoccer_new_customer_credits', 50)) : 0;
         if ($customer_bonus_points > 0 && $customer_id) {
             // Award bonus points to canonical intersoccer_points_balance only (issue #36).
-            // Add on the stored balance so a gift debit is not written back.
-            InterSoccer_Points_Manager::get_instance()->change_points_balance(
+            // Add on the stored balance so a gift debit is not written back, and record the ledger row.
+            InterSoccer_Points_Manager::get_instance()->add_points_transaction(
                 (int) $customer_id,
+                'new_customer_bonus',
                 (int) $customer_bonus_points,
-                false
+                $order_id,
+                'New customer referral bonus'
             );
             // NOTE: Dual-write to intersoccer_customer_credits stopped per issue #36.
         }
@@ -1321,17 +1351,19 @@ class InterSoccer_Referral_Handler {
 
         $user_id = get_current_user_id();
         // Use canonical intersoccer_points_balance (issue #36)
-        $points = (int) get_user_meta($user_id, 'intersoccer_points_balance', true);
-        update_user_meta($user_id, 'intersoccer_points_balance', $points - $apply_credits);
+        if (!class_exists('InterSoccer_Points_Manager')) {
+            require_once __DIR__ . '/class-points-manager.php';
+        }
+        InterSoccer_Points_Manager::get_instance()->add_points_transaction(
+            $user_id,
+            'checkout_credits',
+            -$apply_credits,
+            $order_id,
+            'Credits applied at checkout'
+        );
         update_post_meta($order_id, '_intersoccer_credits_used', $apply_credits);
     }
 
-    /**
-     * How many points the Credits Applied fee already took off this order.
-     *
-     * @param int $order_id
-     * @return int
-     */
     private function credits_applied_discount_on_order($order_id) {
         if (!function_exists('wc_get_order')) {
             return 0;
