@@ -585,6 +585,57 @@ class InterSoccer_Points_Manager {
         return $percentage;
     }
 
+
+    /**
+     * Insert the first points-balance row for a user.
+     *
+     * The update above missed, so no row is visible yet. add_user_meta checks
+     * for an existing row and then writes, which is two steps. Two credits at
+     * the same moment can both pass that check. The named lock makes the second
+     * credit wait, look again, and add onto the row the first credit created.
+     *
+     * @param int    $user_id
+     * @param string $meta_key
+     * @param int    $delta
+     * @param string $sql Update statement already prepared for this change.
+     * @return bool True when one balance row now holds this change.
+     */
+    private function create_points_balance_row($user_id, $meta_key, $delta, $sql) {
+        global $wpdb;
+
+        $lock_name = 'intersoccer_pts_bal_' . (int) $user_id;
+        $locked = is_object($wpdb)
+            && method_exists($wpdb, 'get_var')
+            && method_exists($wpdb, 'prepare')
+            && (int) $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, %d)', $lock_name, 5)) === 1;
+        if (!$locked) {
+            return false;
+        }
+
+        try {
+            $updated = $wpdb->query($sql);
+            if ($updated === false) {
+                return false;
+            }
+            if ((int) $updated === 1) {
+                return true;
+            }
+
+            $created = function_exists('add_user_meta')
+                ? add_user_meta($user_id, $meta_key, $delta, true)
+                : false;
+            if ($created) {
+                return true;
+            }
+
+            // The other credit inserted the row while we waited.
+            $updated = $wpdb->query($sql);
+            return (int) $updated === 1;
+        } finally {
+            $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $lock_name));
+        }
+    }
+
     /**
      * Change the stored points balance by $delta in one database update.
      *
@@ -648,22 +699,18 @@ class InterSoccer_Points_Manager {
             );
         }
 
-        for ($attempt = 0; $attempt < 2; $attempt++) {
-            $updated = $wpdb->query($sql);
-            if ($updated === false) {
+        $updated = $wpdb->query($sql);
+        if ($updated === false) {
+            return false;
+        }
+        if ((int) $updated !== 1) {
+            // A guarded debit must not invent a balance row.
+            if ($only_if_balance_covers) {
                 return false;
             }
-            if ((int) $updated === 1) {
-                break;
-            }
-            if ($only_if_balance_covers || $attempt === 1) {
+            // No row yet. Lock so two first credits cannot each insert one.
+            if ($this->create_points_balance_row($user_id, $meta_key, $delta, $sql) !== true) {
                 return false;
-            }
-            $created = function_exists('add_user_meta')
-                ? add_user_meta($user_id, $meta_key, $delta, true)
-                : false;
-            if ($created) {
-                break;
             }
         }
 
