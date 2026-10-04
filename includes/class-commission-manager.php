@@ -993,9 +993,10 @@ class InterSoccer_Commission_Manager {
         global $wpdb;
         $referrals_table = $wpdb->prefix . 'intersoccer_referrals';
 
-        // Check if this customer has referred others
+        // Completed customer referrals this customer made (they are the referrer).
+        // A coach referral does not count. Do not count rows where they are the buyer.
         $referrals_made = $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM $referrals_table WHERE customer_id = %d AND status = 'completed'",
+            "SELECT COUNT(*) FROM $referrals_table WHERE referrer_id = %d AND status = 'completed' AND referrer_type = 'customer'",
             $customer_id
         ));
 
