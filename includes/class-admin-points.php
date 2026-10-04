@@ -446,6 +446,7 @@ class InterSoccer_Admin_Points {
                        MAX(created_at) as last_earned
                 FROM {$wpdb->prefix}intersoccer_points_log
                 WHERE points_amount > 0
+                  AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned')
                 GROUP BY customer_id
             ) earned ON u.ID = earned.customer_id
             LEFT JOIN (
@@ -454,6 +455,7 @@ class InterSoccer_Admin_Points {
                        MAX(created_at) as last_spent
                 FROM {$wpdb->prefix}intersoccer_points_log
                 WHERE points_amount < 0
+                  AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned')
                 GROUP BY customer_id
             ) spent ON u.ID = spent.customer_id
             {$where}
@@ -570,6 +572,7 @@ class InterSoccer_Admin_Points {
                        MAX(created_at) as last_earned
                 FROM {$wpdb->prefix}intersoccer_points_log
                 WHERE points_amount > 0
+                  AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned')
                 GROUP BY customer_id
             ) earned ON u.ID = earned.customer_id
             LEFT JOIN (
@@ -578,6 +581,7 @@ class InterSoccer_Admin_Points {
                        MAX(created_at) as last_spent
                 FROM {$wpdb->prefix}intersoccer_points_log
                 WHERE points_amount < 0
+                  AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned')
                 GROUP BY customer_id
             ) spent ON u.ID = spent.customer_id
             ORDER BY u.display_name

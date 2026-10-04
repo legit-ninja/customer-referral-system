@@ -730,9 +730,9 @@ class ReferralHandlerTest extends TestCase {
         // The referrer reward adds to the stored points balance. It does not
         // write a balance it read earlier, and it does not touch customer credits.
         $this->assertStringContainsString(
-            "change_points_balance(\n                (int) \$referrer['id'],",
+            "add_points_transaction(\n                (int) \$referrer['id'],",
             $handler_file,
-            'Referrer reward should add to intersoccer_points_balance'
+            'Referrer reward should add to intersoccer_points_balance through the ledger'
         );
     }
 
@@ -998,6 +998,44 @@ class ReferralHandlerTest extends TestCase {
             $this->assertSame(15, (int) $mock_user_meta[$recipient]['intersoccer_points_balance']);
         } finally {
             $mock_fail_points_balance_change_for = null;
+            $mock_current_user_id = $previous_user_id;
+            unset($_POST['gift_amount'], $_POST['recipient_email'], $_POST['nonce']);
+        }
+    }
+
+    public function testGiftWritesLedgerRowsForBothSides() {
+        global $mock_users, $mock_user_meta, $mock_current_user_id, $mock_points_log_rows;
+        $previous_user_id = $mock_current_user_id;
+        $mock_points_log_rows = [];
+
+        $sender = 8401;
+        $recipient = 8402;
+        $mock_users[$sender] = (object) [
+            'ID' => $sender,
+            'roles' => ['customer'],
+            'user_email' => 'ledger-sender@example.com',
+            'display_name' => 'Ledger Sender',
+        ];
+        $mock_users[$recipient] = (object) [
+            'ID' => $recipient,
+            'roles' => ['customer'],
+            'user_email' => 'ledger-recipient@example.com',
+            'display_name' => 'Ledger Recipient',
+        ];
+        $mock_user_meta[$sender] = ['intersoccer_points_balance' => 100];
+        $mock_user_meta[$recipient] = ['intersoccer_points_balance' => 10];
+
+        try {
+            $result = $this->giftPoints($sender, 'ledger-recipient@example.com', 50);
+            $this->assertTrue($result['success']);
+            $types = array_map(function ($row) {
+                return $row['transaction_type'] ?? '';
+            }, $mock_points_log_rows);
+            $this->assertContains('gift_sent', $types);
+            $this->assertContains('gift_received', $types);
+            $this->assertSame(50, (int) $mock_user_meta[$sender]['intersoccer_points_balance']);
+            $this->assertSame(60, (int) $mock_user_meta[$recipient]['intersoccer_points_balance']);
+        } finally {
             $mock_current_user_id = $previous_user_id;
             unset($_POST['gift_amount'], $_POST['recipient_email'], $_POST['nonce']);
         }

@@ -138,6 +138,7 @@ class InterSoccer_Admin_Financial {
             SELECT COALESCE(SUM(points_amount), 0)
             FROM {$wpdb->prefix}intersoccer_points_log
             WHERE points_amount > 0
+              AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned')
         ");
 
         return [
@@ -173,10 +174,12 @@ class InterSoccer_Admin_Financial {
                 SELECT 'points_earned' as table_name, points_amount as amount, created_at
                 FROM {$wpdb->prefix}intersoccer_points_log
                 WHERE points_amount > 0
+                  AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned')
                 UNION ALL
                 SELECT 'points_spent' as table_name, points_amount as amount, created_at
                 FROM {$wpdb->prefix}intersoccer_points_log
                 WHERE points_amount < 0
+                  AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned')
             ) as combined
             GROUP BY DATE_FORMAT(created_at, '%Y-%m')
             ORDER BY month DESC

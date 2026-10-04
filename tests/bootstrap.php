@@ -816,6 +816,41 @@ if (!function_exists('wc_get_order')) {
     }
 }
 
+
+if (!function_exists('intersoccer_mock_excluded_transaction_types')) {
+    function intersoccer_mock_excluded_transaction_types($query) {
+        $excluded = [];
+        if (is_string($query) && preg_match('/transaction_type\s+NOT\s+IN\s*\(([^)]*)\)/i', $query, $matches)) {
+            if (preg_match_all("/'([^']+)'/", $matches[1], $types)) {
+                $excluded = $types[1];
+            }
+        }
+        return $excluded;
+    }
+}
+
+if (!function_exists('intersoccer_mock_points_sums')) {
+    function intersoccer_mock_points_sums($query) {
+        global $mock_points_log_rows;
+        $excluded = intersoccer_mock_excluded_transaction_types($query);
+        $positive = 0;
+        $negative = 0;
+        foreach ((array) $mock_points_log_rows as $row) {
+            $type = (string) ($row['transaction_type'] ?? '');
+            if (in_array($type, $excluded, true)) {
+                continue;
+            }
+            $amount = (float) ($row['points_amount'] ?? 0);
+            if ($amount > 0) {
+                $positive += $amount;
+            } elseif ($amount < 0) {
+                $negative += abs($amount);
+            }
+        }
+        return [$positive, $negative];
+    }
+}
+
 // Mock global $wpdb (real methods — closures on stdClass are not callable as $wpdb->method()).
 if (!class_exists('Mock_WPDB')) {
     class Mock_WPDB {
@@ -944,16 +979,7 @@ $mock_referral_reward_unique_key_present = true;
             }
 
             if (strpos($query, 'SUM(points_amount)') !== false || strpos($query, 'COALESCE(SUM(points_amount)') !== false) {
-                $positive = 0;
-                $negative = 0;
-                foreach ($mock_points_log_rows as $row) {
-                    $amount = (float) ($row['points_amount'] ?? 0);
-                    if ($amount > 0) {
-                        $positive += $amount;
-                    } elseif ($amount < 0) {
-                        $negative += abs($amount);
-                    }
-                }
+                list($positive, $negative) = intersoccer_mock_points_sums($query);
 
                 if (strpos($query, 'points_amount > 0') !== false || strpos($query, 'points_amount)>0') !== false) {
                     return $positive;
@@ -1095,6 +1121,59 @@ $mock_referral_reward_unique_key_present = true;
                 if ($needle !== '' && strpos($query, $needle) !== false) {
                     return is_callable($result) ? $result($query) : $result;
                 }
+            }
+
+            if (is_string($query) && stripos($query, 'as total_earned') !== false && stripos($query, 'as total_spent') !== false) {
+                global $mock_points_log_rows, $mock_users, $mock_user_meta;
+                $excluded = intersoccer_mock_excluded_transaction_types($query);
+                $by_customer = [];
+                foreach ((array) $mock_points_log_rows as $row) {
+                    $type = (string) ($row['transaction_type'] ?? '');
+                    if (in_array($type, $excluded, true)) {
+                        continue;
+                    }
+                    $cid = (int) ($row['customer_id'] ?? 0);
+                    if (!isset($by_customer[$cid])) {
+                        $by_customer[$cid] = ['earned' => 0.0, 'spent' => 0.0];
+                    }
+                    $amount = (float) ($row['points_amount'] ?? 0);
+                    if ($amount > 0) {
+                        $by_customer[$cid]['earned'] += $amount;
+                    } elseif ($amount < 0) {
+                        $by_customer[$cid]['spent'] += abs($amount);
+                    }
+                }
+                $rows = [];
+                foreach ($by_customer as $cid => $totals) {
+                    $user = (isset($mock_users[$cid]) && is_object($mock_users[$cid])) ? $mock_users[$cid] : null;
+                    $rows[] = (object) [
+                        'ID' => $cid,
+                        'display_name' => $user->display_name ?? '',
+                        'user_email' => $user->user_email ?? '',
+                        'current_points' => (int) ($mock_user_meta[$cid]['intersoccer_points_balance'] ?? 0),
+                        'total_earned' => $totals['earned'],
+                        'total_spent' => $totals['spent'],
+                        'last_activity' => '0000-00-00',
+                    ];
+                }
+                return $rows;
+            }
+
+            if (is_string($query)
+                && strpos($query, 'as points_earned') !== false
+                && strpos($query, 'as points_spent') !== false
+                && strpos($query, 'intersoccer_points_log') !== false
+            ) {
+                list($positive, $negative) = intersoccer_mock_points_sums($query);
+                return [
+                    (object) [
+                        'month' => date('Y-m'),
+                        'revenue' => 0,
+                        'costs' => 0,
+                        'points_earned' => $positive,
+                        'points_spent' => $negative,
+                    ],
+                ];
             }
 
             return [

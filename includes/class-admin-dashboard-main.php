@@ -346,6 +346,7 @@ class InterSoccer_Admin_Dashboard_Main {
             SELECT COALESCE(SUM(points_amount), 0)
             FROM {$points_log}
             WHERE points_amount > 0
+              AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned')
         ");
 
         // Loyalty points earned this month
@@ -355,6 +356,7 @@ class InterSoccer_Admin_Dashboard_Main {
             SELECT COALESCE(SUM(points_amount), 0)
             FROM {$points_log}
             WHERE points_amount > 0
+              AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned')
               AND created_at BETWEEN %s AND %s
         ", $this_month_start, $this_month_end . ' 23:59:59'));
 
@@ -363,6 +365,7 @@ class InterSoccer_Admin_Dashboard_Main {
             SELECT COALESCE(ABS(SUM(points_amount)), 0)
             FROM {$points_log}
             WHERE points_amount < 0
+              AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned')
         ");
 
         // Redemption rate
@@ -458,7 +461,7 @@ class InterSoccer_Admin_Dashboard_Main {
 
         // Credit utilization rate (points redeemed vs total points earned)
         $total_earned   = $wpdb->get_var("SELECT COALESCE(SUM(credit_amount), 0) FROM {$wpdb->prefix}intersoccer_referral_credits");
-        $total_redeemed = $wpdb->get_var("SELECT COALESCE(ABS(SUM(points_amount)), 0) FROM {$wpdb->prefix}intersoccer_points_log WHERE points_amount < 0");
+        $total_redeemed = $wpdb->get_var("SELECT COALESCE(ABS(SUM(points_amount)), 0) FROM {$wpdb->prefix}intersoccer_points_log WHERE points_amount < 0 AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned')");
         $credit_utilization_rate = $total_earned > 0 ? ($total_redeemed / $total_earned) * 100 : 0;
 
         // Average credits per customer
@@ -599,6 +602,7 @@ class InterSoccer_Admin_Dashboard_Main {
                 SELECT COALESCE(ABS(SUM(points_amount)), 0)
                 FROM {$wpdb->prefix}intersoccer_points_log
                 WHERE points_amount < 0
+                  AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned')
                   AND created_at BETWEEN %s AND %s
             ", $date, $end_date . ' 23:59:59'));
 
@@ -668,6 +672,7 @@ class InterSoccer_Admin_Dashboard_Main {
             SELECT COALESCE(ABS(SUM(points_amount)), 0)
             FROM {$wpdb->prefix}intersoccer_points_log
             WHERE points_amount < 0
+              AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned')
         ");
 
         $total = $coach_commissions + $customer_redemptions;
@@ -710,6 +715,7 @@ class InterSoccer_Admin_Dashboard_Main {
                 SELECT COALESCE(SUM(points_amount), 0)
                 FROM {$points_log}
                 WHERE points_amount > 0
+                  AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned')
                   AND created_at BETWEEN %s AND %s
             ", $date, $end_date . ' 23:59:59'));
 
@@ -718,6 +724,7 @@ class InterSoccer_Admin_Dashboard_Main {
                 SELECT COALESCE(ABS(SUM(points_amount)), 0)
                 FROM {$points_log}
                 WHERE points_amount < 0
+                  AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned')
                   AND created_at BETWEEN %s AND %s
             ", $date, $end_date . ' 23:59:59'));
 
