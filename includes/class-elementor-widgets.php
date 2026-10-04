@@ -598,7 +598,7 @@ class InterSoccer_Customer_Dashboard_Widget extends \Elementor\Widget_Base {
     }
     
     private function get_customer_credits_safe($user_id) {
-        $credits = get_user_meta($user_id, 'intersoccer_customer_credits', true);
+        $credits = get_user_meta($user_id, 'intersoccer_points_balance', true);
         return is_numeric($credits) ? (float) $credits : 0.0;
     }
     
@@ -1272,7 +1272,7 @@ class InterSoccer_Referral_Stats_Widget extends \Elementor\Widget_Base {
                 if (current_user_can('view_referral_dashboard')) {
                     return number_format(get_user_meta($user_id, 'intersoccer_credits', true) ?: 0, 0);
                 } else {
-                    return number_format(get_user_meta($user_id, 'intersoccer_customer_credits', true) ?: 0, 0);
+                    return number_format(get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0, 0);
                 }
             case 'referrals':
                 $referrals = get_user_meta($user_id, 'intersoccer_referrals_made', true) ?: [];
@@ -1536,7 +1536,7 @@ class InterSoccer_Customer_Progress_Widget extends \Elementor\Widget_Base {
     }
     
     private function render_credits_progress($user_id, $settings) {
-        $credits = get_user_meta($user_id, 'intersoccer_customer_credits', true) ?: 0;
+        $credits = get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0;
         $next_milestone = 1000;
         $progress_percentage = min(100, ($credits / $next_milestone) * 100);
         
