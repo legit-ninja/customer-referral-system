@@ -138,7 +138,7 @@ See [docs/guides/WPML-SETUP.md](docs/guides/WPML-SETUP.md) for detailed configur
 
 ## Configuration
 
-### Current Product Model (v1.10.3)
+### Current Product Model (v1.10.4)
 
 This plugin implements a **share-link + loyalty points** system. Key behaviors:
 
