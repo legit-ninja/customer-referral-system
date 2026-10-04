@@ -1532,4 +1532,52 @@ class PointsManagerTest extends TestCase {
             'Purchase points should be added to the balance left after the gift'
         );
     }
+
+    /**
+     * Two first credits at once must not each insert a balance row.
+     * If the lock is already held, this credit does not insert.
+     */
+    public function testFirstCreditDoesNotInsertWhenAnotherCreditHoldsTheLock() {
+        global $mock_user_meta, $mock_wpdb_get_var_results;
+
+        $user_id = 9801;
+        unset($mock_user_meta[$user_id]);
+        $mock_wpdb_get_var_results['GET_LOCK('] = 0;
+        $points = new InterSoccer_Points_Manager();
+
+        try {
+            $this->assertFalse($points->change_points_balance($user_id, 10, false));
+            $this->assertArrayNotHasKey(
+                'intersoccer_points_balance',
+                $mock_user_meta[$user_id] ?? [],
+                'A credit that cannot take the lock must not create a second balance row'
+            );
+        } finally {
+            unset($mock_wpdb_get_var_results['GET_LOCK(']);
+        }
+    }
+
+    /**
+     * While this credit waited for the lock, the other credit created the row.
+     * This credit must add to that row instead of inserting another one.
+     */
+    public function testFirstCreditAddsToTheRowCreatedWhileWaitingForTheLock() {
+        global $mock_user_meta, $mock_wpdb_get_var_results;
+
+        $user_id = 9802;
+        unset($mock_user_meta[$user_id]);
+        $mock_wpdb_get_var_results['GET_LOCK('] = function () use ($user_id) {
+            global $mock_user_meta;
+            $mock_user_meta[$user_id]['intersoccer_points_balance'] = 10;
+            return 1;
+        };
+        $points = new InterSoccer_Points_Manager();
+
+        try {
+            $this->assertSame(25, $points->change_points_balance($user_id, 15, false));
+            $this->assertSame(25, (int) $mock_user_meta[$user_id]['intersoccer_points_balance']);
+        } finally {
+            unset($mock_wpdb_get_var_results['GET_LOCK(']);
+        }
+    }
 }

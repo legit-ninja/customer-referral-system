@@ -978,6 +978,14 @@ $mock_referral_reward_unique_key_present = true;
                 }
             }
 
+            if (is_string($query) && stripos($query, 'GET_LOCK(') !== false) {
+                return 1;
+            }
+
+            if (is_string($query) && stripos($query, 'RELEASE_LOCK(') !== false) {
+                return 1;
+            }
+
             if (strpos($query, 'SUM(points_amount)') !== false || strpos($query, 'COALESCE(SUM(points_amount)') !== false) {
                 list($positive, $negative) = intersoccer_mock_points_sums($query);
 
