@@ -1533,10 +1533,10 @@ class CommissionManagerTest extends TestCase {
         $mock_wc_orders_by_id[501] = $first;
         $mock_wc_orders_by_id[502] = $second;
 
-        update_post_meta(501, '_intersoccer_referral_code', 'COACH42');
-        update_post_meta(501, '_intersoccer_referring_coach_id', $coach_id);
-        update_post_meta(502, '_intersoccer_referral_code', 'COACH42');
-        update_post_meta(502, '_intersoccer_referring_coach_id', $coach_id);
+        $first->update_meta_data('_intersoccer_referral_code', 'COACH42');
+        $first->update_meta_data('_intersoccer_referring_coach_id', $coach_id);
+        $second->update_meta_data('_intersoccer_referral_code', 'COACH42');
+        $second->update_meta_data('_intersoccer_referring_coach_id', $coach_id);
 
         $completed_ids = [501];
         $mock_wc_get_orders = function ($args) use (&$completed_ids) {
@@ -1612,9 +1612,9 @@ class CommissionManagerTest extends TestCase {
         $mock_wc_orders_by_id[602] = $later;
         $mock_wc_orders_by_id[701] = $other_first;
 
-        foreach ([601, 602, 701] as $order_id) {
-            update_post_meta($order_id, '_intersoccer_referral_code', 'COACH42');
-            update_post_meta($order_id, '_intersoccer_referring_coach_id', $coach_id);
+        foreach ([$first, $later, $other_first] as $referral_order) {
+            $referral_order->update_meta_data('_intersoccer_referral_code', 'COACH42');
+            $referral_order->update_meta_data('_intersoccer_referring_coach_id', $coach_id);
         }
 
         $completed_ids = [];
@@ -1698,8 +1698,8 @@ class CommissionManagerTest extends TestCase {
         $order->set_customer_id($customer_id);
         $order->set_status('completed');
         $mock_wc_orders_by_id[84501] = $order;
-        update_post_meta(84501, '_intersoccer_referral_code', 'COACH8450');
-        update_post_meta(84501, '_intersoccer_referring_coach_id', $coach_id);
+        $order->update_meta_data('_intersoccer_referral_code', 'COACH8450');
+        $order->update_meta_data('_intersoccer_referring_coach_id', $coach_id);
 
         $mock_wc_get_orders = function ($args) {
             return [];
@@ -1712,6 +1712,50 @@ class CommissionManagerTest extends TestCase {
             (int) $mock_user_meta[$coach_id]['intersoccer_points_balance'],
             'The coach bonus should be added to the balance left after the gift'
         );
+    }
+
+
+    /**
+     * Coach first-order pay reads the referral from the order.
+     * Post meta is not the source, so a value that exists only there is ignored.
+     */
+    public function testCoachFirstOrderPayReadsOrderMetaWhenPostMetaWouldNot() {
+        global $mock_wc_order_override, $mock_wc_orders_by_id, $mock_referral_reward_inserts, $mock_referral_reward_rows, $mock_session, $mock_post_meta, $mock_wc_get_orders;
+
+        $mock_wc_order_override = null;
+        $mock_referral_reward_inserts = [];
+        $mock_referral_reward_rows = [];
+        $mock_session = [];
+        $mock_post_meta = [];
+
+        $coach_id = 42;
+        $customer_id = 7;
+        update_option('intersoccer_coach_referral_bonus_points', 50);
+        update_user_meta($coach_id, 'intersoccer_points_balance', 0);
+
+        $order = new WC_Order(503);
+        $order->set_customer_id($customer_id);
+        $order->set_status('completed');
+        $order->update_meta_data('_intersoccer_referral_code', 'COACH42');
+        $order->update_meta_data('_intersoccer_referring_coach_id', $coach_id);
+        $mock_wc_orders_by_id[503] = $order;
+
+        update_post_meta(503, '_intersoccer_referral_code', 'OTHER');
+        update_post_meta(503, '_intersoccer_referring_coach_id', 999);
+
+        $mock_wc_get_orders = function ($args) {
+            return [];
+        };
+
+        InterSoccer_Commission_Manager::get_instance()->process_referral_code_rewards(503);
+
+        $this->assertSame('OTHER', get_post_meta(503, '_intersoccer_referral_code', true));
+        $this->assertSame(
+            50,
+            (int) get_user_meta($coach_id, 'intersoccer_points_balance', true),
+            'The coach named on the order is paid even when post meta names someone else'
+        );
+        $this->assertSame(0, (int) get_user_meta(999, 'intersoccer_points_balance', true));
     }
 
 }
