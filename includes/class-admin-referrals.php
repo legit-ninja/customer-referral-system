@@ -842,7 +842,7 @@ class InterSoccer_Admin_Referrals {
             SELECT u.ID, u.display_name, u.user_email,
                    COALESCE(um.meta_value, 0) as credits
             FROM {$wpdb->users} u
-            LEFT JOIN {$wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key = 'intersoccer_customer_credits'
+            LEFT JOIN {$wpdb->usermeta} um ON u.ID = um.user_id AND um.meta_key = 'intersoccer_points_balance'
             WHERE um.meta_value > 0 OR EXISTS (
                 SELECT 1 FROM {$wpdb->prefix}intersoccer_referral_credits rc WHERE rc.customer_id = u.ID
             )
