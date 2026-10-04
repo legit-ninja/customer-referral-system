@@ -89,6 +89,8 @@ class InterSoccer_Referral_Admin_Dashboard {
             add_action('woocommerce_checkout_create_order', [$this, 'maybe_mark_first_order_discount_on_order'], 10, 2);
             // Mark points redemption fee for hardened detection in commission calculation (issue #36)
             add_action('woocommerce_checkout_create_order', [$this, 'mark_points_redemption_fee_on_order'], 10, 2);
+            add_action('woocommerce_checkout_order_processed', [$this, 'debit_points_for_new_order'], 20, 3);
+            add_action('woocommerce_store_api_checkout_order_processed', [$this, 'debit_points_for_store_api_order'], 20, 1);
             add_action('woocommerce_order_status_changed', [$this, 'deduct_points_on_order_completion'], 10, 4);
             // Consume the first-order discount only when the order reaches a successful state.
             add_action('woocommerce_order_status_changed', [$this, 'maybe_consume_first_order_discount'], 20, 4);
@@ -1531,6 +1533,97 @@ class InterSoccer_Referral_Admin_Dashboard {
     }
 
     /**
+     * Debit redeemed points when the classic checkout creates the order.
+     *
+     * @param int           $order_id
+     * @param array         $posted_data
+     * @param WC_Order|null $order
+     */
+    public function debit_points_for_new_order($order_id, $posted_data = null, $order = null) {
+        if (!$order && function_exists('wc_get_order')) {
+            $order = wc_get_order($order_id);
+        }
+        $this->debit_redeemed_points_now($order_id, $order);
+    }
+
+    /**
+     * Debit redeemed points when the Store API checkout creates the order.
+     *
+     * @param WC_Order $order
+     */
+    public function debit_points_for_store_api_order($order) {
+        $order_id = (is_object($order) && method_exists($order, 'get_id')) ? (int) $order->get_id() : 0;
+        $this->debit_redeemed_points_now($order_id, $order);
+    }
+
+    /**
+     * Take the points off the balance in the customer's request and clear the session key.
+     *
+     * @param int           $order_id
+     * @param WC_Order|null $order
+     */
+    private function debit_redeemed_points_now($order_id, $order) {
+        if (!is_object($order) || !method_exists($order, 'get_meta')) {
+            return;
+        }
+
+        if ((int) $order->get_meta('_intersoccer_credits_deducted_on_completion', true) === 1) {
+            $this->clear_points_redemption_session();
+            return;
+        }
+
+        $points = (int) $this->resolve_points_to_redeem_on_completion($order);
+        if ($points <= 0) {
+            $points = $this->get_session_points_to_redeem();
+        }
+        if ($points <= 0) {
+            $this->clear_points_redemption_session();
+            return;
+        }
+
+        $user_id = method_exists($order, 'get_customer_id') ? (int) $order->get_customer_id() : 0;
+        $debit = 0;
+        if ($user_id > 0 && class_exists('InterSoccer_Points_Manager')) {
+            $points_manager = InterSoccer_Points_Manager::get_instance();
+            $balance = max(0, (int) $points_manager->get_points_balance($user_id));
+            $debit = min((int) $points, $balance);
+            if ($debit > 0) {
+                $points_manager->add_points_transaction(
+                    $user_id,
+                    'points_redemption',
+                    -$debit,
+                    (int) $order_id,
+                    sprintf(
+                        __('Redeemed %d points on order #%d', 'intersoccer-referral'),
+                        $debit,
+                        (int) $order_id
+                    )
+                );
+            }
+        }
+
+        if (method_exists($order, 'update_meta_data')) {
+            $order->update_meta_data('_intersoccer_credits_deducted_on_completion', 1);
+            $order->update_meta_data('_intersoccer_points_redeemed', $debit);
+            if (method_exists($order, 'save')) {
+                $order->save();
+            }
+        }
+
+        $this->clear_points_redemption_session();
+    }
+
+    /**
+     * Clear the points amount stored on the customer's checkout session.
+     */
+    private function clear_points_redemption_session() {
+        $session = $this->get_wc_session();
+        if ($session) {
+            $session->set('intersoccer_points_to_redeem', 0);
+        }
+    }
+
+    /**
      * Apply points discount to cart total
      */
     public function apply_points_discount_as_fee($cart) {
@@ -1578,6 +1671,18 @@ class InterSoccer_Referral_Admin_Dashboard {
             $ajax_action = sanitize_text_field(wp_unslash($_REQUEST['wc-ajax']));
             if ($ajax_action === 'update_order_review') {
                 $is_checkout_context = true;
+            }
+        }
+
+        $user_id = (int) get_current_user_id();
+        if ($points_to_redeem > 0) {
+            $balance = 0;
+            if ($user_id > 0 && class_exists('InterSoccer_Points_Manager')) {
+                $balance = max(0, (int) InterSoccer_Points_Manager::get_instance()->get_points_balance($user_id));
+            }
+            if ($points_to_redeem > $balance) {
+                $points_to_redeem = $balance;
+                $session->set('intersoccer_points_to_redeem', $points_to_redeem);
             }
         }
 
