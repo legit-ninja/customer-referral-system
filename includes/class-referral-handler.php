@@ -13,7 +13,9 @@ class InterSoccer_Referral_Handler {
         // add_action('woocommerce_cart_calculate_fees', [$this, 'apply_credit_discount']);
         // Disabled old slider interface - replaced with Amazon Prime style in admin dashboard
         // add_action('woocommerce_review_order_before_payment', [$this, 'add_credit_field']);
-        add_action('woocommerce_checkout_update_order_meta', [$this, 'update_order_with_credits']);
+        // The cart fee and checkout slider are turned off above. Leave this hook off too,
+        // or a posted credit amount can take points when no discount was applied (issue #80).
+        // add_action('woocommerce_checkout_update_order_meta', [$this, 'update_order_with_credits']);
         add_action('wp_ajax_gift_credits', [$this, 'handle_gift_credits']);
         // New partnership handlers
         add_action('wp_ajax_select_coach_partner', [$this, 'handle_coach_partnership_selection']);
@@ -1306,12 +1308,49 @@ class InterSoccer_Referral_Handler {
     // Update order with credits used (DISABLED — replaced by admin dashboard system using intersoccer_points_balance)
     public function update_order_with_credits($order_id) {
         $apply_credits = isset($_POST['intersoccer_apply_credits']) ? (int) floatval($_POST['intersoccer_apply_credits']) : 0;
-        if ($apply_credits > 0 && is_user_logged_in()) {
-            $user_id = get_current_user_id();
-            // Use canonical intersoccer_points_balance (issue #36)
-            $points = (int) get_user_meta($user_id, 'intersoccer_points_balance', true);
-            update_user_meta($user_id, 'intersoccer_points_balance', $points - $apply_credits);
-            update_post_meta($order_id, '_intersoccer_credits_used', $apply_credits);
+        if ($apply_credits <= 0 || !is_user_logged_in()) {
+            return;
         }
+
+        // Take points only for a Credits Applied discount that is already on the order.
+        $discount = $this->credits_applied_discount_on_order($order_id);
+        if ($discount <= 0) {
+            return;
+        }
+        $apply_credits = min($apply_credits, $discount);
+
+        $user_id = get_current_user_id();
+        // Use canonical intersoccer_points_balance (issue #36)
+        $points = (int) get_user_meta($user_id, 'intersoccer_points_balance', true);
+        update_user_meta($user_id, 'intersoccer_points_balance', $points - $apply_credits);
+        update_post_meta($order_id, '_intersoccer_credits_used', $apply_credits);
+    }
+
+    /**
+     * How many points the Credits Applied fee already took off this order.
+     *
+     * @param int $order_id
+     * @return int
+     */
+    private function credits_applied_discount_on_order($order_id) {
+        if (!function_exists('wc_get_order')) {
+            return 0;
+        }
+        $order = wc_get_order($order_id);
+        if (!$order || !method_exists($order, 'get_fees')) {
+            return 0;
+        }
+        $discount = 0;
+        foreach ($order->get_fees() as $fee) {
+            $name = (is_object($fee) && method_exists($fee, 'get_name')) ? (string) $fee->get_name() : '';
+            if ($name !== 'Credits Applied') {
+                continue;
+            }
+            $total = (is_object($fee) && method_exists($fee, 'get_total')) ? (float) $fee->get_total() : 0;
+            if ($total < 0) {
+                $discount += (int) abs($total);
+            }
+        }
+        return $discount;
     }
 }
