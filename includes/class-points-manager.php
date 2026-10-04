@@ -681,12 +681,6 @@ class InterSoccer_Points_Manager {
     }
 
     /**
-     * Add a points transaction to the ledger
-     *
-     * Uses row-level locking via SELECT ... FOR UPDATE to prevent race conditions
-     * when multiple concurrent transactions modify the same customer's balance.
-     */
-    /**
      * Balance written by the latest successful ledger entry in this request.
      *
      * @var int|null
@@ -702,6 +696,12 @@ class InterSoccer_Points_Manager {
         return $this->balance_after_last_transaction;
     }
 
+    /**
+     * Add a points transaction to the ledger
+     *
+     * Uses row-level locking via SELECT ... FOR UPDATE to prevent race conditions
+     * when multiple concurrent transactions modify the same customer's balance.
+     */
     public function add_points_transaction($customer_id, $transaction_type, $points_amount, $order_id = null, $description = '', $metadata = [], $only_if_balance_covers = false) {
         global $wpdb;
 
@@ -965,14 +965,16 @@ class InterSoccer_Points_Manager {
         // Total points earned
         $total_earned = $wpdb->get_var($wpdb->prepare(
             "SELECT COALESCE(SUM(points_amount), 0) FROM {$this->points_log_table}
-             WHERE points_amount > 0 {$where_clause}",
+             WHERE points_amount > 0
+               AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned') {$where_clause}",
             $params
         ));
 
         // Total points spent/redeemed
         $total_spent = abs($wpdb->get_var($wpdb->prepare(
             "SELECT COALESCE(SUM(points_amount), 0) FROM {$this->points_log_table}
-             WHERE points_amount < 0 {$where_clause}",
+             WHERE points_amount < 0
+               AND transaction_type NOT IN ('gift_sent', 'gift_received', 'gift_returned') {$where_clause}",
             $params
         )));
 
