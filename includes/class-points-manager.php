@@ -686,7 +686,23 @@ class InterSoccer_Points_Manager {
      * Uses row-level locking via SELECT ... FOR UPDATE to prevent race conditions
      * when multiple concurrent transactions modify the same customer's balance.
      */
-    public function add_points_transaction($customer_id, $transaction_type, $points_amount, $order_id = null, $description = '', $metadata = []) {
+    /**
+     * Balance written by the latest successful ledger entry in this request.
+     *
+     * @var int|null
+     */
+    private $balance_after_last_transaction = null;
+
+    /**
+     * Balance from the latest successful ledger entry, or null if none yet.
+     *
+     * @return int|null
+     */
+    public function get_balance_after_last_transaction() {
+        return $this->balance_after_last_transaction;
+    }
+
+    public function add_points_transaction($customer_id, $transaction_type, $points_amount, $order_id = null, $description = '', $metadata = [], $only_if_balance_covers = false) {
         global $wpdb;
 
         $customer_id = (int) $customer_id;
@@ -710,7 +726,8 @@ class InterSoccer_Points_Manager {
 
             // Add or take the points on the stored balance. Writing a balance
             // that was read earlier can put a gift debit back on the sender.
-            $new_balance = $this->change_points_balance($customer_id, $points_amount, false);
+            $new_balance = $this->change_points_balance($customer_id, $points_amount, (bool) $only_if_balance_covers);
+            $this->balance_after_last_transaction = $new_balance;
             if ($new_balance === false) {
                 $wpdb->query('ROLLBACK');
                 intersoccer_referral_log("InterSoccer: Failed to change points balance for customer " . $customer_id);
