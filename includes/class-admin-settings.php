@@ -4439,6 +4439,14 @@ class InterSoccer_Admin_Settings {
      * Delegated to InterSoccer_Simulator class
      */
     public function ajax_run_referral_simulation() {
+        // Same gate as the other simulator actions. A logged-in customer must not
+        // read an order or the date-range revenue figures.
+        check_ajax_referer('intersoccer_simulator_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(['message' => __('Unauthorized', 'intersoccer-referral')]);
+            return;
+        }
+
         // Delegate to admin-settings implementation (methods still here for now)
         // TODO: Move full implementation to InterSoccer_Simulator class
         $mode = sanitize_text_field($_POST['mode'] ?? 'date-range');
