@@ -2772,6 +2772,7 @@ class InterSoccer_Admin_Settings {
 
         // Delete all credit-related user meta
         $credit_meta_keys = [
+            'intersoccer_points_balance',
             'intersoccer_customer_credits',
             'intersoccer_total_credits_earned',
             'intersoccer_credits_imported',

@@ -964,6 +964,24 @@ $mock_referral_reward_unique_key_present = true;
                 }
             }
 
+            if (is_string($query)
+                && stripos($query, 'DELETE FROM') !== false
+                && strpos($query, 'usermeta') !== false
+                && preg_match('/meta_key\s*=\s*\'?([A-Za-z0-9_]+)\'?/', $query, $meta_match)
+            ) {
+                $meta_key = $meta_match[1];
+                $deleted = 0;
+                if (is_array($mock_user_meta)) {
+                    foreach ($mock_user_meta as $meta_user_id => $meta_row) {
+                        if (is_array($meta_row) && array_key_exists($meta_key, $meta_row)) {
+                            unset($mock_user_meta[$meta_user_id][$meta_key]);
+                            $deleted++;
+                        }
+                    }
+                }
+                return $deleted;
+            }
+
             return true;
         }
 
