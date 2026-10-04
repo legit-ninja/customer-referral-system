@@ -16,19 +16,21 @@ class OrderCompletionSessionTest extends TestCase {
         $reflection = new ReflectionClass(InterSoccer_Referral_Admin_Dashboard::class);
         $this->dashboard = $reflection->newInstanceWithoutConstructor();
 
-        global $mock_session, $mock_user_meta, $mock_wc_orders_by_id, $mock_wpdb_get_var_results;
+        global $mock_session, $mock_user_meta, $mock_wc_orders_by_id, $mock_wpdb_get_var_results, $mock_force_points_balance_read;
         $mock_session = [];
         $mock_user_meta = [];
         $mock_wc_orders_by_id = [];
         $mock_wpdb_get_var_results = [];
+        $mock_force_points_balance_read = [];
     }
 
     protected function tearDown(): void {
-        global $mock_session, $mock_user_meta, $mock_wc_orders_by_id, $mock_wpdb_get_var_results;
+        global $mock_session, $mock_user_meta, $mock_wc_orders_by_id, $mock_wpdb_get_var_results, $mock_force_points_balance_read;
         $mock_session = [];
         $mock_user_meta = [];
         $mock_wc_orders_by_id = [];
         $mock_wpdb_get_var_results = [];
+        $mock_force_points_balance_read = [];
 
         if (function_exists('WC')) {
             WC()->session = WC::session();
@@ -107,5 +109,56 @@ class OrderCompletionSessionTest extends TestCase {
         $this->assertSame(55, (int) get_user_meta(502, 'intersoccer_points_balance', true));
         $this->assertSame(1, (int) $order->get_meta('_intersoccer_credits_deducted_on_completion', true));
         $this->assertSame(25, (int) $order->get_meta('_intersoccer_points_redeemed', true));
+    }
+
+    /**
+     * Completing an order must take points off the stored balance.
+     * A stale read of the balance before a gift must not be written back.
+     */
+    public function testOrderCompletionDebitDoesNotPutAGiftDebitBack(): void {
+        global $mock_user_meta, $mock_force_points_balance_read, $mock_wpdb_get_var_results;
+
+        $fee = new class {
+            public function get_name() {
+                return 'Referral Credits Discount';
+            }
+            public function get_total() {
+                return -10.0;
+            }
+        };
+
+        $order = new class(53355) extends WC_Order {
+            private $fee_items = [];
+
+            public function __construct($id) {
+                parent::__construct($id);
+                $this->set_customer_id(8430);
+            }
+
+            public function set_fee_items(array $items) {
+                $this->fee_items = $items;
+            }
+
+            public function get_items($type = '') {
+                if ($type === 'fee') {
+                    return $this->fee_items;
+                }
+                return [];
+            }
+
+            public function save() {
+                return true;
+            }
+        };
+        $order->set_fee_items([99 => $fee]);
+        $order->set_total(90);
+
+        $mock_user_meta[8430] = ['intersoccer_points_balance' => 20];
+        $mock_force_points_balance_read = [8430 => 100];
+        $mock_wpdb_get_var_results['intersoccer_referral_rewards'] = null;
+
+        $this->dashboard->deduct_points_on_order_completion(53355, 'processing', 'completed', $order);
+
+        $this->assertSame(10, (int) $mock_user_meta[8430]['intersoccer_points_balance']);
     }
 }

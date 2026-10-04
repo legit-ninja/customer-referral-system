@@ -3026,11 +3026,13 @@ class InterSoccer_Admin_Settings {
 
         $allocated_count = 0;
         foreach ($users as $user) {
-            // Issue #36: Read from and write only to intersoccer_points_balance
-            $current_credits = get_user_meta($user->ID, 'intersoccer_points_balance', true) ?: 0;
-            $new_credits = $current_credits + $credit_amount;
-
-            update_user_meta($user->ID, 'intersoccer_points_balance', $new_credits);
+            // Issue #36: add to intersoccer_points_balance only.
+            // A read-then-write can put a gift debit back.
+            InterSoccer_Points_Manager::get_instance()->change_points_balance(
+                (int) $user->ID,
+                (int) $credit_amount,
+                false
+            );
 
             // Log the adjustment
             $adjustments = get_user_meta($user->ID, 'intersoccer_credit_adjustments', true) ?: [];

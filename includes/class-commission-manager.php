@@ -556,9 +556,16 @@ class InterSoccer_Commission_Manager {
             return;
         }
 
-        $current_coach_points = (int) (get_user_meta($referral_coach_id, 'intersoccer_points_balance', true) ?: 0);
-        $new_coach_points = $current_coach_points + $points_to_award;
-        update_user_meta($referral_coach_id, 'intersoccer_points_balance', $new_coach_points);
+        // Add the bonus on the stored balance. Writing a balance read earlier
+        // can put a gift debit back on the coach.
+        $new_coach_points = InterSoccer_Points_Manager::get_instance()->change_points_balance(
+            (int) $referral_coach_id,
+            (int) $points_to_award,
+            false
+        );
+        if ($new_coach_points === false) {
+            $new_coach_points = (int) (get_user_meta($referral_coach_id, 'intersoccer_points_balance', true) ?: 0);
+        }
 
         $coach_info = get_userdata($referral_coach_id);
         $coach_name = ($coach_info && !empty($coach_info->display_name)) ? $coach_info->display_name : (string) $referral_coach_id;

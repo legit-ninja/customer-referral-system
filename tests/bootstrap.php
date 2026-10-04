@@ -521,7 +521,14 @@ if (!function_exists('is_ssl')) {
 
 if (!function_exists('get_user_meta')) {
     function get_user_meta($user_id, $key, $single = true) {
-        global $mock_user_meta;
+        global $mock_user_meta, $mock_force_points_balance_read;
+        if ($key === 'intersoccer_points_balance'
+            && isset($mock_force_points_balance_read)
+            && is_array($mock_force_points_balance_read)
+            && array_key_exists((int) $user_id, $mock_force_points_balance_read)
+        ) {
+            return $mock_force_points_balance_read[(int) $user_id];
+        }
         if (!isset($mock_user_meta[$user_id])) {
             $mock_user_meta[$user_id] = [];
         }
@@ -542,6 +549,21 @@ if (!function_exists('update_user_meta')) {
         }
         $mock_user_meta[$user_id][$key] = $value;
         return true;
+    }
+}
+
+if (!function_exists('add_user_meta')) {
+    function add_user_meta($user_id, $key, $value, $unique = false) {
+        global $mock_user_meta;
+        $user_id = (int) $user_id;
+        if (!isset($mock_user_meta[$user_id]) || !is_array($mock_user_meta[$user_id])) {
+            $mock_user_meta[$user_id] = [];
+        }
+        if ($unique && array_key_exists($key, $mock_user_meta[$user_id])) {
+            return false;
+        }
+        $mock_user_meta[$user_id][$key] = $value;
+        return 1;
     }
 }
 
@@ -818,8 +840,61 @@ if (!class_exists('Mock_WPDB')) {
         }
 
         public function query($query) {
-            global $mock_wpdb_last_query, $mock_referral_reward_inserts;
+            global $mock_wpdb_last_query, $mock_referral_reward_inserts, $mock_user_meta;
             $mock_wpdb_last_query = $query;
+
+            if (is_string($query)
+                && stripos($query, 'UPDATE') !== false
+                && strpos($query, 'usermeta') !== false
+                && strpos($query, 'intersoccer_points_balance') !== false
+                && preg_match('/CAST\(meta_value\s+AS\s+SIGNED\)\s*-\s*(\d+)/i', $query, $amount_match)
+                && preg_match('/user_id\s*=\s*(\d+)/', $query, $user_match)
+                && preg_match('/CAST\(meta_value\s+AS\s+SIGNED\)\s*>=\s*(\d+)/i', $query, $min_match)
+            ) {
+                $amount = (int) $amount_match[1];
+                $minimum = (int) $min_match[1];
+                $user_id = (int) $user_match[1];
+                if (!isset($mock_user_meta[$user_id]) || !is_array($mock_user_meta[$user_id])) {
+                    $mock_user_meta[$user_id] = [];
+                }
+                $current = (int) ($mock_user_meta[$user_id]['intersoccer_points_balance'] ?? 0);
+                if ($amount > 0 && $amount === $minimum && $current >= $amount) {
+                    $mock_user_meta[$user_id]['intersoccer_points_balance'] = $current - $amount;
+                    return 1;
+                }
+                return 0;
+            }
+
+            $is_points_balance_update = is_string($query)
+                && stripos($query, 'UPDATE') !== false
+                && strpos($query, 'usermeta') !== false
+                && strpos($query, 'intersoccer_points_balance') !== false
+                && preg_match('/user_id\s*=\s*(\d+)/', $query, $user_match);
+            if ($is_points_balance_update) {
+                global $mock_fail_points_balance_change_for;
+                $user_id = (int) $user_match[1];
+                if (!empty($mock_fail_points_balance_change_for) && (int) $mock_fail_points_balance_change_for === $user_id) {
+                    return false;
+                }
+                if (!isset($mock_user_meta[$user_id]) || !is_array($mock_user_meta[$user_id])) {
+                    $mock_user_meta[$user_id] = [];
+                }
+                $has_row = array_key_exists('intersoccer_points_balance', $mock_user_meta[$user_id]);
+                if (!$has_row) {
+                    return 0;
+                }
+                $current = (int) $mock_user_meta[$user_id]['intersoccer_points_balance'];
+                if (preg_match('/CAST\(meta_value\s+AS\s+SIGNED\)\s*\+\s*(\d+)/i', $query, $plus_match)) {
+                    $mock_user_meta[$user_id]['intersoccer_points_balance'] = $current + (int) $plus_match[1];
+                    return 1;
+                }
+                if (preg_match('/CAST\(meta_value\s+AS\s+SIGNED\)\s*-\s*(\d+)/i', $query, $minus_match)
+                    && !preg_match('/CAST\(meta_value\s+AS\s+SIGNED\)\s*>=/i', $query)
+                ) {
+                    $mock_user_meta[$user_id]['intersoccer_points_balance'] = $current - (int) $minus_match[1];
+                    return 1;
+                }
+            }
 
             if (stripos($query, 'INSERT') !== false && strpos($query, 'intersoccer_referral_rewards') !== false) {
                 global $mock_referral_reward_rows, $mock_referral_reward_unique_key_present;
@@ -937,6 +1012,18 @@ $mock_referral_reward_unique_key_present = true;
 
             if (strpos($query, 'latest_balances') !== false) {
                 return array_sum($mock_points_balances);
+            }
+
+            if (strpos($query, 'usermeta') !== false
+                && strpos($query, 'intersoccer_points_balance') !== false
+                && preg_match('/user_id\s*=\s*(\d+)/', $query, $matches)
+            ) {
+                global $mock_user_meta;
+                $user_id = (int) $matches[1];
+                if (isset($mock_user_meta[$user_id]['intersoccer_points_balance'])) {
+                    return $mock_user_meta[$user_id]['intersoccer_points_balance'];
+                }
+                return 0;
             }
 
             return 0;

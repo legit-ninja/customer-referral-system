@@ -528,11 +528,12 @@ class InterSoccer_Admin_Points {
 
         if ($result === false) {
             wp_send_json_error(['message' => 'Failed to adjust points']);
+            return;
         }
 
-        // Update user meta balance
-        $points_manager->update_user_points_balance($user_id);
-
+        // The adjustment already changed the stored balance by the amount.
+        // Do not write the balance again from a read. That can put gifted
+        // points back on the customer.
         wp_send_json_success(['message' => 'Points adjusted successfully']);
     }
 

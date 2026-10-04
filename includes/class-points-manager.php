@@ -143,9 +143,6 @@ class InterSoccer_Points_Manager {
                 ]
             );
 
-            // Update user meta for quick balance lookup
-            $this->update_user_points_balance($customer_id);
-
             // Log the allocation
             intersoccer_referral_log("InterSoccer: Allocated {$points_to_allocate} points to customer {$customer_id} for order {$order_id}");
         }
@@ -232,7 +229,6 @@ class InterSoccer_Points_Manager {
                 ]
             );
 
-            $this->update_user_points_balance($customer_id);
             intersoccer_referral_log("InterSoccer: Backfill allocated {$points_to_allocate} points to customer {$customer_id} for order {$order_id}");
         }
 
@@ -407,9 +403,6 @@ class InterSoccer_Points_Manager {
         if (method_exists($order, 'save')) {
             $order->save();
         }
-
-        // Update user meta
-        $this->update_user_points_balance($customer_id);
 
         intersoccer_referral_log("InterSoccer: Deducted {$allocated_points} points from customer {$customer_id} for refunded order {$order_id}");
     }
@@ -593,6 +586,101 @@ class InterSoccer_Points_Manager {
     }
 
     /**
+     * Change the stored points balance by $delta in one database update.
+     *
+     * A positive amount adds points. A negative amount takes points away.
+     * When $only_if_balance_covers is true, points are taken only when the
+     * stored balance is large enough. If there is no balance row and the
+     * change is allowed, the row is created. Returns the new balance, or
+     * false when the change did not happen.
+     *
+     * @param int  $user_id
+     * @param int  $delta
+     * @param bool $only_if_balance_covers
+     * @return int|false
+     */
+    public function change_points_balance($user_id, $delta, $only_if_balance_covers = false) {
+        global $wpdb;
+
+        $user_id = (int) $user_id;
+        $delta = (int) $delta;
+        if ($user_id <= 0 || $delta === 0) {
+            return false;
+        }
+
+        $meta_key = 'intersoccer_points_balance';
+        if ($delta < 0 && $only_if_balance_covers) {
+            $amount = abs($delta);
+            $sql = $wpdb->prepare(
+                "UPDATE {$wpdb->usermeta}
+                 SET meta_value = CAST(meta_value AS SIGNED) - %d
+                 WHERE user_id = %d
+                   AND meta_key = %s
+                   AND CAST(meta_value AS SIGNED) >= %d
+                 LIMIT 1",
+                $amount,
+                $user_id,
+                $meta_key,
+                $amount
+            );
+        } elseif ($delta < 0) {
+            $amount = abs($delta);
+            $sql = $wpdb->prepare(
+                "UPDATE {$wpdb->usermeta}
+                 SET meta_value = CAST(meta_value AS SIGNED) - %d
+                 WHERE user_id = %d
+                   AND meta_key = %s
+                 LIMIT 1",
+                $amount,
+                $user_id,
+                $meta_key
+            );
+        } else {
+            $sql = $wpdb->prepare(
+                "UPDATE {$wpdb->usermeta}
+                 SET meta_value = CAST(meta_value AS SIGNED) + %d
+                 WHERE user_id = %d
+                   AND meta_key = %s
+                 LIMIT 1",
+                $delta,
+                $user_id,
+                $meta_key
+            );
+        }
+
+        for ($attempt = 0; $attempt < 2; $attempt++) {
+            $updated = $wpdb->query($sql);
+            if ($updated === false) {
+                return false;
+            }
+            if ((int) $updated === 1) {
+                break;
+            }
+            if ($only_if_balance_covers || $attempt === 1) {
+                return false;
+            }
+            $created = function_exists('add_user_meta')
+                ? add_user_meta($user_id, $meta_key, $delta, true)
+                : false;
+            if ($created) {
+                break;
+            }
+        }
+
+        if (function_exists('wp_cache_delete')) {
+            wp_cache_delete($user_id, 'user_meta');
+        }
+
+        $remaining = $wpdb->get_var($wpdb->prepare(
+            "SELECT meta_value FROM {$wpdb->usermeta} WHERE user_id = %d AND meta_key = %s LIMIT 1",
+            $user_id,
+            $meta_key
+        ));
+
+        return (int) $remaining;
+    }
+
+    /**
      * Add a points transaction to the ledger
      *
      * Uses row-level locking via SELECT ... FOR UPDATE to prevent race conditions
@@ -620,12 +708,14 @@ class InterSoccer_Points_Manager {
                 $customer_id
             ));
 
-            // Get user meta balance (the displayed/authoritative balance)
-            $meta_value = get_user_meta($customer_id, 'intersoccer_points_balance', true);
-            $current_balance = ($meta_value !== '' && $meta_value !== false) ? (int) $meta_value : 0;
-
-            // Calculate new balance
-            $new_balance = $current_balance + $points_amount;
+            // Add or take the points on the stored balance. Writing a balance
+            // that was read earlier can put a gift debit back on the sender.
+            $new_balance = $this->change_points_balance($customer_id, $points_amount, false);
+            if ($new_balance === false) {
+                $wpdb->query('ROLLBACK');
+                intersoccer_referral_log("InterSoccer: Failed to change points balance for customer " . $customer_id);
+                return false;
+            }
 
             $result = $wpdb->insert(
                 $this->points_log_table,
@@ -649,9 +739,6 @@ class InterSoccer_Points_Manager {
             }
 
             $insert_id = $wpdb->insert_id;
-
-            // Update user meta with new balance
-            update_user_meta($customer_id, 'intersoccer_points_balance', $new_balance);
 
             $wpdb->query('COMMIT');
 
@@ -1081,9 +1168,6 @@ class InterSoccer_Points_Manager {
         // Log points redemption for audit
         do_action('intersoccer_points_redeemed', $user_id, $points_to_redeem, $discount_amount, $order->get_id());
 
-        // Update user meta
-        $this->update_user_points_balance($user_id);
-
         // Store redemption details in order meta
         $order->update_meta_data('_intersoccer_points_redeemed', $points_to_redeem);
         $order->update_meta_data('_intersoccer_discount_amount', $discount_amount);
@@ -1140,9 +1224,6 @@ class InterSoccer_Points_Manager {
                 'refund_reason' => $reason
             ]
         );
-
-        // Update user meta
-        $this->update_user_points_balance($user_id);
 
         $order->update_meta_data('_intersoccer_redeemed_points_returned', 1);
         if (method_exists($order, 'save')) {

@@ -10,6 +10,7 @@ class CommissionManagerTest extends TestCase {
     protected function setUp(): void {
         require_once __DIR__ . '/../includes/class-referral-handler.php';
         require_once __DIR__ . '/../includes/class-commission-manager.php';
+        require_once __DIR__ . '/../includes/class-points-manager.php';
 
         $default_tiers = [
             ['min_customers' => 1, 'max_customers' => 10, 'rate' => 10],
@@ -1569,4 +1570,48 @@ class CommissionManagerTest extends TestCase {
         $this->assertSame($coach_id, (int) get_post_meta(701, '_intersoccer_coach_first_order_reward', true));
         $this->assertSame('', get_post_meta(602, '_intersoccer_coach_first_order_reward', true));
     }
+
+    /**
+     * A coach first-order reward must add points on top of a gift debit.
+     * A stale balance read must not write the gifted points back.
+     */
+    public function testCoachFirstOrderRewardDoesNotPutAGiftDebitBack() {
+        global $mock_user_meta, $mock_force_points_balance_read, $mock_wc_get_orders, $mock_wc_order_override, $mock_wc_orders_by_id, $mock_referral_reward_inserts, $mock_referral_reward_rows, $mock_session, $mock_post_meta;
+
+        $mock_wc_order_override = null;
+        $mock_referral_reward_inserts = [];
+        $mock_referral_reward_rows = [];
+        $mock_session = [];
+        $mock_post_meta = [];
+        $mock_force_points_balance_read = [];
+
+        $coach_id = 8450;
+        $customer_id = 8451;
+        update_option('intersoccer_coach_referral_bonus_points', 50);
+
+        $mock_user_meta[$coach_id] = ['intersoccer_points_balance' => 100];
+        $points = new InterSoccer_Points_Manager();
+        $this->assertSame(20, $points->change_points_balance($coach_id, -80, true));
+        $mock_force_points_balance_read = [$coach_id => 100];
+
+        $order = new WC_Order(84501);
+        $order->set_customer_id($customer_id);
+        $order->set_status('completed');
+        $mock_wc_orders_by_id[84501] = $order;
+        update_post_meta(84501, '_intersoccer_referral_code', 'COACH8450');
+        update_post_meta(84501, '_intersoccer_referring_coach_id', $coach_id);
+
+        $mock_wc_get_orders = function ($args) {
+            return [];
+        };
+
+        InterSoccer_Commission_Manager::get_instance()->process_referral_code_rewards(84501);
+
+        $this->assertSame(
+            70,
+            (int) $mock_user_meta[$coach_id]['intersoccer_points_balance'],
+            'The coach bonus should be added to the balance left after the gift'
+        );
+    }
+
 }

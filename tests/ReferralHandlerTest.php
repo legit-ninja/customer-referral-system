@@ -727,12 +727,12 @@ class ReferralHandlerTest extends TestCase {
             'Referrer reward code should have comment indicating dual-write was stopped'
         );
         
-        // The referrer reward section should only write to points_balance now
-        // Look for pattern: update_user_meta($referrer['id'], 'intersoccer_points_balance'
+        // The referrer reward adds to the stored points balance. It does not
+        // write a balance it read earlier, and it does not touch customer credits.
         $this->assertStringContainsString(
-            "update_user_meta(\$referrer['id'], 'intersoccer_points_balance'",
+            "change_points_balance(\n                (int) \$referrer['id'],",
             $handler_file,
-            'Referrer reward should write to intersoccer_points_balance'
+            'Referrer reward should add to intersoccer_points_balance'
         );
     }
 
@@ -818,6 +818,186 @@ class ReferralHandlerTest extends TestCase {
                 $this->assertStringNotContainsString('thank', strtolower($to_a['data']['message']));
             }
         } finally {
+            $mock_current_user_id = $previous_user_id;
+            unset($_POST['gift_amount'], $_POST['recipient_email'], $_POST['nonce']);
+        }
+    }
+
+
+    /**
+     * Two gifts that each fit the starting balance, but not together, cannot both succeed.
+     * The balance read is frozen at the starting value so a separate check would let both through.
+     * Gifting still does not pay the sender anything back.
+     */
+    public function testTwoGiftsThatTogetherExceedTheBalanceCannotBothSucceed() {
+        global $mock_users, $mock_user_meta, $mock_current_user_id, $mock_force_points_balance_read;
+        $previous_user_id = $mock_current_user_id;
+
+        $sender = 8201;
+        $recipient = 8202;
+        $mock_users[$sender] = (object) [
+            'ID' => $sender,
+            'roles' => ['customer'],
+            'user_email' => 'gift-sender@example.com',
+            'display_name' => 'Gift Sender',
+        ];
+        $mock_users[$recipient] = (object) [
+            'ID' => $recipient,
+            'roles' => ['customer'],
+            'user_email' => 'gift-recipient@example.com',
+            'display_name' => 'Gift Recipient',
+        ];
+        $mock_user_meta[$sender] = ['intersoccer_points_balance' => 100];
+        $mock_user_meta[$recipient] = ['intersoccer_points_balance' => 0];
+        $mock_force_points_balance_read = [$sender => 100];
+
+        try {
+            $first = $this->giftPoints($sender, 'gift-recipient@example.com', 80);
+            $second = $this->giftPoints($sender, 'gift-recipient@example.com', 80);
+
+            $successes = (!empty($first['success']) ? 1 : 0) + (!empty($second['success']) ? 1 : 0);
+            $this->assertSame(1, $successes, 'One of the two gifts must fail when they together exceed the balance.');
+            $this->assertSame(20, (int) $mock_user_meta[$sender]['intersoccer_points_balance']);
+            $this->assertSame(80, (int) $mock_user_meta[$recipient]['intersoccer_points_balance']);
+            $this->assertGreaterThanOrEqual(0, (int) $mock_user_meta[$sender]['intersoccer_points_balance']);
+
+            $successful = !empty($first['success']) ? $first : $second;
+            $failed = empty($first['success']) ? $first : $second;
+            $this->assertSame(20, (int) $successful['data']['new_credits']);
+            $this->assertStringContainsString('Insufficient', (string) $failed['data']['message']);
+
+            foreach ([$first, $second] as $result) {
+                $message = isset($result['data']['message']) ? strtolower((string) $result['data']['message']) : '';
+                $this->assertStringNotContainsString('thank', $message);
+            }
+        } finally {
+            $mock_force_points_balance_read = [];
+            $mock_current_user_id = $previous_user_id;
+            unset($_POST['gift_amount'], $_POST['recipient_email'], $_POST['nonce']);
+        }
+    }
+
+    /**
+     * Two gifts to one recipient must both be added. A frozen balance read
+     * would let the second gift overwrite the first.
+     */
+    public function testTwoGiftsToTheSameRecipientDoNotOverwrite() {
+        global $mock_users, $mock_user_meta, $mock_current_user_id, $mock_force_points_balance_read;
+        $previous_user_id = $mock_current_user_id;
+
+        $sender_a = 8301;
+        $sender_b = 8302;
+        $recipient = 8303;
+        foreach ([$sender_a => 'gift-a8301@example.com', $sender_b => 'gift-b8302@example.com'] as $id => $email) {
+            $mock_users[$id] = (object) [
+                'ID' => $id,
+                'roles' => ['customer'],
+                'user_email' => $email,
+                'display_name' => 'Sender ' . $id,
+            ];
+            $mock_user_meta[$id] = ['intersoccer_points_balance' => 200];
+        }
+        $mock_users[$recipient] = (object) [
+            'ID' => $recipient,
+            'roles' => ['customer'],
+            'user_email' => 'gift-r8303@example.com',
+            'display_name' => 'Recipient',
+        ];
+        $mock_user_meta[$recipient] = ['intersoccer_points_balance' => 10];
+        $mock_force_points_balance_read = [$recipient => 10];
+
+        try {
+            $first = $this->giftPoints($sender_a, 'gift-r8303@example.com', 50);
+            $second = $this->giftPoints($sender_b, 'gift-r8303@example.com', 50);
+
+            $this->assertTrue($first['success']);
+            $this->assertTrue($second['success']);
+            $this->assertSame(110, (int) $mock_user_meta[$recipient]['intersoccer_points_balance']);
+            $this->assertSame(150, (int) $mock_user_meta[$sender_a]['intersoccer_points_balance']);
+            $this->assertSame(150, (int) $mock_user_meta[$sender_b]['intersoccer_points_balance']);
+        } finally {
+            $mock_force_points_balance_read = [];
+            $mock_current_user_id = $previous_user_id;
+            unset($_POST['gift_amount'], $_POST['recipient_email'], $_POST['nonce']);
+        }
+    }
+
+    /**
+     * A recipient with no balance row still receives both gifts.
+     */
+    public function testTwoGiftsCreateABalanceThenAddTheSecond() {
+        global $mock_users, $mock_user_meta, $mock_current_user_id;
+        $previous_user_id = $mock_current_user_id;
+
+        $sender_a = 8311;
+        $sender_b = 8312;
+        $recipient = 8313;
+        foreach ([$sender_a => 'gift-a8311@example.com', $sender_b => 'gift-b8312@example.com'] as $id => $email) {
+            $mock_users[$id] = (object) [
+                'ID' => $id,
+                'roles' => ['customer'],
+                'user_email' => $email,
+                'display_name' => 'Sender ' . $id,
+            ];
+            $mock_user_meta[$id] = ['intersoccer_points_balance' => 200];
+        }
+        $mock_users[$recipient] = (object) [
+            'ID' => $recipient,
+            'roles' => ['customer'],
+            'user_email' => 'gift-r8313@example.com',
+            'display_name' => 'New Recipient',
+        ];
+        $mock_user_meta[$recipient] = [];
+
+        try {
+            $first = $this->giftPoints($sender_a, 'gift-r8313@example.com', 50);
+            $second = $this->giftPoints($sender_b, 'gift-r8313@example.com', 50);
+
+            $this->assertTrue($first['success']);
+            $this->assertTrue($second['success']);
+            $this->assertSame(100, (int) $mock_user_meta[$recipient]['intersoccer_points_balance']);
+            $this->assertSame(150, (int) $mock_user_meta[$sender_a]['intersoccer_points_balance']);
+            $this->assertSame(150, (int) $mock_user_meta[$sender_b]['intersoccer_points_balance']);
+        } finally {
+            $mock_current_user_id = $previous_user_id;
+            unset($_POST['gift_amount'], $_POST['recipient_email'], $_POST['nonce']);
+        }
+    }
+
+    /**
+     * If the recipient credit fails after the sender was debited, the points go back.
+     */
+    public function testGiftReturnsPointsWhenTheRecipientCreditFails() {
+        global $mock_users, $mock_user_meta, $mock_current_user_id, $mock_fail_points_balance_change_for;
+        $previous_user_id = $mock_current_user_id;
+
+        $sender = 8321;
+        $recipient = 8322;
+        $mock_users[$sender] = (object) [
+            'ID' => $sender,
+            'roles' => ['customer'],
+            'user_email' => 'gift-s8321@example.com',
+            'display_name' => 'Sender',
+        ];
+        $mock_users[$recipient] = (object) [
+            'ID' => $recipient,
+            'roles' => ['customer'],
+            'user_email' => 'gift-r8322@example.com',
+            'display_name' => 'Recipient',
+        ];
+        $mock_user_meta[$sender] = ['intersoccer_points_balance' => 200];
+        $mock_user_meta[$recipient] = ['intersoccer_points_balance' => 15];
+        $mock_fail_points_balance_change_for = $recipient;
+
+        try {
+            $result = $this->giftPoints($sender, 'gift-r8322@example.com', 50);
+
+            $this->assertFalse($result['success']);
+            $this->assertStringContainsString('returned', strtolower((string) $result['data']['message']));
+            $this->assertSame(200, (int) $mock_user_meta[$sender]['intersoccer_points_balance']);
+            $this->assertSame(15, (int) $mock_user_meta[$recipient]['intersoccer_points_balance']);
+        } finally {
+            $mock_fail_points_balance_change_for = null;
             $mock_current_user_id = $previous_user_id;
             unset($_POST['gift_amount'], $_POST['recipient_email'], $_POST['nonce']);
         }
