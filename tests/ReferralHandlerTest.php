@@ -823,6 +823,60 @@ class ReferralHandlerTest extends TestCase {
         }
     }
 
+
+    /**
+     * Two gifts that each fit the starting balance, but not together, cannot both succeed.
+     * The balance read is frozen at the starting value so a separate check would let both through.
+     * Gifting still does not pay the sender anything back.
+     */
+    public function testTwoGiftsThatTogetherExceedTheBalanceCannotBothSucceed() {
+        global $mock_users, $mock_user_meta, $mock_current_user_id, $mock_force_points_balance_read;
+        $previous_user_id = $mock_current_user_id;
+
+        $sender = 8201;
+        $recipient = 8202;
+        $mock_users[$sender] = (object) [
+            'ID' => $sender,
+            'roles' => ['customer'],
+            'user_email' => 'gift-sender@example.com',
+            'display_name' => 'Gift Sender',
+        ];
+        $mock_users[$recipient] = (object) [
+            'ID' => $recipient,
+            'roles' => ['customer'],
+            'user_email' => 'gift-recipient@example.com',
+            'display_name' => 'Gift Recipient',
+        ];
+        $mock_user_meta[$sender] = ['intersoccer_points_balance' => 100];
+        $mock_user_meta[$recipient] = ['intersoccer_points_balance' => 0];
+        $mock_force_points_balance_read = [$sender => 100];
+
+        try {
+            $first = $this->giftPoints($sender, 'gift-recipient@example.com', 80);
+            $second = $this->giftPoints($sender, 'gift-recipient@example.com', 80);
+
+            $successes = (!empty($first['success']) ? 1 : 0) + (!empty($second['success']) ? 1 : 0);
+            $this->assertSame(1, $successes, 'One of the two gifts must fail when they together exceed the balance.');
+            $this->assertSame(20, (int) $mock_user_meta[$sender]['intersoccer_points_balance']);
+            $this->assertSame(80, (int) $mock_user_meta[$recipient]['intersoccer_points_balance']);
+            $this->assertGreaterThanOrEqual(0, (int) $mock_user_meta[$sender]['intersoccer_points_balance']);
+
+            $successful = !empty($first['success']) ? $first : $second;
+            $failed = empty($first['success']) ? $first : $second;
+            $this->assertSame(20, (int) $successful['data']['new_credits']);
+            $this->assertStringContainsString('Insufficient', (string) $failed['data']['message']);
+
+            foreach ([$first, $second] as $result) {
+                $message = isset($result['data']['message']) ? strtolower((string) $result['data']['message']) : '';
+                $this->assertStringNotContainsString('thank', $message);
+            }
+        } finally {
+            $mock_force_points_balance_read = [];
+            $mock_current_user_id = $previous_user_id;
+            unset($_POST['gift_amount'], $_POST['recipient_email'], $_POST['nonce']);
+        }
+    }
+
     private function giftPoints($sender_id, $recipient_email, $amount) {
         global $mock_current_user_id, $mock_wp_json_response;
 

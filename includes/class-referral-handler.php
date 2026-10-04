@@ -408,6 +408,57 @@ class InterSoccer_Referral_Handler {
         return ob_get_clean();
     }
 
+
+    /**
+     * Subtract points only when the stored balance covers the amount.
+     *
+     * The check and the write are a single UPDATE, so a second gift cannot
+     * spend points the first gift already took. Returns the remaining balance,
+     * or false when the sender does not have enough.
+     *
+     * @param int $user_id Sender user ID.
+     * @param int $amount  Points to take.
+     * @return int|false
+     */
+    private function debit_points_balance_if_available($user_id, $amount) {
+        global $wpdb;
+
+        $user_id = (int) $user_id;
+        $amount = (int) $amount;
+        if ($user_id <= 0 || $amount <= 0) {
+            return false;
+        }
+
+        $updated = $wpdb->query($wpdb->prepare(
+            "UPDATE {$wpdb->usermeta}
+             SET meta_value = CAST(meta_value AS SIGNED) - %d
+             WHERE user_id = %d
+               AND meta_key = %s
+               AND CAST(meta_value AS SIGNED) >= %d
+             LIMIT 1",
+            $amount,
+            $user_id,
+            'intersoccer_points_balance',
+            $amount
+        ));
+
+        if ((int) $updated !== 1) {
+            return false;
+        }
+
+        if (function_exists('wp_cache_delete')) {
+            wp_cache_delete($user_id, 'user_meta');
+        }
+
+        $remaining = $wpdb->get_var($wpdb->prepare(
+            "SELECT meta_value FROM {$wpdb->usermeta} WHERE user_id = %d AND meta_key = %s LIMIT 1",
+            $user_id,
+            'intersoccer_points_balance'
+        ));
+
+        return (int) $remaining;
+    }
+
     public function handle_gift_credits() {
         check_ajax_referer('intersoccer_dashboard_nonce', 'nonce');
 
@@ -436,15 +487,14 @@ class InterSoccer_Referral_Handler {
             wp_send_json_error(['message' => 'Cannot gift credits to yourself']);
         }
 
-        // Use canonical intersoccer_points_balance (issue #36)
-        $current_credits = (int) (get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0);
-        if ($current_credits < $gift_amount) {
-            wp_send_json_error(['message' => 'Insufficient credits']);
-        }
-
         // A gift only moves points. The sender is not paid anything back.
-        $sender_new_credits = $current_credits - $gift_amount;
-        update_user_meta($user_id, 'intersoccer_points_balance', $sender_new_credits);
+        // The balance check and the deduction are one database update, so two
+        // gifts at the same time cannot both spend the same points.
+        $sender_new_credits = $this->debit_points_balance_if_available($user_id, $gift_amount);
+        if ($sender_new_credits === false) {
+            wp_send_json_error(['message' => 'Insufficient credits']);
+            return;
+        }
 
         $recipient_current = (int) (get_user_meta($recipient->ID, 'intersoccer_points_balance', true) ?: 0);
         $recipient_new = $recipient_current + $gift_amount;
