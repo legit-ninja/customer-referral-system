@@ -727,12 +727,12 @@ class ReferralHandlerTest extends TestCase {
             'Referrer reward code should have comment indicating dual-write was stopped'
         );
         
-        // The referrer reward section should only write to points_balance now
-        // Look for pattern: update_user_meta($referrer['id'], 'intersoccer_points_balance'
+        // The referrer reward adds to the stored points balance. It does not
+        // write a balance it read earlier, and it does not touch customer credits.
         $this->assertStringContainsString(
-            "update_user_meta(\$referrer['id'], 'intersoccer_points_balance'",
+            "change_points_balance(\n                (int) \$referrer['id'],",
             $handler_file,
-            'Referrer reward should write to intersoccer_points_balance'
+            'Referrer reward should add to intersoccer_points_balance'
         );
     }
 

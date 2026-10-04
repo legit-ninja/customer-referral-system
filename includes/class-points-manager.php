@@ -143,9 +143,6 @@ class InterSoccer_Points_Manager {
                 ]
             );
 
-            // Update user meta for quick balance lookup
-            $this->update_user_points_balance($customer_id);
-
             // Log the allocation
             intersoccer_referral_log("InterSoccer: Allocated {$points_to_allocate} points to customer {$customer_id} for order {$order_id}");
         }
@@ -232,7 +229,6 @@ class InterSoccer_Points_Manager {
                 ]
             );
 
-            $this->update_user_points_balance($customer_id);
             intersoccer_referral_log("InterSoccer: Backfill allocated {$points_to_allocate} points to customer {$customer_id} for order {$order_id}");
         }
 
@@ -407,9 +403,6 @@ class InterSoccer_Points_Manager {
         if (method_exists($order, 'save')) {
             $order->save();
         }
-
-        // Update user meta
-        $this->update_user_points_balance($customer_id);
 
         intersoccer_referral_log("InterSoccer: Deducted {$allocated_points} points from customer {$customer_id} for refunded order {$order_id}");
     }
@@ -1175,9 +1168,6 @@ class InterSoccer_Points_Manager {
         // Log points redemption for audit
         do_action('intersoccer_points_redeemed', $user_id, $points_to_redeem, $discount_amount, $order->get_id());
 
-        // Update user meta
-        $this->update_user_points_balance($user_id);
-
         // Store redemption details in order meta
         $order->update_meta_data('_intersoccer_points_redeemed', $points_to_redeem);
         $order->update_meta_data('_intersoccer_discount_amount', $discount_amount);
@@ -1234,9 +1224,6 @@ class InterSoccer_Points_Manager {
                 'refund_reason' => $reason
             ]
         );
-
-        // Update user meta
-        $this->update_user_points_balance($user_id);
 
         $order->update_meta_data('_intersoccer_redeemed_points_returned', 1);
         if (method_exists($order, 'save')) {

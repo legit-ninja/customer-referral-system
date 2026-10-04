@@ -1313,10 +1313,15 @@ class InterSoccer_Referral_Admin_Dashboard {
                 $points_to_award = intersoccer_referral_get_coach_referral_bonus_points();
 
                 if ($points_to_award > 0) {
-                // Get current coach points balance
-                $current_coach_points = get_user_meta($referral_coach_id, 'intersoccer_points_balance', true) ?: 0;
-                $new_coach_points = $current_coach_points + $points_to_award;
-                update_user_meta($referral_coach_id, 'intersoccer_points_balance', $new_coach_points);
+                // Add the bonus on the stored balance so a gift debit is not written back.
+                $new_coach_points = InterSoccer_Points_Manager::get_instance()->change_points_balance(
+                    (int) $referral_coach_id,
+                    (int) $points_to_award,
+                    false
+                );
+                if ($new_coach_points === false) {
+                    $new_coach_points = (int) (get_user_meta($referral_coach_id, 'intersoccer_points_balance', true) ?: 0);
+                }
 
                 // Record the referral reward
                 global $wpdb;
@@ -1397,11 +1402,16 @@ class InterSoccer_Referral_Admin_Dashboard {
             return; // No points to award
         }
 
-        // Get current coach points balance
-        $current_coach_points = get_user_meta($coach_id, 'intersoccer_points_balance', true) ?: 0;
-        $new_coach_points = $current_coach_points + $points_to_award;
-        update_user_meta($coach_id, 'intersoccer_points_balance', $new_coach_points);
-        intersoccer_referral_log("Updated coach $coach_id points: $current_coach_points -> $new_coach_points");
+        // Add the purchase points on the stored balance so a gift debit is not written back.
+        $new_coach_points = InterSoccer_Points_Manager::get_instance()->change_points_balance(
+            (int) $coach_id,
+            (int) $points_to_award,
+            false
+        );
+        if ($new_coach_points === false) {
+            $new_coach_points = (int) (get_user_meta($coach_id, 'intersoccer_points_balance', true) ?: 0);
+        }
+        intersoccer_referral_log("Updated coach $coach_id points. New balance: $new_coach_points");
 
         // Record the purchase reward
         global $wpdb;

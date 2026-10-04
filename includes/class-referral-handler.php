@@ -704,9 +704,13 @@ class InterSoccer_Referral_Handler {
                     $order->save();
                 }
             }
-            // Credit referrer with Loyalty Points (intersoccer_points_balance) — canonical redeemable balance
-            $current_points = (float) get_user_meta($referrer['id'], 'intersoccer_points_balance', true);
-            update_user_meta($referrer['id'], 'intersoccer_points_balance', $current_points + $referrer_reward_points);
+            // Credit referrer with Loyalty Points (intersoccer_points_balance) — canonical redeemable balance.
+            // Add on the stored balance so a gift debit is not written back.
+            InterSoccer_Points_Manager::get_instance()->change_points_balance(
+                (int) $referrer['id'],
+                (int) $referrer_reward_points,
+                false
+            );
             // NOTE: Dual-write to intersoccer_customer_credits stopped per issue #36.
             // Legacy reads should migrate to intersoccer_points_balance.
             $referrals_made = get_user_meta($referrer['id'], 'intersoccer_referrals_made', true) ?: [];
@@ -722,9 +726,13 @@ class InterSoccer_Referral_Handler {
 
         $customer_bonus_points = $eligibility['eligible'] ? intval(get_option('intersoccer_new_customer_credits', 50)) : 0;
         if ($customer_bonus_points > 0 && $customer_id) {
-            // Award bonus points to canonical intersoccer_points_balance only (issue #36)
-            $customer_points = (int) get_user_meta($customer_id, 'intersoccer_points_balance', true);
-            update_user_meta($customer_id, 'intersoccer_points_balance', $customer_points + $customer_bonus_points);
+            // Award bonus points to canonical intersoccer_points_balance only (issue #36).
+            // Add on the stored balance so a gift debit is not written back.
+            InterSoccer_Points_Manager::get_instance()->change_points_balance(
+                (int) $customer_id,
+                (int) $customer_bonus_points,
+                false
+            );
             // NOTE: Dual-write to intersoccer_customer_credits stopped per issue #36.
         }
 

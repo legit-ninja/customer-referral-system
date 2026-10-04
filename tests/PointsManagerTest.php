@@ -1503,4 +1503,33 @@ class PointsManagerTest extends TestCase {
         $this->assertTrue($mock_wp_json_response['success']);
         $this->assertSame(30, (int) $mock_user_meta[$user_id]['intersoccer_points_balance']);
     }
+
+    /**
+     * A paid order must add purchase points on top of a gift debit.
+     * A stale balance read must not write the gifted points back.
+     */
+    public function testPaidOrderPointsDoNotPutAGiftDebitBack() {
+        global $mock_user_meta, $mock_force_points_balance_read, $mock_wc_orders_by_id;
+
+        $customer_id = 8440;
+        $mock_user_meta[$customer_id] = ['intersoccer_points_balance' => 100];
+        $points = new InterSoccer_Points_Manager();
+        $this->assertSame(20, $points->change_points_balance($customer_id, -80, true));
+
+        $mock_force_points_balance_read = [$customer_id => 100];
+
+        $order = new WC_Order(84401);
+        $order->set_id(84401);
+        $order->set_customer_id($customer_id);
+        $order->set_total(100);
+        $mock_wc_orders_by_id[84401] = $order;
+
+        $points->allocate_points_for_order(84401);
+
+        $this->assertSame(
+            30,
+            (int) $mock_user_meta[$customer_id]['intersoccer_points_balance'],
+            'Purchase points should be added to the balance left after the gift'
+        );
+    }
 }
