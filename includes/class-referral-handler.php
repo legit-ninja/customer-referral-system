@@ -568,6 +568,50 @@ class InterSoccer_Referral_Handler {
         }
     }
 
+    /**
+     * Read one order meta value through WooCommerce.
+     *
+     * Post meta misses orders stored in the custom order tables.
+     *
+     * @param WC_Order $order
+     * @param string   $key
+     * @return mixed
+     */
+    private function read_order_meta($order, $key) {
+        return $order->get_meta($key, true);
+    }
+
+    /**
+     * Store one order meta value and save it before later work continues.
+     *
+     * @param WC_Order $order
+     * @param string   $key
+     * @param mixed    $value
+     * @return void
+     */
+    private function write_order_meta($order, $key, $value) {
+        $order->update_meta_data($key, $value);
+        if (method_exists($order, 'save')) {
+            $order->save();
+        }
+    }
+
+    /**
+     * Remove one order meta value and save.
+     *
+     * @param WC_Order $order
+     * @param string   $key
+     * @return void
+     */
+    private function remove_order_meta($order, $key) {
+        if (method_exists($order, 'delete_meta_data')) {
+            $order->delete_meta_data($key);
+        }
+        if (method_exists($order, 'save')) {
+            $order->save();
+        }
+    }
+
     // Process referral on order completion
     public function process_referral_order($order_id) {
         $order = wc_get_order($order_id);
@@ -575,7 +619,7 @@ class InterSoccer_Referral_Handler {
             return;
         }
 
-        $already_processed = get_post_meta($order_id, '_intersoccer_referral_processed', true);
+        $already_processed = $this->read_order_meta($order, '_intersoccer_referral_processed');
         $order_status      = $order->get_status();
 
         if ('yes' === $already_processed) {
@@ -584,9 +628,9 @@ class InterSoccer_Referral_Handler {
 
         $referral_payload = $this->get_referral_payload();
         if (!empty($referral_payload['code'])) {
-            update_post_meta($order_id, '_intersoccer_referral_payload', $referral_payload);
+            $this->write_order_meta($order, '_intersoccer_referral_payload', $referral_payload);
         } else {
-            $stored_payload = get_post_meta($order_id, '_intersoccer_referral_payload', true);
+            $stored_payload = $this->read_order_meta($order, '_intersoccer_referral_payload');
             if (is_array($stored_payload)) {
                 $referral_payload = $this->normalize_referral_payload($stored_payload);
             }
@@ -623,12 +667,16 @@ class InterSoccer_Referral_Handler {
             return;
         }
 
-        update_post_meta($order_id, '_intersoccer_referral_code', $ref_code);
-        update_post_meta($order_id, '_intersoccer_referrer_type', $referrer['type']);
+        // Claim this order before any award. A second completion that overlaps
+        // this one then sees the marker and stops, instead of paying twice.
+        $this->write_order_meta($order, '_intersoccer_referral_processed', 'yes');
+
+        $this->write_order_meta($order, '_intersoccer_referral_code', $ref_code);
+        $this->write_order_meta($order, '_intersoccer_referrer_type', $referrer['type']);
         if ($referrer['type'] === 'coach') {
-            update_post_meta($order_id, '_intersoccer_referring_coach_id', $referrer['id']);
+            $this->write_order_meta($order, '_intersoccer_referring_coach_id', $referrer['id']);
         } else {
-            delete_post_meta($order_id, '_intersoccer_referring_coach_id');
+            $this->remove_order_meta($order, '_intersoccer_referring_coach_id');
         }
 
         $eligibility = $this->evaluate_referral_eligibility($customer_id, $order_id);
@@ -653,7 +701,7 @@ class InterSoccer_Referral_Handler {
             }
         }
 
-        update_post_meta($order_id, '_intersoccer_referral_eligibility', $eligibility);
+        $this->write_order_meta($order, '_intersoccer_referral_eligibility', $eligibility);
 
         // Insert referral record
         $wpdb->insert($table_name, [
@@ -670,11 +718,11 @@ class InterSoccer_Referral_Handler {
         ]);
 
         if ($event_id) {
-            update_post_meta($order_id, '_intersoccer_ref_event_id', $event_id);
+            $this->write_order_meta($order, '_intersoccer_ref_event_id', $event_id);
         }
 
         if ($coach_event_id) {
-            update_post_meta($order_id, '_intersoccer_coach_event_id', $coach_event_id);
+            $this->write_order_meta($order, '_intersoccer_coach_event_id', $coach_event_id);
         }
 
         // Auto-assign partnership if referred by coach and customer doesn't have one
@@ -723,15 +771,8 @@ class InterSoccer_Referral_Handler {
 
         // Continue with existing referral processing...
         if ($referrer_reward_points > 0) {
-            update_post_meta($order_id, '_intersoccer_referrer_reward_points', (int) $referrer_reward_points);
-            update_post_meta($order_id, '_intersoccer_referrer_reward_user_id', (int) $referrer['id']);
-            if (is_object($order) && method_exists($order, 'update_meta_data')) {
-                $order->update_meta_data('_intersoccer_referrer_reward_points', (int) $referrer_reward_points);
-                $order->update_meta_data('_intersoccer_referrer_reward_user_id', (int) $referrer['id']);
-                if (method_exists($order, 'save')) {
-                    $order->save();
-                }
-            }
+            $this->write_order_meta($order, '_intersoccer_referrer_reward_points', (int) $referrer_reward_points);
+            $this->write_order_meta($order, '_intersoccer_referrer_reward_user_id', (int) $referrer['id']);
             // Credit referrer with Loyalty Points (intersoccer_points_balance) — canonical redeemable balance.
             // Add on the stored balance so a gift debit is not written back, and record the ledger row.
             InterSoccer_Points_Manager::get_instance()->add_points_transaction(
@@ -806,8 +847,7 @@ class InterSoccer_Referral_Handler {
             }
         }
         
-        update_post_meta($order_id, '_intersoccer_referral_processed', 'yes');
-        delete_post_meta($order_id, '_intersoccer_referral_payload');
+        $this->remove_order_meta($order, '_intersoccer_referral_payload');
 
         if (function_exists('WC') && WC()->session) {
             WC()->session->__unset('intersoccer_referral');

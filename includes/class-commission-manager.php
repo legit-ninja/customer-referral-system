@@ -490,12 +490,12 @@ class InterSoccer_Commission_Manager {
             $referral_coach_id = WC()->session->get('intersoccer_referral_coach_id');
         }
 
-        if (empty($referral_code)) {
-            $referral_code = get_post_meta($order_id, '_intersoccer_referral_code', true);
+        if (empty($referral_code) && is_object($order) && method_exists($order, 'get_meta')) {
+            $referral_code = $order->get_meta('_intersoccer_referral_code', true);
         }
 
-        if (empty($referral_coach_id)) {
-            $referral_coach_id = get_post_meta($order_id, '_intersoccer_referring_coach_id', true);
+        if (empty($referral_coach_id) && is_object($order) && method_exists($order, 'get_meta')) {
+            $referral_coach_id = $order->get_meta('_intersoccer_referring_coach_id', true);
         }
 
         if (!$referral_code || !$referral_coach_id) {
@@ -1560,12 +1560,6 @@ The InterSoccer Team', 'intersoccer-referral'),
 
         $points = (int) $order->get_meta('_intersoccer_referrer_reward_points', true);
         $user_id = (int) $order->get_meta('_intersoccer_referrer_reward_user_id', true);
-        if ($points <= 0) {
-            $points = (int) get_post_meta($order_id, '_intersoccer_referrer_reward_points', true);
-        }
-        if ($user_id <= 0) {
-            $user_id = (int) get_post_meta($order_id, '_intersoccer_referrer_reward_user_id', true);
-        }
         if ($points <= 0 || $user_id <= 0) {
             return;
         }

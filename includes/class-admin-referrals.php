@@ -918,7 +918,10 @@ class InterSoccer_Admin_Referrals {
             ], 400);
         }
 
-        $current_meta = get_post_meta($order_id, '_intersoccer_referral_eligibility', true);
+        $order = function_exists('wc_get_order') ? wc_get_order($order_id) : null;
+        $current_meta = (is_object($order) && method_exists($order, 'get_meta'))
+            ? $order->get_meta('_intersoccer_referral_eligibility', true)
+            : '';
         $eligibility  = $this->normalize_eligibility_data($current_meta);
 
         $eligibility['eligible'] = ($target === 'eligible');
@@ -937,7 +940,12 @@ class InterSoccer_Admin_Referrals {
 
         $eligibility['overrides'] = $overrides;
 
-        update_post_meta($order_id, '_intersoccer_referral_eligibility', $eligibility);
+        if (is_object($order) && method_exists($order, 'update_meta_data')) {
+            $order->update_meta_data('_intersoccer_referral_eligibility', $eligibility);
+            if (method_exists($order, 'save')) {
+                $order->save();
+            }
+        }
 
         $view = $this->prepare_eligibility_view_model($eligibility);
 

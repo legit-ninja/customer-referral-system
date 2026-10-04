@@ -1153,15 +1153,9 @@ class InterSoccer_Referral_Admin_Dashboard {
         if ($referral_code === '' && is_object($order) && method_exists($order, 'get_meta')) {
             $referral_code = (string) $order->get_meta('_intersoccer_referral_code', true);
         }
-        if ($referral_code === '') {
-            $referral_code = (string) get_post_meta($order_id, '_intersoccer_referral_code', true);
-        }
 
         if ($referral_coach_id <= 0 && is_object($order) && method_exists($order, 'get_meta')) {
             $referral_coach_id = (int) $order->get_meta('_intersoccer_referring_coach_id', true);
-        }
-        if ($referral_coach_id <= 0) {
-            $referral_coach_id = (int) get_post_meta($order_id, '_intersoccer_referring_coach_id', true);
         }
 
         return [trim($referral_code), $referral_coach_id];
