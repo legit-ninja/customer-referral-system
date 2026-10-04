@@ -964,6 +964,24 @@ $mock_referral_reward_unique_key_present = true;
                 }
             }
 
+            if (is_string($query)
+                && stripos($query, 'DELETE FROM') !== false
+                && strpos($query, 'usermeta') !== false
+                && preg_match('/meta_key\s*=\s*\'?([A-Za-z0-9_]+)\'?/', $query, $meta_match)
+            ) {
+                $meta_key = $meta_match[1];
+                $deleted = 0;
+                if (is_array($mock_user_meta)) {
+                    foreach ($mock_user_meta as $meta_user_id => $meta_row) {
+                        if (is_array($meta_row) && array_key_exists($meta_key, $meta_row)) {
+                            unset($mock_user_meta[$meta_user_id][$meta_key]);
+                            $deleted++;
+                        }
+                    }
+                }
+                return $deleted;
+            }
+
             return true;
         }
 
@@ -1165,6 +1183,25 @@ $mock_referral_reward_unique_key_present = true;
                     ];
                 }
                 return $rows;
+            }
+
+            if (is_string($query)
+                && stripos($query, 'SELECT') !== false
+                && strpos($query, 'usermeta') !== false
+                && strpos($query, 'intersoccer_points_balance') !== false
+                && strpos($query, 'user_id') !== false
+            ) {
+                global $mock_user_meta;
+                $balance_rows = [];
+                foreach ((array) $mock_user_meta as $balance_user_id => $balance_meta) {
+                    if (is_array($balance_meta) && array_key_exists('intersoccer_points_balance', $balance_meta)) {
+                        $balance_rows[] = (object) [
+                            'user_id' => (int) $balance_user_id,
+                            'meta_value' => $balance_meta['intersoccer_points_balance'],
+                        ];
+                    }
+                }
+                return $balance_rows;
             }
 
             if (is_string($query)
