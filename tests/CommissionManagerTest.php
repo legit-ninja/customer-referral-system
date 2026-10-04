@@ -237,6 +237,53 @@ class CommissionManagerTest extends TestCase {
     }
 
     /**
+     * The network bonus counts a customer who referred someone.
+     * A coach referral does not trigger it. The bonus amount is unchanged.
+     */
+    public function testNetworkBonusCountsOnlyCustomerReferrals() {
+        update_option('intersoccer_network_effect_bonus', 15);
+
+        $rows = [
+            ['referrer_id' => 701, 'referrer_type' => 'customer', 'status' => 'completed'],
+            ['referrer_id' => 702, 'referrer_type' => 'coach', 'status' => 'completed'],
+            ['referrer_id' => 703, 'referrer_type' => 'customer', 'status' => 'pending'],
+        ];
+
+        global $mock_wpdb_get_var_results;
+        $mock_wpdb_get_var_results = [
+            'intersoccer_referrals' => function ($query) use ($rows) {
+                $referrer_filter = null;
+                if (preg_match('/referrer_id\s*=\s*(\d+)/i', $query, $match)) {
+                    $referrer_filter = (int) $match[1];
+                }
+                $type_filter = null;
+                if (preg_match("/referrer_type\s*=\s*'([^']+)'/i", $query, $match)) {
+                    $type_filter = $match[1];
+                }
+                $completed_only = strpos($query, "status = 'completed'") !== false;
+                $count = 0;
+                foreach ($rows as $row) {
+                    if ($referrer_filter !== null && (int) $row['referrer_id'] !== $referrer_filter) {
+                        continue;
+                    }
+                    if ($completed_only && $row['status'] !== 'completed') {
+                        continue;
+                    }
+                    if ($type_filter !== null && $row['referrer_type'] !== $type_filter) {
+                        continue;
+                    }
+                    $count++;
+                }
+                return $count;
+            },
+        ];
+
+        $this->assertSame(15, InterSoccer_Commission_Manager::calculate_network_bonus(701));
+        $this->assertSame(0, InterSoccer_Commission_Manager::calculate_network_bonus(702));
+        $this->assertSame(0, InterSoccer_Commission_Manager::calculate_network_bonus(703));
+    }
+
+    /**
      * Test calculate_seasonal_bonus method
      */
     public function testCalculateSeasonalBonus() {
