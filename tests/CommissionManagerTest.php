@@ -55,7 +55,7 @@ class CommissionManagerTest extends TestCase {
 
     private function mockCustomerReferralCount(int $count): void {
         global $mock_wpdb_get_var_results;
-        $mock_wpdb_get_var_results['WHERE customer_id'] = $count;
+        $mock_wpdb_get_var_results['WHERE referrer_id'] = $count;
     }
 
     /**
@@ -181,6 +181,59 @@ class CommissionManagerTest extends TestCase {
 
         $this->mockCustomerReferralCount(0);
         $this->assertEquals(0, InterSoccer_Commission_Manager::calculate_network_bonus(1));
+    }
+
+
+    /**
+     * A customer who was referred, but referred nobody, gets no network bonus.
+     * A customer who referred people does. Pending rows do not count.
+     * The bonus amount itself is unchanged.
+     */
+    public function testNetworkBonusCountsReferralsThisCustomerMade() {
+        update_option('intersoccer_network_effect_bonus', 15);
+
+        $rows = [
+            ['customer_id' => 501, 'referrer_id' => 900, 'status' => 'completed'],
+            ['customer_id' => 601, 'referrer_id' => 502, 'status' => 'completed'],
+            ['customer_id' => 602, 'referrer_id' => 502, 'status' => 'completed'],
+            ['customer_id' => 603, 'referrer_id' => 503, 'status' => 'pending'],
+        ];
+
+        global $mock_wpdb_get_var_results;
+        $mock_wpdb_get_var_results = [
+            'intersoccer_referrals' => function ($query) use ($rows) {
+                $customer_filter = null;
+                $referrer_filter = null;
+                if (preg_match('/WHERE\s+customer_id\s*=\s*(\d+)/i', $query, $match)) {
+                    $customer_filter = (int) $match[1];
+                }
+                if (preg_match('/WHERE\s+referrer_id\s*=\s*(\d+)/i', $query, $match)) {
+                    $referrer_filter = (int) $match[1];
+                }
+                $completed_only = strpos($query, "status = 'completed'") !== false;
+                $count = 0;
+                foreach ($rows as $row) {
+                    if ($completed_only && $row['status'] !== 'completed') {
+                        continue;
+                    }
+                    if ($customer_filter !== null && (int) $row['customer_id'] !== $customer_filter) {
+                        continue;
+                    }
+                    if ($referrer_filter !== null && (int) $row['referrer_id'] !== $referrer_filter) {
+                        continue;
+                    }
+                    if ($customer_filter === null && $referrer_filter === null) {
+                        continue;
+                    }
+                    $count++;
+                }
+                return $count;
+            },
+        ];
+
+        $this->assertEquals(0, InterSoccer_Commission_Manager::calculate_network_bonus(501));
+        $this->assertEquals(15, InterSoccer_Commission_Manager::calculate_network_bonus(502));
+        $this->assertEquals(0, InterSoccer_Commission_Manager::calculate_network_bonus(503));
     }
 
     /**
