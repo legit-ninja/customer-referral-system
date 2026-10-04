@@ -2770,9 +2770,9 @@ class InterSoccer_Admin_Settings {
 
         $this->log_audit('credit_reset', 'Starting complete credit reset for all customers');
 
-        // Delete all credit-related user meta
+        // Delete legacy credit meta. The points balance is set to 0 below.
+        // Deleting it makes the balance reader fall back to the last ledger row.
         $credit_meta_keys = [
-            'intersoccer_points_balance',
             'intersoccer_customer_credits',
             'intersoccer_total_credits_earned',
             'intersoccer_credits_imported',
@@ -2791,6 +2791,8 @@ class InterSoccer_Admin_Settings {
             $deleted_total += $deleted;
         }
 
+        $deleted_total += $this->reset_points_balances_to_zero();
+
         // Clear import summary
         delete_option('intersoccer_last_import_summary');
         delete_option('intersoccer_last_customer_import_report');
@@ -2801,6 +2803,82 @@ class InterSoccer_Admin_Settings {
             'message' => "Reset complete! Deleted {$deleted_total} credit records from all customers.",
             'deleted_records' => $deleted_total
         ]);
+    }
+
+    /**
+     * Set every stored points balance to 0 and record that in the ledger.
+     *
+     * A missing balance meta is not zero: the reader then uses the last
+     * points_balance in the points log. Checkout reads the meta directly.
+     *
+     * @return int
+     */
+    private function reset_points_balances_to_zero() {
+        global $wpdb;
+
+        $rows = $wpdb->get_results(
+            "SELECT user_id, meta_value FROM {$wpdb->usermeta} WHERE meta_key = 'intersoccer_points_balance'"
+        );
+        if (!is_array($rows)) {
+            return 0;
+        }
+
+        if (!class_exists('InterSoccer_Points_Manager')) {
+            $path = dirname(__FILE__) . '/class-points-manager.php';
+            if (is_readable($path)) {
+                require_once $path;
+            }
+        }
+        $points = class_exists('InterSoccer_Points_Manager')
+            ? InterSoccer_Points_Manager::get_instance()
+            : null;
+
+        $count = 0;
+        foreach ($rows as $row) {
+            if (!is_object($row)) {
+                continue;
+            }
+            $user_id = (int) ($row->user_id ?? 0);
+            if ($user_id <= 0) {
+                continue;
+            }
+
+            $previous = (int) ($row->meta_value ?? 0);
+            $recorded = false;
+            if ($previous !== 0 && $points) {
+                $recorded = (bool) $points->add_points_transaction(
+                    $user_id,
+                    'admin_reset',
+                    -$previous,
+                    null,
+                    'Reset all credits'
+                );
+            }
+            if (!$recorded) {
+                update_user_meta($user_id, 'intersoccer_points_balance', 0);
+                if ($previous !== 0) {
+                    $wpdb->insert(
+                        $wpdb->prefix . 'intersoccer_points_log',
+                        [
+                            'customer_id' => $user_id,
+                            'order_id' => null,
+                            'transaction_type' => 'admin_reset',
+                            'points_amount' => -$previous,
+                            'points_balance' => 0,
+                            'description' => 'Reset all credits',
+                            'metadata' => '{}',
+                            'created_at' => current_time('mysql'),
+                        ]
+                    );
+                }
+            }
+            if (function_exists('wp_cache_delete')) {
+                wp_cache_delete($user_id, 'user_meta');
+            }
+            $count++;
+        }
+
+        return $count;
     }
 
     /**

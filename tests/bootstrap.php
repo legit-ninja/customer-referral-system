@@ -1178,6 +1178,25 @@ $mock_referral_reward_unique_key_present = true;
             }
 
             if (is_string($query)
+                && stripos($query, 'SELECT') !== false
+                && strpos($query, 'usermeta') !== false
+                && strpos($query, 'intersoccer_points_balance') !== false
+                && strpos($query, 'user_id') !== false
+            ) {
+                global $mock_user_meta;
+                $balance_rows = [];
+                foreach ((array) $mock_user_meta as $balance_user_id => $balance_meta) {
+                    if (is_array($balance_meta) && array_key_exists('intersoccer_points_balance', $balance_meta)) {
+                        $balance_rows[] = (object) [
+                            'user_id' => (int) $balance_user_id,
+                            'meta_value' => $balance_meta['intersoccer_points_balance'],
+                        ];
+                    }
+                }
+                return $balance_rows;
+            }
+
+            if (is_string($query)
                 && strpos($query, 'as points_earned') !== false
                 && strpos($query, 'as points_spent') !== false
                 && strpos($query, 'intersoccer_points_log') !== false
