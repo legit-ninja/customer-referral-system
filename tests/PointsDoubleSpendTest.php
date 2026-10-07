@@ -17,9 +17,10 @@ class PointsDoubleSpendTest extends TestCase {
         $reflection = new ReflectionClass(InterSoccer_Referral_Admin_Dashboard::class);
         $this->dashboard = $reflection->newInstanceWithoutConstructor();
 
-        global $mock_session, $mock_user_meta, $mock_current_user_id, $mock_points_log_rows, $mock_points_balances;
+        global $mock_session, $mock_user_meta, $mock_current_user_id, $mock_points_log_rows, $mock_points_balances, $mock_points_balance_rows;
         $mock_session = [];
         $mock_user_meta = [];
+        $mock_points_balance_rows = [];
         $mock_current_user_id = 8801;
         $mock_points_log_rows = [];
         $mock_points_balances = [];

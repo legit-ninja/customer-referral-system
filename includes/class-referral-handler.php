@@ -509,7 +509,7 @@ class InterSoccer_Referral_Handler {
 
     public function render_gift_form() {
         // Use canonical intersoccer_points_balance (issue #36)
-        $points = (int) get_user_meta( get_current_user_id(), 'intersoccer_points_balance', true );
+        $points = (int) InterSoccer_Points_Manager::read_points_balance( get_current_user_id() );
         $points_escaped = esc_attr( number_format( $points, 0, '.', '' ) );
         ?>
         <form id="gift-credits" method="post">
@@ -1367,7 +1367,7 @@ class InterSoccer_Referral_Handler {
         if ($apply_credits > 0 && is_user_logged_in()) {
             $user_id = get_current_user_id();
             // Use canonical intersoccer_points_balance (issue #36)
-            $points = (int) get_user_meta($user_id, 'intersoccer_points_balance', true);
+            $points = (int) InterSoccer_Points_Manager::read_points_balance($user_id);
             $apply_credits = min($apply_credits, $points, (int) $cart->get_subtotal());
             if ($apply_credits > 0) {
                 $cart->add_fee('Credits Applied', -$apply_credits, false);

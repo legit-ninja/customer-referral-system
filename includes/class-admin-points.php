@@ -318,6 +318,11 @@ class InterSoccer_Admin_Points {
             wp_die(__('You do not have sufficient permissions to access this page.', 'intersoccer-referral'));
         }
 
+        // Repair legacy duplicate balance rows when an admin opens this page.
+        if (class_exists('InterSoccer_Points_Manager')) {
+            InterSoccer_Points_Manager::get_instance()->repair_duplicate_points_balance_rows();
+        }
+
         $focus_data = self::get_request_focus_data();
         ?>
         <div class="wrap intersoccer-admin">

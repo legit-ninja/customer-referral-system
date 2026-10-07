@@ -307,7 +307,7 @@ class InterSoccer_Customer_Header_Badge_Widget extends \Elementor\Widget_Base {
         $show_points = $settings['show_points'] === 'yes';
         $show_cta = $settings['show_referral_link'] === 'yes';
 
-        $points = (int) get_user_meta($user->ID, 'intersoccer_points_balance', true);
+        $points = (int) InterSoccer_Points_Manager::read_points_balance($user->ID);
         $referral_link = InterSoccer_Referral_Handler::generate_customer_referral_link($user->ID);
 
         ?>
@@ -598,7 +598,7 @@ class InterSoccer_Customer_Dashboard_Widget extends \Elementor\Widget_Base {
     }
     
     private function get_customer_credits_safe($user_id) {
-        $credits = get_user_meta($user_id, 'intersoccer_points_balance', true);
+        $credits = InterSoccer_Points_Manager::read_points_balance($user_id);
         return is_numeric($credits) ? (float) $credits : 0.0;
     }
     
@@ -1272,7 +1272,7 @@ class InterSoccer_Referral_Stats_Widget extends \Elementor\Widget_Base {
                 if (current_user_can('view_referral_dashboard')) {
                     return number_format(get_user_meta($user_id, 'intersoccer_credits', true) ?: 0, 0);
                 } else {
-                    return number_format(get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0, 0);
+                    return number_format(InterSoccer_Points_Manager::read_points_balance($user_id), 0);
                 }
             case 'referrals':
                 $referrals = get_user_meta($user_id, 'intersoccer_referrals_made', true) ?: [];
@@ -1536,7 +1536,7 @@ class InterSoccer_Customer_Progress_Widget extends \Elementor\Widget_Base {
     }
     
     private function render_credits_progress($user_id, $settings) {
-        $credits = get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0;
+        $credits = InterSoccer_Points_Manager::read_points_balance($user_id);
         $next_milestone = 1000;
         $progress_percentage = min(100, ($credits / $next_milestone) * 100);
         
@@ -1750,7 +1750,7 @@ function intersoccer_get_customer_widget_summary_data($user_id) {
         ];
     }
 
-    $points_balance = (int) get_user_meta($user_id, 'intersoccer_points_balance', true);
+    $points_balance = (int) InterSoccer_Points_Manager::read_points_balance($user_id);
     $lifetime_earned = get_user_meta($user_id, 'intersoccer_points_lifetime_earned', true);
     $lifetime_redeemed = get_user_meta($user_id, 'intersoccer_points_lifetime_redeemed', true);
     $pending_redeemed = get_user_meta($user_id, 'intersoccer_points_pending_redeem', true);

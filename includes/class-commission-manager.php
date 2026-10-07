@@ -567,7 +567,7 @@ class InterSoccer_Commission_Manager {
             'Coach first-order referral bonus'
         );
         if ($coach_tx === false) {
-            $new_coach_points = (int) (get_user_meta($referral_coach_id, 'intersoccer_points_balance', true) ?: 0);
+            $new_coach_points = (int) InterSoccer_Points_Manager::read_points_balance($referral_coach_id);
         } else {
             $new_coach_points = (int) $points_manager->get_balance_after_last_transaction();
         }

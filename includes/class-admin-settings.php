@@ -2855,7 +2855,7 @@ class InterSoccer_Admin_Settings {
                 );
             }
             if (!$recorded) {
-                update_user_meta($user_id, 'intersoccer_points_balance', 0);
+                InterSoccer_Points_Manager::get_instance()->write_points_balance_meta($user_id, 0);
                 if ($previous !== 0) {
                     $wpdb->insert(
                         $wpdb->prefix . 'intersoccer_points_log',

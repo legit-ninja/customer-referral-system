@@ -637,6 +637,268 @@ class InterSoccer_Points_Manager {
     }
 
     /**
+     * Usermeta key for the redeemable loyalty points balance.
+     *
+     * @return string
+     */
+    public static function points_balance_meta_key() {
+        return 'intersoccer_points_balance';
+    }
+
+    /**
+     * Read the redeemable balance the same way Adjust, checkout, and AJAX must.
+     *
+     * Collapses duplicate usermeta rows when found so every caller sees one value.
+     *
+     * @param int $user_id
+     * @return int
+     */
+    public static function read_points_balance($user_id) {
+        return self::get_instance()->get_points_balance((int) $user_id);
+    }
+
+    /**
+     * Load balance usermeta rows for a user, oldest (lowest umeta_id) first.
+     *
+     * @param int $user_id
+     * @return array<int, object>
+     */
+    private function get_points_balance_meta_rows($user_id) {
+        global $wpdb;
+
+        $user_id = (int) $user_id;
+        if ($user_id <= 0 || !is_object($wpdb) || !method_exists($wpdb, 'get_results')) {
+            return [];
+        }
+
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT umeta_id, meta_value
+             FROM {$wpdb->usermeta}
+             WHERE user_id = %d AND meta_key = %s
+             ORDER BY umeta_id ASC",
+            $user_id,
+            self::points_balance_meta_key()
+        ));
+
+        return is_array($rows) ? $rows : [];
+    }
+
+    /**
+     * Latest ledger balance for a customer, or null when the ledger has no row.
+     *
+     * @param int $user_id
+     * @return int|null
+     */
+    private function get_latest_ledger_points_balance($user_id) {
+        global $wpdb;
+
+        $user_id = (int) $user_id;
+        if ($user_id <= 0 || !is_object($wpdb) || !method_exists($wpdb, 'get_var')) {
+            return null;
+        }
+
+        $balance = $wpdb->get_var($wpdb->prepare(
+            "SELECT points_balance FROM {$this->points_log_table}
+             WHERE customer_id = %d
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1",
+            $user_id
+        ));
+
+        if ($balance === null || $balance === false || $balance === '') {
+            return null;
+        }
+
+        return (int) $balance;
+    }
+
+    /**
+     * Collapse duplicate intersoccer_points_balance usermeta rows for one user.
+     *
+     * Keeps the lowest umeta_id row. Sets it to the latest ledger balance when
+     * available, otherwise to the highest meta value among the duplicates, then
+     * deletes the extras. Safe to call when there is zero or one row.
+     *
+     * @param int $user_id
+     * @return array{repaired:bool,rows_before:int,balance:int|null}
+     */
+    public function repair_user_points_balance_rows($user_id) {
+        global $wpdb;
+
+        $user_id = (int) $user_id;
+        $empty = ['repaired' => false, 'rows_before' => 0, 'balance' => null];
+        if ($user_id <= 0) {
+            return $empty;
+        }
+
+        $rows = $this->get_points_balance_meta_rows($user_id);
+        $rows_before = count($rows);
+        if ($rows_before === 0) {
+            return $empty;
+        }
+
+        $meta_values = [];
+        foreach ($rows as $row) {
+            $meta_values[] = (int) $row->meta_value;
+        }
+
+        $ledger_balance = $this->get_latest_ledger_points_balance($user_id);
+        $correct_balance = $ledger_balance !== null ? $ledger_balance : max($meta_values);
+        $keep = $rows[0];
+        $keep_id = (int) $keep->umeta_id;
+
+        if ($rows_before === 1 && (int) $keep->meta_value === (int) $correct_balance) {
+            return [
+                'repaired' => false,
+                'rows_before' => 1,
+                'balance' => (int) $correct_balance,
+            ];
+        }
+
+        if (!is_object($wpdb) || !method_exists($wpdb, 'update') || !method_exists($wpdb, 'query')) {
+            return [
+                'repaired' => false,
+                'rows_before' => $rows_before,
+                'balance' => (int) $correct_balance,
+            ];
+        }
+
+        $wpdb->update(
+            $wpdb->usermeta,
+            ['meta_value' => (string) (int) $correct_balance],
+            ['umeta_id' => $keep_id],
+            ['%s'],
+            ['%d']
+        );
+
+        if ($rows_before > 1) {
+            $extra_ids = [];
+            foreach ($rows as $row) {
+                $umeta_id = (int) $row->umeta_id;
+                if ($umeta_id !== $keep_id) {
+                    $extra_ids[] = $umeta_id;
+                }
+            }
+            if ($extra_ids) {
+                $id_list = implode(',', array_map('intval', $extra_ids));
+                $wpdb->query(
+                    "DELETE FROM {$wpdb->usermeta} WHERE umeta_id IN ({$id_list})"
+                );
+            }
+        }
+
+        if (function_exists('wp_cache_delete')) {
+            wp_cache_delete($user_id, 'user_meta');
+        }
+
+        // Keep WordPress helpers and flat test mocks aligned with the kept row.
+        if (function_exists('update_user_meta')) {
+            update_user_meta($user_id, self::points_balance_meta_key(), (int) $correct_balance);
+        }
+
+        return [
+            'repaired' => $rows_before > 1 || (int) $keep->meta_value !== (int) $correct_balance,
+            'rows_before' => $rows_before,
+            'balance' => (int) $correct_balance,
+        ];
+    }
+
+    /**
+     * Find users with more than one balance usermeta row and repair each.
+     *
+     * Pass a user_id to repair one customer. Omit it to scan everyone with
+     * duplicate intersoccer_points_balance rows.
+     *
+     * @param int|null $user_id
+     * @return array{users_scanned:int,users_repaired:int,rows_removed:int,details:array<int,array>}
+     */
+    public function repair_duplicate_points_balance_rows($user_id = null) {
+        global $wpdb;
+
+        $summary = [
+            'users_scanned' => 0,
+            'users_repaired' => 0,
+            'rows_removed' => 0,
+            'details' => [],
+        ];
+
+        $user_id = $user_id === null ? null : (int) $user_id;
+        $target_ids = [];
+
+        if ($user_id !== null && $user_id > 0) {
+            $target_ids = [$user_id];
+        } elseif (is_object($wpdb) && method_exists($wpdb, 'get_col')) {
+            $target_ids = $wpdb->get_col($wpdb->prepare(
+                "SELECT user_id
+                 FROM {$wpdb->usermeta}
+                 WHERE meta_key = %s
+                 GROUP BY user_id
+                 HAVING COUNT(*) > 1",
+                self::points_balance_meta_key()
+            ));
+            if (!is_array($target_ids)) {
+                $target_ids = [];
+            }
+        }
+
+        foreach ($target_ids as $target_id) {
+            $target_id = (int) $target_id;
+            if ($target_id <= 0) {
+                continue;
+            }
+            $summary['users_scanned']++;
+            $before_rows = count($this->get_points_balance_meta_rows($target_id));
+            $result = $this->repair_user_points_balance_rows($target_id);
+            $summary['details'][$target_id] = $result;
+            if (!empty($result['repaired'])) {
+                $summary['users_repaired']++;
+                $summary['rows_removed'] += max(0, $before_rows - 1);
+            }
+        }
+
+        return $summary;
+    }
+
+    /**
+     * Ensure at most one balance row exists before a read or write.
+     *
+     * @param int $user_id
+     * @return void
+     */
+    private function ensure_single_points_balance_row($user_id) {
+        $rows = $this->get_points_balance_meta_rows($user_id);
+        if (count($rows) > 1) {
+            $this->repair_user_points_balance_rows($user_id);
+        }
+    }
+
+    /**
+     * Write a single absolute balance value onto the canonical usermeta row.
+     *
+     * Used by admin paths that set a balance instead of applying a delta.
+     *
+     * @param int $user_id
+     * @param int $balance
+     * @return int
+     */
+    public function write_points_balance_meta($user_id, $balance) {
+        $user_id = (int) $user_id;
+        $balance = max(0, (int) $balance);
+        if ($user_id <= 0) {
+            return 0;
+        }
+
+        $this->repair_user_points_balance_rows($user_id);
+        update_user_meta($user_id, self::points_balance_meta_key(), $balance);
+
+        if (function_exists('wp_cache_delete')) {
+            wp_cache_delete($user_id, 'user_meta');
+        }
+
+        return $balance;
+    }
+
+    /**
      * Change the stored points balance by $delta in one database update.
      *
      * A positive amount adds points. A negative amount takes points away.
@@ -644,6 +906,9 @@ class InterSoccer_Points_Manager {
      * stored balance is large enough. If there is no balance row and the
      * change is allowed, the row is created. Returns the new balance, or
      * false when the change did not happen.
+     *
+     * Updates and reads always target the lowest umeta_id row so Adjust and
+     * checkout cannot diverge when legacy duplicate rows still exist.
      *
      * @param int  $user_id
      * @param int  $delta
@@ -659,7 +924,9 @@ class InterSoccer_Points_Manager {
             return false;
         }
 
-        $meta_key = 'intersoccer_points_balance';
+        $this->ensure_single_points_balance_row($user_id);
+
+        $meta_key = self::points_balance_meta_key();
         if ($delta < 0 && $only_if_balance_covers) {
             $amount = abs($delta);
             $sql = $wpdb->prepare(
@@ -668,6 +935,7 @@ class InterSoccer_Points_Manager {
                  WHERE user_id = %d
                    AND meta_key = %s
                    AND CAST(meta_value AS SIGNED) >= %d
+                 ORDER BY umeta_id ASC
                  LIMIT 1",
                 $amount,
                 $user_id,
@@ -681,6 +949,7 @@ class InterSoccer_Points_Manager {
                  SET meta_value = CAST(meta_value AS SIGNED) - %d
                  WHERE user_id = %d
                    AND meta_key = %s
+                 ORDER BY umeta_id ASC
                  LIMIT 1",
                 $amount,
                 $user_id,
@@ -692,6 +961,7 @@ class InterSoccer_Points_Manager {
                  SET meta_value = CAST(meta_value AS SIGNED) + %d
                  WHERE user_id = %d
                    AND meta_key = %s
+                 ORDER BY umeta_id ASC
                  LIMIT 1",
                 $delta,
                 $user_id,
@@ -719,10 +989,18 @@ class InterSoccer_Points_Manager {
         }
 
         $remaining = $wpdb->get_var($wpdb->prepare(
-            "SELECT meta_value FROM {$wpdb->usermeta} WHERE user_id = %d AND meta_key = %s LIMIT 1",
+            "SELECT meta_value FROM {$wpdb->usermeta}
+             WHERE user_id = %d AND meta_key = %s
+             ORDER BY umeta_id ASC
+             LIMIT 1",
             $user_id,
             $meta_key
         ));
+
+        // Keep flat helpers (get_user_meta / mocks) on the canonical value.
+        if (function_exists('update_user_meta') && $remaining !== null && $remaining !== false) {
+            update_user_meta($user_id, $meta_key, (int) $remaining);
+        }
 
         return (int) $remaining;
     }
@@ -826,22 +1104,37 @@ class InterSoccer_Points_Manager {
      * @return int The customer's current points balance (integer only)
      */
     public function get_points_balance($customer_id) {
-        $meta = get_user_meta($customer_id, 'intersoccer_points_balance', true);
+        $customer_id = (int) $customer_id;
+        if ($customer_id <= 0) {
+            return 0;
+        }
+
+        $this->ensure_single_points_balance_row($customer_id);
+
+        global $wpdb;
+        $meta = null;
+        if (is_object($wpdb) && method_exists($wpdb, 'get_var')) {
+            $meta = $wpdb->get_var($wpdb->prepare(
+                "SELECT meta_value FROM {$wpdb->usermeta}
+                 WHERE user_id = %d AND meta_key = %s
+                 ORDER BY umeta_id ASC
+                 LIMIT 1",
+                $customer_id,
+                self::points_balance_meta_key()
+            ));
+        }
+
+        // Fall back to get_user_meta when SQL is unavailable (some unit mocks).
+        if (($meta === null || $meta === false || $meta === '') && function_exists('get_user_meta')) {
+            $meta = get_user_meta($customer_id, self::points_balance_meta_key(), true);
+        }
+
         if ($meta !== '' && $meta !== false && $meta !== null) {
             return intval($meta);
         }
 
-        global $wpdb;
-
-        $balance = $wpdb->get_var($wpdb->prepare(
-            "SELECT points_balance FROM {$this->points_log_table}
-             WHERE customer_id = %d
-             ORDER BY created_at DESC, id DESC
-             LIMIT 1",
-            $customer_id
-        ));
-
-        return $balance ? intval($balance) : 0;
+        $balance = $this->get_latest_ledger_points_balance($customer_id);
+        return $balance !== null ? $balance : 0;
     }
 
     /**
@@ -849,7 +1142,7 @@ class InterSoccer_Points_Manager {
      */
     public function update_user_points_balance($customer_id) {
         $balance = $this->get_points_balance($customer_id);
-        update_user_meta($customer_id, 'intersoccer_points_balance', $balance);
+        $this->write_points_balance_meta($customer_id, $balance);
     }
 
     /**

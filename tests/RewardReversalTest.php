@@ -13,8 +13,9 @@ class RewardReversalTest extends TestCase {
         require_once __DIR__ . '/../includes/class-points-manager.php';
         require_once __DIR__ . '/../includes/class-commission-manager.php';
 
-        global $mock_user_meta, $mock_wc_orders_by_id, $mock_wpdb_get_results, $mock_wpdb_updates, $mock_wpdb_inserts, $mock_wpdb_deletes, $mock_referral_reward_rows, $mock_points_log_rows;
+        global $mock_user_meta, $mock_points_balance_rows, $mock_wc_orders_by_id, $mock_wpdb_get_results, $mock_wpdb_updates, $mock_wpdb_inserts, $mock_wpdb_deletes, $mock_referral_reward_rows, $mock_points_log_rows;
         $mock_user_meta = [];
+        $mock_points_balance_rows = [];
         $mock_wc_orders_by_id = [];
         $mock_wpdb_get_results = [];
         $mock_wpdb_updates = [];

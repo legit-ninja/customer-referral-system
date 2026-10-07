@@ -691,7 +691,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         }
 
         // Write only to intersoccer_points_balance (issue #36: stop dual-write)
-        update_user_meta($user_id, 'intersoccer_points_balance', $credits);
+        InterSoccer_Points_Manager::get_instance()->write_points_balance_meta($user_id, $credits);
 
         wp_send_json_success([
             'message' => __('Credits updated.', 'intersoccer-referral'),
@@ -821,7 +821,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         }
 
         $user_id = get_current_user_id();
-        $available_credits = (int) (get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0);
+        $available_credits = (int) InterSoccer_Points_Manager::read_points_balance($user_id);
         intersoccer_referral_log("Checkout points field - User: $user_id, Available credits: $available_credits");
 
         // Tess selector note: when balance is 0, .intersoccer-points-redemption-wrapper is ABSENT
@@ -925,7 +925,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         }
 
         $user_id = get_current_user_id();
-        $available_credits = get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0;
+        $available_credits = InterSoccer_Points_Manager::read_points_balance($user_id);
 
         if ($points_to_redeem > $available_credits) {
             wc_add_notice(__('You don\'t have enough points available.', 'intersoccer-referral'), 'error');
@@ -1318,7 +1318,7 @@ class InterSoccer_Referral_Admin_Dashboard {
                     'Coach first-order referral bonus'
                 );
                 if ($coach_tx === false) {
-                    $new_coach_points = (int) (get_user_meta($referral_coach_id, 'intersoccer_points_balance', true) ?: 0);
+                    $new_coach_points = (int) InterSoccer_Points_Manager::read_points_balance($referral_coach_id);
                 } else {
                     $new_coach_points = (int) $points_manager->get_balance_after_last_transaction();
                 }
@@ -1409,7 +1409,7 @@ class InterSoccer_Referral_Admin_Dashboard {
             false
         );
         if ($new_coach_points === false) {
-            $new_coach_points = (int) (get_user_meta($coach_id, 'intersoccer_points_balance', true) ?: 0);
+            $new_coach_points = (int) InterSoccer_Points_Manager::read_points_balance($coach_id);
         }
         intersoccer_referral_log("Updated coach $coach_id points. New balance: $new_coach_points");
 
@@ -1455,7 +1455,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         }
 
         $user_id = get_current_user_id();
-        $available_points = get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0;
+        $available_points = InterSoccer_Points_Manager::read_points_balance($user_id);
         
         // Get cart total to limit redemption
         $cart_total = WC()->cart ? WC()->cart->get_total('edit') : 0;

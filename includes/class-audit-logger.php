@@ -199,7 +199,7 @@ class InterSoccer_Audit_Logger {
             'reason' => $reason,
             'order_id' => $order_id,
             'balance_before' => $this->get_points_balance_before($user_id),
-            'balance_after' => get_user_meta($user_id, 'intersoccer_points_balance', true)
+            'balance_after' => InterSoccer_Points_Manager::read_points_balance($user_id)
         ], 'points', $user_id);
     }
 
@@ -213,7 +213,7 @@ class InterSoccer_Audit_Logger {
             'discount_amount' => $discount_amount,
             'order_id' => $order_id,
             'balance_before' => $this->get_points_balance_before($user_id),
-            'balance_after' => get_user_meta($user_id, 'intersoccer_points_balance', true)
+            'balance_after' => InterSoccer_Points_Manager::read_points_balance($user_id)
         ], 'points', $user_id);
     }
 
@@ -227,7 +227,7 @@ class InterSoccer_Audit_Logger {
             'reason' => $reason,
             'admin_id' => $admin_id,
             'balance_before' => $this->get_points_balance_before($user_id),
-            'balance_after' => get_user_meta($user_id, 'intersoccer_points_balance', true)
+            'balance_after' => InterSoccer_Points_Manager::read_points_balance($user_id)
         ], 'admin', $admin_id);
     }
 
@@ -451,7 +451,7 @@ class InterSoccer_Audit_Logger {
         static $balances = [];
 
         if (!isset($balances[$user_id])) {
-            $balances[$user_id] = get_user_meta($user_id, 'intersoccer_points_balance', true) ?: 0;
+            $balances[$user_id] = InterSoccer_Points_Manager::read_points_balance($user_id);
         }
 
         return $balances[$user_id];

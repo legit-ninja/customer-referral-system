@@ -10,7 +10,7 @@ class InterSoccer_Coach_Admin_Dashboard {
         if (!$coach_id) {
             $coach_id = get_current_user_id();
         }
-        return (float) get_user_meta($coach_id, 'intersoccer_points_balance', true);
+        return (float) InterSoccer_Points_Manager::read_points_balance($coach_id);
     }
 
     public function __construct() {

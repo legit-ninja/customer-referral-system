@@ -34,13 +34,14 @@ class PointsManagerTest extends TestCase {
     }
 
     private function resetPointsTestState(): void {
-        global $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_customer_spent, $mock_session, $mock_user_meta, $mock_wpdb_get_results, $mock_wp_json_response, $mock_user_capabilities, $mock_options;
+        global $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_customer_spent, $mock_session, $mock_user_meta, $mock_points_balance_rows, $mock_wpdb_get_results, $mock_wp_json_response, $mock_user_capabilities, $mock_options;
 
         $this->resetPointsManagerSingleton();
         $mock_points_balances = [];
         $mock_order_points_allocated = [];
         $mock_points_log_rows = [];
         $mock_user_meta = [];
+        $mock_points_balance_rows = [];
         $mock_force_points_balance_read = [];
         $mock_fail_points_balance_change_for = null;
         $mock_wc_orders_by_id = [];
@@ -236,10 +237,11 @@ class PointsManagerTest extends TestCase {
         require_once __DIR__ . '/bootstrap.php';
         require_once __DIR__ . '/../includes/class-points-manager.php';
         
-        global $mock_options, $mock_wc_orders_by_id, $mock_points_balances, $mock_order_points_allocated, $mock_user_meta, $mock_points_log_rows;
+        global $mock_options, $mock_wc_orders_by_id, $mock_points_balances, $mock_order_points_allocated, $mock_user_meta, $mock_points_balance_rows, $mock_points_log_rows;
         $mock_options['intersoccer_points_allocation_mode'] = 'ratio';
         $mock_options['intersoccer_points_rate'] = 10;
         $mock_options['intersoccer_points_golive_date'] = '';
+        $mock_points_balance_rows = [];
         
         $points_manager = new InterSoccer_Points_Manager();
 
@@ -259,6 +261,7 @@ class PointsManagerTest extends TestCase {
         $mock_points_balances = [];
         $mock_order_points_allocated = [];
         $mock_user_meta = [];
+        $mock_points_balance_rows = [];
         $mock_points_log_rows = [];
         
         // Create order 2 - simulate completed status allocation
