@@ -1636,6 +1636,61 @@ class InterSoccer_Referral_Admin_Dashboard {
     }
 
     /**
+     * Check if the current request is a WooCommerce Store API request.
+     *
+     * Store API is used by the WooCommerce Blocks checkout and by Stripe's
+     * express checkout (Apple Pay / Google Pay) payment-request element.
+     *
+     * @return bool
+     */
+    public function is_store_api_request() {
+        if (function_exists('WC') && method_exists(WC(), 'is_store_api_request')) {
+            return WC()->is_store_api_request();
+        }
+
+        if (empty($_SERVER['REQUEST_URI'])) {
+            return false;
+        }
+
+        $request_uri = isset($_SERVER['REQUEST_URI']) ? sanitize_text_field(wp_unslash($_SERVER['REQUEST_URI'])) : '';
+        $rest_prefix = function_exists('rest_get_url_prefix') ? trailingslashit(rest_get_url_prefix()) : 'wp-json/';
+        return false !== strpos($request_uri, $rest_prefix . 'wc/store/');
+    }
+
+    /**
+     * Determine if the current request is a valid checkout context for applying
+     * loyalty-points discounts.
+     *
+     * Recognized contexts:
+     *  1. Classic checkout page (is_checkout()).
+     *  2. Classic AJAX update_order_review.
+     *  3. Store API cart / checkout requests (used by Blocks checkout and Stripe
+     *     express checkout: Apple Pay, Google Pay).
+     *
+     * Excludes: Admin, unrelated REST API calls, cron, CLI.
+     *
+     * @return bool
+     */
+    public function is_points_discount_context() {
+        if (function_exists('is_checkout') && is_checkout()) {
+            return true;
+        }
+
+        if (wp_doing_ajax() && isset($_REQUEST['wc-ajax'])) {
+            $ajax_action = sanitize_text_field(wp_unslash($_REQUEST['wc-ajax']));
+            if ($ajax_action === 'update_order_review') {
+                return true;
+            }
+        }
+
+        if ($this->is_store_api_request()) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Apply points discount to cart total
      */
     public function apply_points_discount_as_fee($cart) {
@@ -1677,14 +1732,7 @@ class InterSoccer_Referral_Admin_Dashboard {
 
         // Apply points discount
         $points_to_redeem = $this->get_session_points_to_redeem();
-        $is_checkout_context = (function_exists('is_checkout') && is_checkout());
-
-        if (!$is_checkout_context && wp_doing_ajax() && isset($_REQUEST['wc-ajax'])) {
-            $ajax_action = sanitize_text_field(wp_unslash($_REQUEST['wc-ajax']));
-            if ($ajax_action === 'update_order_review') {
-                $is_checkout_context = true;
-            }
-        }
+        $is_checkout_context = $this->is_points_discount_context();
 
         $user_id = (int) get_current_user_id();
         if ($points_to_redeem > 0) {
