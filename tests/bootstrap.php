@@ -1979,6 +1979,55 @@ if (!function_exists('remove_role')) {
     }
 }
 
+// REST API helpers for Store API context detection
+if (!function_exists('trailingslashit')) {
+    function trailingslashit($string) {
+        return rtrim((string) $string, '/\\') . '/';
+    }
+}
+
+if (!function_exists('rest_get_url_prefix')) {
+    function rest_get_url_prefix() {
+        return 'wp-json';
+    }
+}
+
+if (!function_exists('wp_unslash')) {
+    function wp_unslash($value) {
+        return stripslashes_deep($value);
+    }
+}
+
+if (!function_exists('stripslashes_deep')) {
+    function stripslashes_deep($value) {
+        return map_deep($value, 'stripslashes_from_strings_only');
+    }
+}
+
+if (!function_exists('stripslashes_from_strings_only')) {
+    function stripslashes_from_strings_only($value) {
+        return is_string($value) ? stripslashes($value) : $value;
+    }
+}
+
+if (!function_exists('map_deep')) {
+    function map_deep($value, $callback) {
+        if (is_array($value)) {
+            foreach ($value as $index => $item) {
+                $value[$index] = map_deep($item, $callback);
+            }
+        } elseif (is_object($value)) {
+            $object_vars = get_object_vars($value);
+            foreach ($object_vars as $property_name => $property_value) {
+                $value->$property_name = map_deep($property_value, $callback);
+            }
+        } else {
+            $value = call_user_func($callback, $value);
+        }
+        return $value;
+    }
+}
+
 // Initialize default roles
 add_role('administrator', 'Administrator', ['manage_options' => true]);
 add_role('subscriber', 'Subscriber', ['read' => true]);
