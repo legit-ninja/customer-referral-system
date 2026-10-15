@@ -154,6 +154,22 @@ class LedgerRulingsTest extends TestCase {
         return count($this->ledger_amounts_for_order($order_id, $type));
     }
 
+    private function write_off_amounts_for_order($order_id) {
+        global $mock_points_log_rows;
+        $out = [];
+        foreach ((array) $mock_points_log_rows as $row) {
+            if ((int) ($row['order_id'] ?? 0) !== (int) $order_id) {
+                continue;
+            }
+            if (($row['transaction_type'] ?? '') !== 'reversal_write_off') {
+                continue;
+            }
+            $meta = json_decode((string) ($row['metadata'] ?? ''), true);
+            $out[] = (int) ($meta['written_off'] ?? 0);
+        }
+        return $out;
+    }
+
     private function commission_reinstatement_rows($order_id) {
         global $mock_wpdb_inserts;
         $rows = [];
@@ -450,44 +466,51 @@ class LedgerRulingsTest extends TestCase {
         $customer_id = 9506;
         $order_id = 95061;
         $points = $this->manager();
-        $this->seed_ledger_row([
+        $untagged_gift_id = $this->seed_ledger_row([
             'customer_id' => $customer_id,
             'order_id' => 0,
             'transaction_type' => 'admin_adjustment',
             'points_amount' => 15,
             'points_balance' => 15,
             'metadata' => '',
+            'description' => 'Promo goodwill top-up',
             'created_at' => '2025-01-01 10:00:00',
         ]);
-        $this->seed_ledger_row([
-            'customer_id' => $customer_id,
-            'order_id' => 0,
-            'transaction_type' => 'admin_adjustment',
-            'points_amount' => 20,
-            'points_balance' => 35,
-            'metadata_array' => ['adjustment_reason' => 'correction'],
-            'created_at' => '2025-01-02 10:00:00',
-        ]);
-        $this->seed_balance($customer_id, 35);
+        $this->seed_balance($customer_id, 15);
         global $mock_order_points_allocated;
         $mock_order_points_allocated[$order_id] = 10;
-        $this->seed_ledger_row([
+        $purchase_id = $this->seed_ledger_row([
             'customer_id' => $customer_id,
             'order_id' => $order_id,
             'transaction_type' => 'order_purchase',
             'points_amount' => 10,
-            'points_balance' => 45,
+            'points_balance' => 25,
             'created_at' => '2025-02-01 10:00:00',
         ]);
-        $this->seed_balance($customer_id, 45);
+        $this->seed_ledger_row([
+            'customer_id' => $customer_id,
+            'order_id' => 0,
+            'transaction_type' => 'points_redemption',
+            'points_amount' => -8,
+            'points_balance' => 17,
+            'created_at' => '2025-02-10 10:00:00',
+        ]);
+        $this->seed_balance($customer_id, 17);
 
         $order = $this->make_order($order_id, $customer_id, 80, 'completed');
         $order->set_status('refunded');
         $points->handle_order_status_refunded($order_id);
 
-        $this->assertSame(35, $points->get_points_balance($customer_id));
+        $this->assertSame(15, $points->get_points_balance($customer_id));
         $this->assertSame(15, $points->get_unspent_gifted_points($customer_id));
-        $this->assertSame([-10], $this->ledger_amounts_for_order($order_id, 'order_refund'));
+        $this->assertSame(15, $points->get_fifo_lot_remaining($customer_id, $untagged_gift_id));
+        $this->assertSame(0, $points->get_fifo_lot_remaining($customer_id, $purchase_id));
+        $this->assertSame([-2], $this->ledger_amounts_for_order($order_id, 'order_refund'));
+        $this->assertSame([8], $this->write_off_amounts_for_order($order_id));
+        $allocs = $this->refund_lot_allocations($order_id);
+        $this->assertCount(1, $allocs);
+        $this->assertSame($purchase_id, (int) $allocs[0]['ledger_id']);
+        $this->assertSame(2, (int) $allocs[0]['amount']);
     }
 
     public function testLedgerRuling3_RefundReversalClawsCorrectionOnlyExactAmounts() {
@@ -619,6 +642,75 @@ class LedgerRulingsTest extends TestCase {
         $refund->set_total(-55);
         $ex_vat = $points->get_refund_amount_ex_vat($refund, $order);
         $this->assertEqualsWithDelta(50.0, $ex_vat, 0.01);
+    }
+
+    public function testLedgerRuling2_CalculateBaseCommissionUsesNetExVatScalingSwitch() {
+        global $mock_options;
+        $mock_options['intersoccer_commission_rate_tier1'] = 10;
+
+        $order = $this->make_order(95230, 95231, 110, 'processing', 10);
+        $order->set_subtotal(100);
+        $order->set_shipping_total(0);
+        $order->set_date_created('2025-05-01 10:00:00');
+        $order->save();
+        $refund = new WC_Order_Refund(952301, 55);
+        $refund->set_total(-55);
+        $refund->set_date_created('2025-05-10 10:00:00');
+        $order->add_refund($refund);
+        $order->set_date_completed('2025-06-01 12:00:00');
+        $order->save();
+
+        $coach_id = 95232;
+        $base = InterSoccer_Commission_Manager::calculate_base_commission($order, $coach_id);
+        $this->assertEqualsWithDelta(5.0, $base, 0.02, 'Base commission must scale to net paid ex-VAT after pre-completion refund');
+    }
+
+    public function testLedgerRuling2_CalculateLoyaltyBonusUsesNetExVatScalingSwitch() {
+        global $mock_options;
+        $mock_options['intersoccer_loyalty_bonus_first'] = 10;
+
+        $order = $this->make_order(95231, 95233, 110, 'processing', 10);
+        $order->set_subtotal(100);
+        $order->set_shipping_total(0);
+        $order->set_date_created('2025-05-01 10:00:00');
+        $order->save();
+        $refund = new WC_Order_Refund(952311, 55);
+        $refund->set_total(-55);
+        $refund->set_date_created('2025-05-10 10:00:00');
+        $order->add_refund($refund);
+        $order->set_date_completed('2025-06-01 12:00:00');
+        $order->save();
+
+        $loyalty = InterSoccer_Commission_Manager::calculate_loyalty_bonus($order, 1);
+        $this->assertEqualsWithDelta(5.0, $loyalty, 0.02, 'Loyalty bonus must scale to net paid ex-VAT after pre-completion refund');
+    }
+
+    public function testLedgerRuling2_RefundExVatUsesRefundTaxBranchWhenOrderLacksTaxMethods() {
+        $points = $this->manager();
+        $order = new class {
+            public function get_total() {
+                return 100.0;
+            }
+        };
+
+        $refund = new class(952401) extends WC_Order_Refund {
+            private $id;
+            public function __construct($id) {
+                $this->id = $id;
+            }
+            public function get_id() {
+                return $this->id;
+            }
+            public function get_total() {
+                return -22.0;
+            }
+            public function get_total_tax() {
+                return -2.0;
+            }
+        };
+
+        $ex_vat = $points->get_refund_amount_ex_vat($refund, $order);
+        $this->assertEqualsWithDelta(20.0, $ex_vat, 0.01, 'Refund ex-VAT must use refund get_total_tax when order has no tax helpers');
     }
 
     public function testLedgerRuling2_BaseCommissionAndLoyaltyBonusUseNetExVatBase() {

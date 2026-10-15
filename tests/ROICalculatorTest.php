@@ -4939,30 +4939,61 @@ class ROICalculatorTest extends TestCase {
 
         $mock_wpdb_get_var_results = [
             "transaction_type IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
-            "transaction_type NOT IN" => 25,
+            function ($query) {
+                if (strpos($query, 'transaction_type NOT IN') !== false
+                    && strpos($query, 'reversal_reinstated') !== false) {
+                    return 40;
+                }
+                if (strpos($query, 'transaction_type NOT IN') !== false) {
+                    return 65;
+                }
+                return null;
+            },
+            'COALESCE(SUM(commission_amount)' => 0,
         ];
         $mock_wpdb_get_results = [
             'intersoccer_points_log' => [],
-            'intersoccer_coach_commissions' => [],
         ];
 
         $calculator = new InterSoccer_ROI_Calculator();
         $costs = $calculator->get_cost_breakdown();
 
-        $this->assertStringContainsString(
-            'reversal_reinstated',
-            file_get_contents(__DIR__ . '/../includes/class-roi-calculator.php'),
-            'Fixture guard: loyalty SQL must exclude reversal_reinstated'
-        );
-        $this->assertSame(25.0, $costs['loyalty_activity_chf']);
+        $this->assertSame(40.0, $costs['loyalty_activity_chf']);
+        $this->assertSame(40.0, $costs['loyalty_cost_chf']);
     }
 
-    public function testCommissionCostExcludesReversedRows() {
-        $source = file_get_contents(__DIR__ . '/../includes/class-roi-calculator.php');
-        $this->assertStringContainsString(
-            "status NOT IN ('reversed', 'refunded')",
-            $source,
-            'Commission cost must ignore reversed or refunded payout rows'
-        );
+    public function testCommissionCostExcludesReversedAndRefundedRows() {
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results;
+
+        $mock_wpdb_get_var_results = [
+            "transaction_type IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
+            "'reversal_reinstated'" => 0,
+            "transaction_type NOT IN" => 0,
+            function ($query) {
+                if (strpos($query, 'intersoccer_coach_commissions') !== false
+                    && strpos($query, "status NOT IN ('reversed', 'refunded')") !== false) {
+                    return 55;
+                }
+                if (strpos($query, 'COALESCE(SUM(commission_amount)') !== false) {
+                    return 90;
+                }
+                return null;
+            },
+        ];
+        $mock_wpdb_get_results = [
+            'intersoccer_points_log' => [],
+        ];
+
+        global $mock_wc_orders_by_id, $mock_wc_get_orders;
+        $mock_wc_orders_by_id = [];
+        $mock_wc_get_orders = static function () {
+            return [];
+        };
+
+        $calculator = new InterSoccer_ROI_Calculator();
+        $costs = $calculator->get_cost_breakdown();
+
+        $this->assertSame(55.0, $costs['commissions_chf']);
+        $this->assertSame(55.0, $costs['referral_cost_chf']);
     }
 }
