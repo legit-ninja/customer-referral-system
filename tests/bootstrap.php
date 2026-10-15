@@ -37,17 +37,19 @@ if (!defined('WEEK_IN_SECONDS')) {
 if (!function_exists('add_action')) {
     function add_action($hook, $callback, $priority = 10, $accepted_args = 1) {
         global $mock_wp_action_callbacks;
-        if (!is_array($mock_wp_action_callbacks)) {
-            $mock_wp_action_callbacks = [];
+        if (array_key_exists('intersoccer_track_wp_actions', $GLOBALS) && $GLOBALS['intersoccer_track_wp_actions']) {
+            if (!is_array($mock_wp_action_callbacks)) {
+                $mock_wp_action_callbacks = [];
+            }
+            if (!isset($mock_wp_action_callbacks[$hook])) {
+                $mock_wp_action_callbacks[$hook] = [];
+            }
+            $mock_wp_action_callbacks[$hook][] = [
+                'callback' => $callback,
+                'priority' => (int) $priority,
+                'accepted_args' => (int) $accepted_args,
+            ];
         }
-        if (!isset($mock_wp_action_callbacks[$hook])) {
-            $mock_wp_action_callbacks[$hook] = [];
-        }
-        $mock_wp_action_callbacks[$hook][] = [
-            'callback' => $callback,
-            'priority' => (int) $priority,
-            'accepted_args' => (int) $accepted_args,
-        ];
         return true;
     }
 }
