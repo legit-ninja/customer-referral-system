@@ -135,6 +135,56 @@ if (!function_exists('intersoccer_release_order_refund_lock')) {
     }
 }
 
+if (!function_exists('intersoccer_coach_credit_lock_option_name')) {
+    /**
+     * @param int $coach_id
+     * @return string
+     */
+    function intersoccer_coach_credit_lock_option_name($coach_id) {
+        return 'intersoccer_coach_credit_lock_' . (int) $coach_id;
+    }
+}
+
+if (!function_exists('intersoccer_acquire_coach_credit_lock')) {
+    /**
+     * Mutex for coach CHF credit clawbacks (separate orders can share one coach).
+     *
+     * @param int $coach_id
+     * @param int $stale_seconds
+     * @return bool
+     */
+    function intersoccer_acquire_coach_credit_lock($coach_id, $stale_seconds = 60) {
+        $coach_id = (int) $coach_id;
+        if ($coach_id <= 0) {
+            return false;
+        }
+
+        $option = intersoccer_coach_credit_lock_option_name($coach_id);
+        $now = time();
+        if (add_option($option, $now, '', 'no')) {
+            return true;
+        }
+
+        $held_at = (int) get_option($option, 0);
+        if ($held_at > 0 && ($now - $held_at) >= (int) $stale_seconds) {
+            delete_option($option);
+            return add_option($option, $now, '', 'no');
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('intersoccer_release_coach_credit_lock')) {
+    /**
+     * @param int $coach_id
+     * @return void
+     */
+    function intersoccer_release_coach_credit_lock($coach_id) {
+        delete_option(intersoccer_coach_credit_lock_option_name((int) $coach_id));
+    }
+}
+
 if (!function_exists('intersoccer_refund_sync_retry_hook')) {
     /**
      * Cron hook for deferred per-order refund sync when the mutex is busy.

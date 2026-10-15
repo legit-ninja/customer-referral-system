@@ -1184,6 +1184,14 @@ if (!class_exists('Mock_WPDB')) {
             $mock_wpdb_last_query = $query;
 
             if (is_string($query)
+                && (stripos($query, 'START TRANSACTION') !== false
+                    || stripos($query, 'COMMIT') !== false
+                    || stripos($query, 'ROLLBACK') !== false)
+            ) {
+                return true;
+            }
+
+            if (is_string($query)
                 && stripos($query, 'UPDATE') !== false
                 && strpos($query, 'usermeta') !== false
                 && strpos($query, 'intersoccer_points_balance') !== false
@@ -2108,7 +2116,7 @@ if (!function_exists('wc_add_notice')) {
 }
 
 // Initialize global mock variables
-global $mock_current_user_id, $mock_user_meta, $mock_users, $mock_orders, $mock_session, $mock_customer_spent, $mock_get_posts_results, $mock_wpdb_get_row_results, $mock_wpdb_get_results, $mock_wpdb_get_var_results, $mock_wpdb_last_insert, $mock_wpdb_last_update, $mock_wpdb_last_delete, $mock_wc_products, $mock_wc_product_lookup, $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_purchase_rewards_by_order, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_shortcodes, $mock_user_capabilities, $mock_is_account_page, $mock_query_vars, $mock_backtrace_summary, $mock_ajax_referer_valid, $mock_wp_verify_nonce_result, $mock_referral_log_messages;
+global $mock_current_user_id, $mock_user_meta, $mock_users, $mock_orders, $mock_session, $mock_customer_spent, $mock_get_posts_results, $mock_wpdb_get_row_results, $mock_wpdb_get_results, $mock_wpdb_get_var_results, $mock_wpdb_last_insert, $mock_wpdb_last_update, $mock_wpdb_last_delete, $mock_wc_products, $mock_wc_product_lookup, $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_purchase_rewards_by_order, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_shortcodes, $mock_user_capabilities, $mock_is_account_page, $mock_query_vars, $mock_backtrace_summary, $mock_ajax_referer_valid, $mock_wp_verify_nonce_result, $mock_referral_log_messages, $mock_coach_credits_stale_before, $mock_skip_coach_credit_lock;
 $mock_current_user_id = 1;
 $mock_user_meta = [];
 $mock_shortcodes = [];
@@ -2137,6 +2145,8 @@ $mock_purchase_rewards_by_order = [];
 $mock_wc_orders_by_id = [];
 $mock_wc_get_orders = null;
 $mock_referral_log_messages = null;
+$mock_coach_credits_stale_before = null;
+$mock_skip_coach_credit_lock = false;
 $mock_user_roles = [];
 $mock_wc_products = [];
 $mock_wc_product_lookup = [];

@@ -2140,10 +2140,11 @@ class InterSoccer_Points_Manager {
         $returned = $this->get_abs_points_log_sum_for_order_transaction_types($order_id, ['points_refund']);
         $retaken = $this->get_abs_points_log_sum_for_order_transaction_types($order_id, ['redeemed_retaken']);
         $to_retake = max(0, $returned - $retaken);
+        $retake_shortfall = 0;
         if ($to_retake > 0) {
             $debitable = $this->get_attributable_balance_for_order_reversal($customer_id, $order_id);
             $debit = min($to_retake, $debitable);
-            $shortfall = $to_retake - $debit;
+            $retake_shortfall = $to_retake - $debit;
             if ($debit > 0) {
                 $this->add_points_transaction(
                     $customer_id,
@@ -2154,8 +2155,8 @@ class InterSoccer_Points_Manager {
                     ['fraction' => 1.0]
                 );
             }
-            if ($shortfall > 0) {
-                $this->record_reversal_write_off($order, $customer_id, $shortfall, 'reinstated_retake_shortfall', 1.0);
+            if ($retake_shortfall > 0) {
+                $this->record_reversal_write_off($order, $customer_id, $retake_shortfall, 'reinstated_retake_shortfall', 1.0);
             }
         }
 
@@ -2166,7 +2167,7 @@ class InterSoccer_Points_Manager {
             }
         }
 
-        $this->reset_refund_reversal_running_totals($order);
+        $this->reset_refund_reversal_running_totals($order, $to_retake > 0 ? $retake_shortfall : 0);
     }
 
     /**
@@ -2221,7 +2222,7 @@ class InterSoccer_Points_Manager {
         }
 
         if ($debit > 0 || $shortfall > 0) {
-            $this->reset_redeemed_refund_running_totals($order);
+            $this->sync_redeemed_return_running_total_after_retake($order, $shortfall);
         }
 
         if (method_exists($order, 'save')) {
@@ -2246,31 +2247,42 @@ class InterSoccer_Points_Manager {
     }
 
     /**
-     * Clear redeemed return counters so a later refund can return redeemed points again.
+     * After a retake, align redeemed return running totals with what is still owed on refund.
+     *
+     * Points that could not be retaken (shortfall / write-off) stay counted as already returned.
      *
      * @param WC_Order $order
+     * @param int      $shortfall Unretaken redeemed points written off at retake.
      */
-    public function reset_redeemed_refund_running_totals($order) {
-        $order->update_meta_data('_intersoccer_redeemed_points_returned_total', 0);
-        $order->update_meta_data('_intersoccer_redeemed_points_returned', 0);
+    public function sync_redeemed_return_running_total_after_retake($order, $shortfall) {
+        $redeemed = (int) $order->get_meta('_intersoccer_points_redeemed', true);
+        $running = max(0, min($redeemed, (int) $shortfall));
+        $order->update_meta_data('_intersoccer_redeemed_points_returned_total', $running);
+        $order->update_meta_data('_intersoccer_redeemed_points_returned', ($redeemed > 0 && $running >= $redeemed) ? 1 : 0);
         if (method_exists($order, 'save')) {
             $order->save();
         }
     }
 
     /**
-     * Reset per-order reversal counters after reinstatement so a later refund can run again.
+     * Clear redeemed return counters so a later refund can return redeemed points again.
      *
      * @param WC_Order $order
      */
-    public function reset_refund_reversal_running_totals($order) {
+    public function reset_redeemed_refund_running_totals($order) {
+        $this->sync_redeemed_return_running_total_after_retake($order, 0);
+    }
+
+    /**
+     * Reset per-order reversal counters after reinstatement so a later refund can run again.
+     *
+     * @param WC_Order $order
+     * @param int      $redeemed_returned_running After retake shortfall; 0 when fully retaken.
+     */
+    public function reset_refund_reversal_running_totals($order, $redeemed_returned_running = 0) {
         $order->update_meta_data('_intersoccer_purchase_points_reversed_total', 0);
         $order->update_meta_data('_intersoccer_purchase_points_reversed', 0);
-        $order->update_meta_data('_intersoccer_redeemed_points_returned_total', 0);
-        $order->update_meta_data('_intersoccer_redeemed_points_returned', 0);
-        if (method_exists($order, 'save')) {
-            $order->save();
-        }
+        $this->sync_redeemed_return_running_total_after_retake($order, (int) $redeemed_returned_running);
     }
 
     /**
