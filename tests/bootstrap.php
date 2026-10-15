@@ -305,7 +305,10 @@ if (!function_exists('get_avatar_url')) {
 
 if (!function_exists('intersoccer_referral_log')) {
     function intersoccer_referral_log($message) {
-        // no-op in tests
+        global $mock_referral_log_messages;
+        if (is_array($mock_referral_log_messages)) {
+            $mock_referral_log_messages[] = $message;
+        }
     }
 }
 
@@ -573,6 +576,66 @@ if (!function_exists('current_time')) {
     }
 }
 
+// Mock WooCommerce line item
+if (!class_exists('WC_Order_Item_Product')) {
+    class WC_Order_Item_Product {
+        private $total = 0;
+
+        public function __construct($total = 0) {
+            $this->total = (float) $total;
+        }
+
+        public function get_total() {
+            return $this->total;
+        }
+
+        public function set_total($total) {
+            $this->total = (float) $total;
+        }
+    }
+}
+
+// Mock WooCommerce refund order
+if (!class_exists('WC_Order_Refund')) {
+    class WC_Order_Refund {
+        private $id = 0;
+        private $amount = 0.0;
+        private $line_items = [];
+
+        public function __construct($id = 0, $amount = 0.0) {
+            $this->id = (int) $id;
+            $this->amount = (float) $amount;
+        }
+
+        public function get_id() {
+            return $this->id;
+        }
+
+        public function get_amount() {
+            return $this->amount;
+        }
+
+        public function set_amount($amount) {
+            $this->amount = (float) $amount;
+        }
+
+        public function set_line_items(array $items) {
+            $this->line_items = $items;
+        }
+
+        public function add_line_item($item) {
+            $this->line_items[] = $item;
+        }
+
+        public function get_items($type = '') {
+            if ($type === 'line_item' || $type === '') {
+                return $this->line_items;
+            }
+            return [];
+        }
+    }
+}
+
 // Mock WooCommerce order class
 if (!class_exists('WC_Order')) {
     class WC_Order {
@@ -582,6 +645,8 @@ if (!class_exists('WC_Order')) {
         private $shipping_total = 10;
         private $total_discount = 0;
         private $fees = [];
+        private $line_items = [];
+        private $refunds = [];
         private $created_at = '2025-01-01 12:00:00';
         private $status = 'pending';
         private $id = 0;
@@ -733,10 +798,33 @@ if (!class_exists('WC_Order')) {
         }
 
         public function get_items($type = '') {
+            if ($type === 'line_item') {
+                return $this->line_items;
+            }
             if ($type === 'fee' || $type === '') {
                 return $this->fees;
             }
             return [];
+        }
+
+        public function set_line_items(array $items) {
+            $this->line_items = $items;
+        }
+
+        public function add_line_item($item) {
+            $this->line_items[] = $item;
+        }
+
+        public function get_refunds() {
+            return $this->refunds;
+        }
+
+        public function set_refunds(array $refunds) {
+            $this->refunds = $refunds;
+        }
+
+        public function add_refund($refund) {
+            $this->refunds[] = $refund;
         }
 
         public function save() {
@@ -1732,7 +1820,7 @@ if (!function_exists('wc_add_notice')) {
 }
 
 // Initialize global mock variables
-global $mock_current_user_id, $mock_user_meta, $mock_users, $mock_orders, $mock_session, $mock_customer_spent, $mock_get_posts_results, $mock_wpdb_get_row_results, $mock_wpdb_get_results, $mock_wpdb_get_var_results, $mock_wpdb_last_insert, $mock_wpdb_last_update, $mock_wpdb_last_delete, $mock_wc_products, $mock_wc_product_lookup, $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_purchase_rewards_by_order, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_shortcodes, $mock_user_capabilities, $mock_is_account_page, $mock_query_vars, $mock_backtrace_summary, $mock_ajax_referer_valid, $mock_wp_verify_nonce_result;
+global $mock_current_user_id, $mock_user_meta, $mock_users, $mock_orders, $mock_session, $mock_customer_spent, $mock_get_posts_results, $mock_wpdb_get_row_results, $mock_wpdb_get_results, $mock_wpdb_get_var_results, $mock_wpdb_last_insert, $mock_wpdb_last_update, $mock_wpdb_last_delete, $mock_wc_products, $mock_wc_product_lookup, $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_purchase_rewards_by_order, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_user_roles, $mock_shortcodes, $mock_user_capabilities, $mock_is_account_page, $mock_query_vars, $mock_backtrace_summary, $mock_ajax_referer_valid, $mock_wp_verify_nonce_result, $mock_referral_log_messages;
 $mock_current_user_id = 1;
 $mock_user_meta = [];
 $mock_shortcodes = [];
@@ -1760,6 +1848,7 @@ $mock_points_log_rows = [];
 $mock_purchase_rewards_by_order = [];
 $mock_wc_orders_by_id = [];
 $mock_wc_get_orders = null;
+$mock_referral_log_messages = null;
 $mock_user_roles = [];
 $mock_wc_products = [];
 $mock_wc_product_lookup = [];

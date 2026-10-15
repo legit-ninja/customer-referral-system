@@ -39,8 +39,10 @@ class InterSoccer_Points_Manager {
             add_action('woocommerce_order_status_completed', [$this, 'queue_order_for_points_allocation'], 10, 1);
         }
         
-        add_action('woocommerce_order_status_refunded', [$this, 'reverse_earned_points_on_cancel_or_full_refund'], 10, 1);
-        add_action('woocommerce_order_status_cancelled', [$this, 'reverse_earned_points_on_cancel_or_full_refund'], 10, 1);
+        add_action('woocommerce_order_refunded', [$this, 'handle_woocommerce_order_refunded'], 10, 2);
+        add_action('woocommerce_order_status_refunded', [$this, 'handle_order_status_refunded'], 10, 1);
+        add_action('woocommerce_order_status_cancelled', [$this, 'handle_order_status_cancelled'], 10, 1);
+        add_action('woocommerce_order_status_failed', [$this, 'handle_order_status_failed'], 10, 1);
         add_action('wp_ajax_get_points_balance', [$this, 'get_points_balance_ajax']);
         add_action('wp_ajax_get_points_history', [$this, 'get_points_history_ajax']);
 
@@ -48,8 +50,6 @@ class InterSoccer_Points_Manager {
         // add_action('woocommerce_cart_calculate_fees', [$this, 'apply_points_discount']);
         // add_action('woocommerce_checkout_process', [$this, 'validate_points_redemption']);
         // add_action('woocommerce_checkout_create_order', [$this, 'process_points_redemption'], 10, 2);
-        add_action('woocommerce_order_status_cancelled', [$this, 'refund_points_on_cancellation'], 10, 1);
-        add_action('woocommerce_order_status_failed', [$this, 'refund_points_on_failure'], 10, 1);
         
         // Schedule weekly deferred allocation if not already scheduled
         if ($allocation_method === 'deferred' && !wp_next_scheduled('intersoccer_deferred_points_allocation')) {
@@ -346,11 +346,53 @@ class InterSoccer_Points_Manager {
     }
 
     /**
-     * Deduct points when an order is refunded
+     * WooCommerce refund created (partial or full).
+     *
+     * @param int $order_id
+     * @param int $refund_id
      */
+    public function handle_woocommerce_order_refunded($order_id, $refund_id) {
+        $this->sync_refund_reversals((int) $order_id, 'order_refunded', [
+            'refund_id' => (int) $refund_id,
+        ]);
+    }
+
     /**
-     * Take back purchase points after a cancel or a full refund.
-     * A partial refund keeps the original status and is not reversed proportionally.
+     * Order moved to refunded status (full refund).
+     *
+     * @param int $order_id
+     */
+    public function handle_order_status_refunded($order_id) {
+        $this->sync_refund_reversals((int) $order_id, 'order_refunded', [
+            'force_fraction_one' => true,
+        ]);
+    }
+
+    /**
+     * Order cancelled — reverse earned points and return redeemed points.
+     *
+     * @param int $order_id
+     */
+    public function handle_order_status_cancelled($order_id) {
+        $this->sync_refund_reversals((int) $order_id, 'order_cancelled', [
+            'force_fraction_one' => true,
+        ]);
+    }
+
+    /**
+     * Failed order — return redeemed points only (no purchase points were earned).
+     *
+     * @param int $order_id
+     */
+    public function handle_order_status_failed($order_id) {
+        $this->sync_refund_reversals((int) $order_id, 'order_failed', [
+            'force_fraction_one' => true,
+            'skip_earned_reversal' => true,
+        ]);
+    }
+
+    /**
+     * Take back purchase points after a cancel or a full refund (legacy entry point).
      *
      * @param int $order_id
      */
@@ -364,47 +406,315 @@ class InterSoccer_Points_Manager {
         if (strpos($status, 'wc-') === 0) {
             $status = substr($status, 3);
         }
-        // Partial refunds stay on processing or completed and are left alone.
         if (!in_array($status, ['cancelled', 'refunded'], true)) {
             return;
         }
 
-        $this->deduct_points_for_refund($order_id);
+        $reason = $status === 'cancelled' ? 'order_cancelled' : 'order_refunded';
+        $this->sync_refund_reversals((int) $order_id, $reason, [
+            'force_fraction_one' => true,
+            'earned_only' => true,
+        ]);
     }
 
+    /**
+     * Full earned-points reversal (legacy entry point).
+     *
+     * @param int $order_id
+     */
     public function deduct_points_for_refund($order_id) {
-        $order = wc_get_order($order_id);
-        if (!$order) return;
+        $this->sync_refund_reversals((int) $order_id, 'order_refunded', [
+            'force_fraction_one' => true,
+            'earned_only' => true,
+        ]);
+    }
 
-        if ((int) $order->get_meta('_intersoccer_purchase_points_reversed', true) === 1) {
+    /**
+     * Sync proportional reversal of earned points and return of redeemed points for refunds/cancels.
+     *
+     * @param int    $order_id
+     * @param string $reason order_refunded|order_cancelled|order_failed
+     * @param array  $context  refund_id, force_fraction_one, skip_earned_reversal, earned_only
+     */
+    public function sync_refund_reversals($order_id, $reason, $context = []) {
+        $order = wc_get_order($order_id);
+        if (!$order || !method_exists($order, 'get_customer_id')) {
             return;
         }
 
-        $customer_id = $order->get_customer_id();
-        if (!$customer_id) return;
+        $fraction = !empty($context['force_fraction_one'])
+            ? 1.0
+            : $this->calculate_cumulative_refunded_fraction($order);
 
-        // Only deduct if points were previously allocated
-        $allocated_points = $this->get_points_allocated_for_order($order_id);
-        if ($allocated_points <= 0) return;
+        $refund_id = isset($context['refund_id']) ? (int) $context['refund_id'] : null;
+        $earned_only = !empty($context['earned_only']);
 
-        $this->add_points_transaction(
-            $customer_id,
-            'order_refund',
-            -$allocated_points,
-            $order_id,
-            'Points deducted for refunded order #' . $order_id,
-            [
-                'refund_reason' => 'order_refunded',
-                'original_allocation' => $allocated_points
-            ]
-        );
+        if (empty($context['skip_earned_reversal'])) {
+            $this->sync_earned_points_reversal_for_order($order, $fraction, $reason, $refund_id);
+        }
 
-        $order->update_meta_data('_intersoccer_purchase_points_reversed', 1);
+        if (!$earned_only) {
+            $this->sync_redeemed_points_return_for_order($order, $fraction, $reason, $refund_id);
+        }
+    }
+
+    /**
+     * Cumulative refunded fraction in [0, 1] from refund objects, or 1 when order is cancelled/refunded.
+     *
+     * @param WC_Order $order
+     * @return float
+     */
+    private function calculate_cumulative_refunded_fraction($order) {
+        if (!method_exists($order, 'get_status')) {
+            return 0.0;
+        }
+
+        $status = (string) $order->get_status();
+        if (strpos($status, 'wc-') === 0) {
+            $status = substr($status, 3);
+        }
+        if (in_array($status, ['cancelled', 'refunded'], true)) {
+            return 1.0;
+        }
+
+        if (!method_exists($order, 'get_refunds')) {
+            return 0.0;
+        }
+
+        $refunds = $order->get_refunds();
+        if (!is_array($refunds) || empty($refunds)) {
+            return 0.0;
+        }
+
+        $product_subtotal = $this->get_order_product_subtotal($order);
+        $order_total_paid = max(0.0, (float) $order->get_total());
+        $cumulative = 0.0;
+
+        foreach ($refunds as $refund) {
+            if (!is_object($refund)) {
+                continue;
+            }
+
+            $line_items = method_exists($refund, 'get_items') ? $refund->get_items('line_item') : [];
+            $line_refund_total = 0.0;
+            if (is_array($line_items)) {
+                foreach ($line_items as $item) {
+                    if (is_object($item) && method_exists($item, 'get_total')) {
+                        $line_refund_total += abs((float) $item->get_total());
+                    }
+                }
+            }
+
+            if ($line_refund_total > 0) {
+                $denominator = $product_subtotal > 0 ? $product_subtotal : 0.0;
+                $share = $denominator > 0 ? ($line_refund_total / $denominator) : 0.0;
+            } else {
+                $refund_amount = 0.0;
+                if (method_exists($refund, 'get_amount')) {
+                    $refund_amount = abs((float) $refund->get_amount());
+                }
+                $denominator = $order_total_paid > 0 ? $order_total_paid : 0.0;
+                $share = $denominator > 0 ? ($refund_amount / $denominator) : 0.0;
+            }
+
+            $share = max(0.0, min(1.0, (float) $share));
+            $cumulative += $share;
+        }
+
+        return max(0.0, min(1.0, $cumulative));
+    }
+
+    /**
+     * Sum of order line item totals, or get_subtotal() when line items are unavailable.
+     *
+     * @param WC_Order $order
+     * @return float
+     */
+    private function get_order_product_subtotal($order) {
+        $sum = 0.0;
+        if (method_exists($order, 'get_items')) {
+            $items = $order->get_items('line_item');
+            if (is_array($items) && !empty($items)) {
+                foreach ($items as $item) {
+                    if (is_object($item) && method_exists($item, 'get_total')) {
+                        $sum += abs((float) $item->get_total());
+                    }
+                }
+                if ($sum > 0) {
+                    return $sum;
+                }
+            }
+        }
+
+        if (method_exists($order, 'get_subtotal')) {
+            return max(0.0, (float) $order->get_subtotal());
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * @param WC_Order $order
+     * @param float    $fraction
+     * @param string   $reason
+     * @param int|null $refund_id
+     */
+    private function sync_earned_points_reversal_for_order($order, $fraction, $reason, $refund_id = null) {
+        $order_id = (int) $order->get_id();
+        $customer_id = (int) $order->get_customer_id();
+        if ($customer_id <= 0) {
+            return;
+        }
+
+        $earned = (int) floor($this->get_points_allocated_for_order($order_id));
+        if ($earned <= 0) {
+            return;
+        }
+
+        $already_reversed = (int) $order->get_meta('_intersoccer_purchase_points_reversed_total', true);
+        $total_meta_raw = $order->get_meta('_intersoccer_purchase_points_reversed_total', true);
+        $has_total_meta = $total_meta_raw !== '' && $total_meta_raw !== false && $total_meta_raw !== null;
+        if ((int) $order->get_meta('_intersoccer_purchase_points_reversed', true) === 1 && !$has_total_meta) {
+            $already_reversed = $earned;
+        }
+
+        $target_reversed = (int) min($earned, floor($earned * $fraction));
+        $delta = $target_reversed - $already_reversed;
+        if ($delta <= 0) {
+            if ($target_reversed >= $earned) {
+                $order->update_meta_data('_intersoccer_purchase_points_reversed', 1);
+                if (method_exists($order, 'save')) {
+                    $order->save();
+                }
+            }
+            return;
+        }
+
+        $balance = (int) $this->get_points_balance($customer_id);
+        $debit_amount = min($delta, max(0, $balance));
+        $shortfall = $delta - $debit_amount;
+
+        $ledger_type = $reason === 'order_cancelled' ? 'order_cancelled' : 'order_refund';
+        $metadata = [
+            'refund_reason' => $reason,
+            'fraction' => $fraction,
+            'earned' => $earned,
+            'cumulative_reversed' => $target_reversed,
+            'requested_reversal' => $delta,
+            'original_allocation' => $earned,
+        ];
+        if ($refund_id) {
+            $metadata['refund_id'] = $refund_id;
+        }
+        if ($shortfall > 0) {
+            $metadata['shortfall'] = $shortfall;
+            $prior_shortfall = (int) $order->get_meta('_intersoccer_points_reversal_shortfall', true);
+            $order->update_meta_data('_intersoccer_points_reversal_shortfall', $prior_shortfall + $shortfall);
+            intersoccer_referral_log(
+                "InterSoccer: SHORTFALL reversing {$delta} earned points for order {$order_id}, customer {$customer_id}; debited {$debit_amount}, shortfall {$shortfall}"
+            );
+        }
+
+        if ($debit_amount > 0) {
+            $this->add_points_transaction(
+                $customer_id,
+                $ledger_type,
+                -$debit_amount,
+                $order_id,
+                'Points deducted for refunded order #' . $order_id,
+                $metadata
+            );
+        } elseif ($shortfall > 0) {
+            intersoccer_referral_log(
+                "InterSoccer: SHORTFALL zero balance for order {$order_id}, customer {$customer_id}; recorded shortfall {$shortfall} without ledger debit"
+            );
+        }
+
+        $order->update_meta_data('_intersoccer_purchase_points_reversed_total', $target_reversed);
+        if ($target_reversed >= $earned) {
+            $order->update_meta_data('_intersoccer_purchase_points_reversed', 1);
+        }
         if (method_exists($order, 'save')) {
             $order->save();
         }
 
-        intersoccer_referral_log("InterSoccer: Deducted {$allocated_points} points from customer {$customer_id} for refunded order {$order_id}");
+        if ($debit_amount > 0) {
+            intersoccer_referral_log("InterSoccer: Deducted {$debit_amount} points from customer {$customer_id} for order {$order_id} (cumulative reversed {$target_reversed}/{$earned})");
+        }
+    }
+
+    /**
+     * @param WC_Order $order
+     * @param float    $fraction
+     * @param string   $reason
+     * @param int|null $refund_id
+     */
+    private function sync_redeemed_points_return_for_order($order, $fraction, $reason, $refund_id = null) {
+        $order_id = (int) $order->get_id();
+
+        if ((int) $order->get_meta('_intersoccer_credits_deducted_on_completion', true) !== 1) {
+            return;
+        }
+
+        $redeemed = (int) $order->get_meta('_intersoccer_points_redeemed', true);
+        if ($redeemed <= 0) {
+            return;
+        }
+
+        $already_returned = (int) $order->get_meta('_intersoccer_redeemed_points_returned_total', true);
+        $returned_total_raw = $order->get_meta('_intersoccer_redeemed_points_returned_total', true);
+        $has_returned_total_meta = $returned_total_raw !== '' && $returned_total_raw !== false && $returned_total_raw !== null;
+        if ((int) $order->get_meta('_intersoccer_redeemed_points_returned', true) === 1 && !$has_returned_total_meta) {
+            $already_returned = $redeemed;
+        }
+
+        $target_returned = (int) min($redeemed, floor($redeemed * $fraction));
+        $delta = $target_returned - $already_returned;
+        if ($delta <= 0) {
+            if ($target_returned >= $redeemed) {
+                $order->update_meta_data('_intersoccer_redeemed_points_returned', 1);
+                if (method_exists($order, 'save')) {
+                    $order->save();
+                }
+            }
+            return;
+        }
+
+        $user_id = (int) $order->get_customer_id();
+        if ($user_id <= 0) {
+            return;
+        }
+
+        $discount_amount = $order->get_meta('_intersoccer_discount_amount', true);
+        $metadata = [
+            'original_discount' => $discount_amount,
+            'refund_reason' => $reason,
+            'fraction' => $fraction,
+            'redeemed' => $redeemed,
+            'cumulative_returned' => $target_returned,
+        ];
+        if ($refund_id) {
+            $metadata['refund_id'] = $refund_id;
+        }
+
+        $this->add_points_transaction(
+            $user_id,
+            'points_refund',
+            $delta,
+            $order_id,
+            sprintf(__('Refunded %d points due to %s', 'intersoccer-referral'), $delta, $reason),
+            $metadata
+        );
+
+        $order->update_meta_data('_intersoccer_redeemed_points_returned_total', $target_returned);
+        if ($target_returned >= $redeemed) {
+            $order->update_meta_data('_intersoccer_redeemed_points_returned', 1);
+        }
+        if (method_exists($order, 'save')) {
+            $order->save();
+        }
+
+        intersoccer_referral_log("InterSoccer: Refunded {$delta} points for {$reason} order {$order_id} (cumulative returned {$target_returned}/{$redeemed})");
     }
 
     /**
@@ -1252,51 +1562,18 @@ class InterSoccer_Points_Manager {
      * Refund points when order is cancelled or failed
      */
     public function refund_points_on_cancellation($order_id) {
-        $this->refund_points_for_order($order_id, 'order_cancelled');
+        $this->sync_refund_reversals((int) $order_id, 'order_cancelled', [
+            'force_fraction_one' => true,
+            'skip_earned_reversal' => true,
+            'earned_only' => false,
+        ]);
     }
 
     public function refund_points_on_failure($order_id) {
-        $this->refund_points_for_order($order_id, 'order_failed');
-    }
-
-    private function refund_points_for_order($order_id, $reason) {
-        $order = wc_get_order($order_id);
-        if (!$order) return;
-
-        if ((int) $order->get_meta('_intersoccer_redeemed_points_returned', true) === 1) {
-            return;
-        }
-
-        // Only points that were actually taken off the balance can be given back.
-        if ((int) $order->get_meta('_intersoccer_credits_deducted_on_completion', true) !== 1) {
-            return;
-        }
-
-        $points_redeemed = (int) $order->get_meta('_intersoccer_points_redeemed', true);
-        if ($points_redeemed <= 0) return;
-
-        $user_id = $order->get_customer_id();
-        $discount_amount = $order->get_meta('_intersoccer_discount_amount', true);
-
-        // Refund the points
-        $this->add_points_transaction(
-            $user_id,
-            'points_refund',
-            $points_redeemed,
-            $order_id,
-            sprintf(__('Refunded %d points due to %s', 'intersoccer-referral'), $points_redeemed, $reason),
-            [
-                'original_discount' => $discount_amount,
-                'refund_reason' => $reason
-            ]
-        );
-
-        $order->update_meta_data('_intersoccer_redeemed_points_returned', 1);
-        if (method_exists($order, 'save')) {
-            $order->save();
-        }
-
-        intersoccer_referral_log("InterSoccer: Refunded {$points_redeemed} points for {$reason} order {$order_id}");
+        $this->sync_refund_reversals((int) $order_id, 'order_failed', [
+            'force_fraction_one' => true,
+            'skip_earned_reversal' => true,
+        ]);
     }
 
     /**

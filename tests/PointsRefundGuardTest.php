@@ -5,7 +5,8 @@ use PHPUnit\Framework\TestCase;
 /**
  * Cancel and failure only give points back when they were actually taken,
  * and a full refund or cancel takes back points the order earned.
- * Partial refunds are not reversed proportionally.
+ * Partial refunds via status hooks on a still-completed order are not reversed;
+ * proportional reversal runs on woocommerce_order_refunded (see RefundPointsReversalTest).
  */
 class PointsRefundGuardTest extends TestCase {
 
@@ -115,7 +116,7 @@ class PointsRefundGuardTest extends TestCase {
         $mock_wc_orders_by_id[8905] = $order;
 
         $points->allocate_points_for_order(8905);
-        // A partial refund leaves the order completed. Do not invent a proportional reversal.
+        // Completed order: legacy status hook path still does nothing (no cancelled/refunded status).
         $points->reverse_earned_points_on_cancel_or_full_refund(8905);
 
         $this->assertSame(10, $points->get_points_balance(8905));
