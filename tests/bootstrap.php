@@ -650,12 +650,10 @@ if (!function_exists('get_user_meta')) {
             $cached = wp_cache_get($user_id, 'user_meta');
             if ($cached !== false) {
                 if (is_array($cached)) {
-                    if (!array_key_exists($key, $cached)) {
-                        return $single ? '' : [];
+                    if (array_key_exists($key, $cached)) {
+                        return $cached[$key];
                     }
-                    return $cached[$key];
-                }
-                if ($single && $key === 'intersoccer_credits') {
+                } elseif ($single && $key === 'intersoccer_credits') {
                     return $cached;
                 }
             }
@@ -669,17 +667,34 @@ if (!function_exists('get_user_meta')) {
             return $single ? '' : [];
         }
 
-        return $mock_user_meta[$user_id][$key];
+        $value = $mock_user_meta[$user_id][$key];
+        if ($key === 'intersoccer_credits' && function_exists('wp_cache_set')) {
+            $bucket = [];
+            if (function_exists('wp_cache_get')) {
+                $existing = wp_cache_get($user_id, 'user_meta');
+                if (is_array($existing)) {
+                    $bucket = $existing;
+                }
+            }
+            $bucket['intersoccer_credits'] = $value;
+            wp_cache_set($user_id, $bucket, 'user_meta');
+        }
+
+        return $value;
     }
 }
 
 if (!function_exists('update_user_meta')) {
     function update_user_meta($user_id, $key, $value) {
         global $mock_user_meta;
+        $user_id = (int) $user_id;
         if (!isset($mock_user_meta[$user_id])) {
             $mock_user_meta[$user_id] = [];
         }
         $mock_user_meta[$user_id][$key] = $value;
+        if (function_exists('wp_cache_delete')) {
+            wp_cache_delete($user_id, 'user_meta');
+        }
         return true;
     }
 }
@@ -933,8 +948,10 @@ if (!class_exists('WC_Order')) {
             unset($this->meta_data[$key]);
         }
 
+        public $order_notes = [];
+
         public function add_order_note($note) {
-            // Mock order note addition
+            $this->order_notes[] = (string) $note;
         }
 
         public function get_billing_email() {
@@ -1269,6 +1286,10 @@ if (!class_exists('Mock_WPDB')) {
                     return true;
                 }
                 if (stripos($query, 'COMMIT') !== false) {
+                    global $mock_fail_wpdb_commit;
+                    if (!empty($mock_fail_wpdb_commit)) {
+                        return false;
+                    }
                     if ((int) ($mock_wpdb_transaction_depth ?? 0) > 0) {
                         $mock_wpdb_transaction_depth--;
                         if ((int) $mock_wpdb_transaction_depth === 0) {
@@ -1324,6 +1345,9 @@ if (!class_exists('Mock_WPDB')) {
                     $mock_user_meta[$user_id]['intersoccer_credits'] = 0.0;
                 } else {
                     $mock_user_meta[$user_id]['intersoccer_credits'] = max(0.0, $current - $amount);
+                }
+                if (function_exists('wp_cache_delete')) {
+                    wp_cache_delete($user_id, 'user_meta');
                 }
                 return 1;
             }
@@ -2293,6 +2317,7 @@ $mock_wpdb_transaction_user_meta_snapshot = null;
 $mock_wpdb_transaction_inserts_snapshot = null;
 $mock_coach_credits_over_debit_drain_balance = [];
 $mock_fail_wpdb_insert_tables = [];
+$mock_fail_wpdb_commit = false;
 $mock_user_roles = [];
 $mock_wc_products = [];
 $mock_wc_product_lookup = [];

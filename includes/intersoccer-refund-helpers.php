@@ -196,6 +196,82 @@ if (!function_exists('intersoccer_refund_sync_retry_hook')) {
     }
 }
 
+if (!function_exists('intersoccer_order_refund_sync_retry_max_attempts')) {
+    /**
+     * Maximum deferred refund-sync retries before giving up (per order + channel).
+     *
+     * @return int
+     */
+    function intersoccer_order_refund_sync_retry_max_attempts() {
+        $default = 5;
+        if (function_exists('apply_filters')) {
+            return max(1, (int) apply_filters('intersoccer_order_refund_sync_retry_max_attempts', $default));
+        }
+        return $default;
+    }
+}
+
+if (!function_exists('intersoccer_abandon_order_refund_sync_retry')) {
+    /**
+     * Stop scheduling further refund sync retries after repeated failures.
+     *
+     * @param int    $order_id
+     * @param string $channel points|commission
+     * @param array  $payload
+     * @return void
+     */
+    function intersoccer_abandon_order_refund_sync_retry($order_id, $channel, array $payload = []) {
+        $order_id = (int) $order_id;
+        $channel = (string) $channel;
+        if ($order_id <= 0 || $channel === '') {
+            return;
+        }
+
+        if (function_exists('intersoccer_referral_log')) {
+            intersoccer_referral_log(
+                'InterSoccer: Refund sync abandoned for order ' . $order_id
+                . ' (' . $channel . ') after '
+                . intersoccer_order_refund_sync_retry_max_attempts()
+                . ' failed retries'
+            );
+        }
+
+        $order = function_exists('wc_get_order') ? wc_get_order($order_id) : null;
+        if ($order && method_exists($order, 'add_order_note')) {
+            $order->add_order_note(
+                'InterSoccer refund sync stopped after repeated failures. Please reconcile points and commission manually.'
+            );
+        }
+    }
+}
+
+if (!function_exists('intersoccer_schedule_order_refund_sync_retry_after_failure')) {
+    /**
+     * Schedule the next retry or abandon when the attempt budget is exhausted.
+     *
+     * @param int    $order_id
+     * @param string $channel points|commission
+     * @param array  $payload
+     * @param int    $delay_seconds
+     * @return bool Whether a new event was scheduled.
+     */
+    function intersoccer_schedule_order_refund_sync_retry_after_failure(
+        $order_id,
+        $channel,
+        array $payload = [],
+        $delay_seconds = 60
+    ) {
+        $completed = (int) ($payload['retry_attempt'] ?? 0);
+        $next = $completed + 1;
+        if ($next > intersoccer_order_refund_sync_retry_max_attempts()) {
+            intersoccer_abandon_order_refund_sync_retry($order_id, $channel, $payload);
+            return false;
+        }
+        $payload['retry_attempt'] = $next;
+        return intersoccer_schedule_order_refund_sync_retry($order_id, $channel, $payload, $delay_seconds);
+    }
+}
+
 if (!function_exists('intersoccer_schedule_order_refund_sync_retry')) {
     /**
      * Schedule a single retry for points or commission refund sync (deduped per order + channel).

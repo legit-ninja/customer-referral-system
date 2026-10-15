@@ -13,7 +13,7 @@ class RefundReviewFixesTest extends TestCase {
         require_once __DIR__ . '/../includes/class-commission-manager.php';
         require_once __DIR__ . '/../includes/class-cli-redeemed-backfill.php';
 
-        global $mock_user_meta, $mock_wc_orders_by_id, $mock_order_points_allocated, $mock_points_log_rows, $mock_points_balances, $mock_options, $mock_wpdb_get_results, $mock_wpdb_inserts, $mock_wc_get_orders, $mock_scheduled_single_events, $mock_object_cache, $mock_coach_credits_over_debit_drain_balance, $mock_fail_wpdb_insert_tables;
+        global $mock_user_meta, $mock_wc_orders_by_id, $mock_order_points_allocated, $mock_points_log_rows, $mock_points_balances, $mock_options, $mock_wpdb_get_results, $mock_wpdb_inserts, $mock_wc_get_orders, $mock_scheduled_single_events, $mock_object_cache, $mock_coach_credits_over_debit_drain_balance, $mock_fail_wpdb_insert_tables, $mock_fail_wpdb_commit;
         $mock_user_meta = [];
         $mock_wc_orders_by_id = [];
         $mock_order_points_allocated = [];
@@ -26,10 +26,21 @@ class RefundReviewFixesTest extends TestCase {
         $mock_object_cache = [];
         $mock_coach_credits_over_debit_drain_balance = [];
         $mock_fail_wpdb_insert_tables = [];
+        $mock_fail_wpdb_commit = false;
         $mock_options['intersoccer_points_allocation_mode'] = 'ratio';
         $mock_options['intersoccer_points_rate_customer_purchase'] = 10;
         $mock_options['intersoccer_points_golive_date'] = '';
         $mock_options['intersoccer_proportional_commission_reversal'] = 'yes';
+        $this->resetCommissionManagerTransactionState();
+    }
+
+    private function resetCommissionManagerTransactionState(): void {
+        $reflection = new ReflectionClass(InterSoccer_Commission_Manager::class);
+        foreach (['wpdb_transaction_depth', 'referral_credits_table_engine'] as $property) {
+            $prop = $reflection->getProperty($property);
+            $prop->setAccessible(true);
+            $prop->setValue(null, $property === 'wpdb_transaction_depth' ? 0 : null);
+        }
     }
 
     private function manager(): InterSoccer_Points_Manager {
@@ -754,6 +765,105 @@ class RefundReviewFixesTest extends TestCase {
         $this->assertSame('commission', (string) ($mock_scheduled_single_events[0]['args'][1] ?? ''));
         $payload = $mock_scheduled_single_events[0]['args'][2] ?? [];
         $this->assertSame(940401, (int) ($payload['refund_id'] ?? 0));
+        $this->assertSame(1, (int) ($payload['retry_attempt'] ?? 0));
+        $this->assertSame(10.0, (float) get_user_meta(94173, 'intersoccer_credits', true));
+    }
+
+    public function testWpdbTransactionDepthIncrementsAfterStartTransaction() {
+        $manager = InterSoccer_Commission_Manager::get_instance();
+        $reflection = new ReflectionClass($manager);
+        $start = $reflection->getMethod('wpdb_start_transaction');
+        $start->setAccessible(true);
+        $active = $reflection->getMethod('is_wpdb_transaction_active');
+        $active->setAccessible(true);
+        $commit = $reflection->getMethod('wpdb_commit_transaction');
+        $commit->setAccessible(true);
+
+        $this->assertFalse($active->invoke($manager));
+        $this->assertTrue($start->invoke($manager));
+        $this->assertTrue($active->invoke($manager));
+        $commit->invoke($manager);
+        $this->assertFalse($active->invoke($manager));
+    }
+
+    public function testCommissionReversalRollsBackWhenCommitFails() {
+        global $mock_wpdb_get_results, $mock_user_meta, $mock_wpdb_inserts, $mock_fail_wpdb_commit, $mock_scheduled_single_events;
+        $mock_fail_wpdb_commit = true;
+        $mock_user_meta[94176] = ['intersoccer_credits' => 10.0];
+        $order = $this->make_order(94044, 9444, 100, 'completed');
+        $mock_wpdb_get_results['intersoccer_referrals'] = [
+            (object) [
+                'id' => 178,
+                'order_id' => 94044,
+                'coach_id' => 94176,
+                'customer_id' => 9444,
+                'commission_amount' => 20.0,
+                'loyalty_bonus' => 0,
+                'retention_bonus' => 0,
+                'status' => 'paid',
+            ],
+        ];
+        $mock_wpdb_get_results['intersoccer_referral_rewards'] = [];
+        $mock_wpdb_get_results['intersoccer_coach_commissions'] = [];
+        $refund = new WC_Order_Refund(940441, 50);
+        $order->add_refund($refund);
+
+        InterSoccer_Commission_Manager::get_instance()->handle_order_refunded_rewards(94044, 940441);
+
+        $this->assertSame(10.0, (float) ($mock_user_meta[94176]['intersoccer_credits'] ?? 0));
+        $this->assertSame(0, count(array_filter((array) $mock_wpdb_inserts, static function ($row) {
+            return strpos((string) ($row['table'] ?? ''), 'intersoccer_referral_credits') !== false;
+        })));
+        $this->assertCount(1, $mock_scheduled_single_events);
+
+        $manager = InterSoccer_Commission_Manager::get_instance();
+        $reflection = new ReflectionClass($manager);
+        $active = $reflection->getMethod('is_wpdb_transaction_active');
+        $active->setAccessible(true);
+        $this->assertFalse($active->invoke($manager));
+    }
+
+    public function testCommissionRefundSyncRetriesStopAfterMaxAttempts() {
+        global $mock_wpdb_get_results, $mock_user_meta, $mock_fail_wpdb_insert_tables, $mock_scheduled_single_events;
+        $mock_user_meta[94177] = ['intersoccer_credits' => 10.0];
+        $mock_fail_wpdb_insert_tables['intersoccer_referral_credits'] = true;
+        $order = $this->make_order(94045, 9445, 100, 'completed');
+        $mock_wpdb_get_results['intersoccer_referrals'] = [
+            (object) [
+                'id' => 179,
+                'order_id' => 94045,
+                'coach_id' => 94177,
+                'customer_id' => 9445,
+                'commission_amount' => 20.0,
+                'loyalty_bonus' => 0,
+                'retention_bonus' => 0,
+                'status' => 'paid',
+            ],
+        ];
+        $mock_wpdb_get_results['intersoccer_referral_rewards'] = [];
+        $mock_wpdb_get_results['intersoccer_coach_commissions'] = [];
+        $refund = new WC_Order_Refund(940451, 50);
+        $order->add_refund($refund);
+
+        $manager = InterSoccer_Commission_Manager::get_instance();
+        $manager->handle_order_refunded_rewards(94045, 940451);
+        $this->assertCount(1, $mock_scheduled_single_events);
+
+        for ($attempt = 1; $attempt <= intersoccer_order_refund_sync_retry_max_attempts(); $attempt++) {
+            $mock_scheduled_single_events = [];
+            $manager->handle_order_refund_sync_retry(94045, 'commission', [
+                'refund_id' => 940451,
+                'force_full' => false,
+                'retry_attempt' => $attempt,
+            ]);
+            if ($attempt < intersoccer_order_refund_sync_retry_max_attempts()) {
+                $this->assertCount(1, $mock_scheduled_single_events);
+            }
+        }
+
+        $this->assertCount(0, $mock_scheduled_single_events);
+        $this->assertNotEmpty($order->order_notes);
+        $this->assertStringContainsString('stopped after repeated failures', $order->order_notes[0]);
     }
 
     public function testReversePaidRewardsDoesNotThrowWhenCommissionInsertFails() {
