@@ -6,6 +6,9 @@ test-verification.php
 run-simple-test.php
 vendor/
 
+# Cursor rules and skills - workspace-specific, not for public repo
+.cursor/
+
 # Deployment
 deploy.local.sh
 
