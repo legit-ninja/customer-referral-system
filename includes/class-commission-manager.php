@@ -1765,6 +1765,10 @@ The InterSoccer Team', 'intersoccer-referral'),
             $meta_key
         ));
 
+        if (function_exists('wp_cache_set')) {
+            wp_cache_set($coach_id, $value, 'user_meta');
+        }
+
         return intersoccer_money_floor_to_cents((float) $value);
     }
 
@@ -1814,13 +1818,6 @@ The InterSoccer Team', 'intersoccer-referral'),
 
         $meta_key = 'intersoccer_credits';
         $before_actual = $this->get_coach_credits_balance_from_db($coach_id);
-        global $mock_coach_credits_stale_before;
-        $before = $before_actual;
-        if (isset($mock_coach_credits_stale_before) && is_array($mock_coach_credits_stale_before)
-            && array_key_exists($coach_id, $mock_coach_credits_stale_before)
-        ) {
-            $before = intersoccer_money_floor_to_cents((float) $mock_coach_credits_stale_before[$coach_id]);
-        }
 
         if ($floor_at_zero) {
             $sql = $wpdb->prepare(
@@ -1855,6 +1852,44 @@ The InterSoccer Team', 'intersoccer-referral'),
         $debited = intersoccer_money_floor_to_cents(min($debited, $amount));
 
         return $debited;
+    }
+
+    /**
+     * @return bool
+     */
+    private function is_wpdb_transaction_active() {
+        global $wpdb, $mock_wpdb_transaction_depth;
+        if (isset($mock_wpdb_transaction_depth) && (int) $mock_wpdb_transaction_depth > 0) {
+            return true;
+        }
+        if (!is_object($wpdb) || !method_exists($wpdb, 'get_var')) {
+            return false;
+        }
+        $status = $wpdb->get_var('SELECT @@in_transaction');
+        return (int) $status === 1;
+    }
+
+    /**
+     * @return bool
+     */
+    private function referral_credits_table_supports_transactions() {
+        global $wpdb;
+        $table = $wpdb->prefix . 'intersoccer_referral_credits';
+        if (!is_object($wpdb) || !method_exists($wpdb, 'get_row')) {
+            return true;
+        }
+        $status = $wpdb->get_row("SHOW TABLE STATUS LIKE '{$table}'");
+        if (!is_object($status) || empty($status->Engine)) {
+            return true;
+        }
+        $engine = strtoupper((string) $status->Engine);
+        if ($engine === 'MYISAM') {
+            intersoccer_referral_log(
+                "InterSoccer: referral credits table uses MyISAM; commission claw transactions are not durable"
+            );
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -1908,10 +1943,8 @@ The InterSoccer Team', 'intersoccer-referral'),
                 continue;
             }
 
-            global $mock_skip_coach_credit_lock;
-            $coach_lock_held = !empty($mock_skip_coach_credit_lock)
-                || intersoccer_acquire_coach_credit_lock($coach_id);
-            if (!$coach_lock_held) {
+            if (!intersoccer_acquire_coach_credit_lock($coach_id)) {
+                // refund_id may be 0 when the row lock was busy; retry re-reads credits rows for idempotency.
                 intersoccer_schedule_order_refund_sync_retry($order_id, 'commission', [
                     'refund_id' => 0,
                     'force_full' => false,
@@ -1921,13 +1954,17 @@ The InterSoccer Team', 'intersoccer-referral'),
 
             $claw = 0.0;
             $writeoff = 0.0;
-            $tx_started = $wpdb->query('START TRANSACTION') !== false;
+            $tx_started = false;
+            $use_transactions = $this->referral_credits_table_supports_transactions();
+            if ($use_transactions && !$this->is_wpdb_transaction_active()) {
+                $tx_started = $wpdb->query('START TRANSACTION') !== false;
+            }
             try {
                 $claw = $this->change_coach_credits_balance($coach_id, $delta, true);
                 $claw = intersoccer_money_floor_to_cents(min($claw, $delta));
                 $writeoff = intersoccer_money_floor_to_cents($delta - $claw);
                 if ($claw > 0) {
-                    $wpdb->insert(
+                    $reversal_inserted = $wpdb->insert(
                         $wpdb->prefix . 'intersoccer_referral_credits',
                         [
                             'referral_id' => $row_id,
@@ -1941,9 +1978,12 @@ The InterSoccer Team', 'intersoccer-referral'),
                             'updated_at' => current_time('mysql'),
                         ]
                     );
+                    if ($reversal_inserted === false) {
+                        throw new RuntimeException('commission_reversal_insert_failed');
+                    }
                 }
                 if ($writeoff > 0) {
-                    $wpdb->insert(
+                    $writeoff_inserted = $wpdb->insert(
                         $wpdb->prefix . 'intersoccer_referral_credits',
                         [
                             'referral_id' => $row_id,
@@ -1957,6 +1997,9 @@ The InterSoccer Team', 'intersoccer-referral'),
                             'updated_at' => current_time('mysql'),
                         ]
                     );
+                    if ($writeoff_inserted === false) {
+                        throw new RuntimeException('commission_write_off_insert_failed');
+                    }
                     intersoccer_referral_log(
                         "InterSoccer: Commission reversal write-off CHF {$writeoff} for order {$order_id}, coach {$coach_id}, fraction {$fraction}"
                     );
@@ -1964,16 +2007,12 @@ The InterSoccer Team', 'intersoccer-referral'),
                 if ($tx_started) {
                     $wpdb->query('COMMIT');
                 }
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
                 if ($tx_started) {
                     $wpdb->query('ROLLBACK');
                 }
-                if (empty($mock_skip_coach_credit_lock)) {
-                    intersoccer_release_coach_credit_lock($coach_id);
-                }
                 throw $e;
-            }
-            if (empty($mock_skip_coach_credit_lock)) {
+            } finally {
                 intersoccer_release_coach_credit_lock($coach_id);
             }
 

@@ -479,8 +479,42 @@ if (!function_exists('wp_schedule_event')) {
     }
 }
 
+global $mock_object_cache;
+if (!isset($mock_object_cache)) {
+    $mock_object_cache = [];
+}
+
+if (!function_exists('wp_cache_get')) {
+    function wp_cache_get($key, $group = '') {
+        global $mock_object_cache;
+        $group = (string) $group;
+        if (!isset($mock_object_cache[$group]) || !array_key_exists($key, $mock_object_cache[$group])) {
+            return false;
+        }
+        return $mock_object_cache[$group][$key];
+    }
+}
+
+if (!function_exists('wp_cache_set')) {
+    function wp_cache_set($key, $value, $group = '', $expire = 0) {
+        global $mock_object_cache;
+        $group = (string) $group;
+        if (!isset($mock_object_cache[$group]) || !is_array($mock_object_cache[$group])) {
+            $mock_object_cache[$group] = [];
+        }
+        $mock_object_cache[$group][$key] = $value;
+        return true;
+    }
+}
+
 if (!function_exists('wp_cache_delete')) {
     function wp_cache_delete($key, $group = '') {
+        global $mock_object_cache;
+        $group = (string) $group;
+        if (!isset($mock_object_cache[$group]) || !array_key_exists($key, $mock_object_cache[$group])) {
+            return false;
+        }
+        unset($mock_object_cache[$group][$key]);
         return true;
     }
 }
@@ -1188,6 +1222,45 @@ if (!class_exists('Mock_WPDB')) {
                     || stripos($query, 'COMMIT') !== false
                     || stripos($query, 'ROLLBACK') !== false)
             ) {
+                global $mock_wpdb_transaction_depth, $mock_wpdb_transaction_user_meta_snapshot, $mock_wpdb_transaction_inserts_snapshot;
+                if (stripos($query, 'START TRANSACTION') !== false) {
+                    if ((int) ($mock_wpdb_transaction_depth ?? 0) === 0) {
+                        $mock_wpdb_transaction_user_meta_snapshot = isset($mock_user_meta) && is_array($mock_user_meta)
+                            ? unserialize(serialize($mock_user_meta))
+                            : [];
+                        global $mock_wpdb_inserts;
+                        $mock_wpdb_transaction_inserts_snapshot = is_array($mock_wpdb_inserts) ? count($mock_wpdb_inserts) : 0;
+                    }
+                    $mock_wpdb_transaction_depth = (int) ($mock_wpdb_transaction_depth ?? 0) + 1;
+                    return true;
+                }
+                if (stripos($query, 'ROLLBACK') !== false) {
+                    if ((int) ($mock_wpdb_transaction_depth ?? 0) > 0) {
+                        $mock_wpdb_transaction_depth--;
+                        if ((int) $mock_wpdb_transaction_depth === 0) {
+                            if (is_array($mock_wpdb_transaction_user_meta_snapshot ?? null)) {
+                                $mock_user_meta = $mock_wpdb_transaction_user_meta_snapshot;
+                            }
+                            global $mock_wpdb_inserts;
+                            if (is_array($mock_wpdb_inserts) && isset($mock_wpdb_transaction_inserts_snapshot)) {
+                                $mock_wpdb_inserts = array_slice($mock_wpdb_inserts, 0, (int) $mock_wpdb_transaction_inserts_snapshot);
+                            }
+                            $mock_wpdb_transaction_user_meta_snapshot = null;
+                            $mock_wpdb_transaction_inserts_snapshot = null;
+                        }
+                    }
+                    return true;
+                }
+                if (stripos($query, 'COMMIT') !== false) {
+                    if ((int) ($mock_wpdb_transaction_depth ?? 0) > 0) {
+                        $mock_wpdb_transaction_depth--;
+                        if ((int) $mock_wpdb_transaction_depth === 0) {
+                            $mock_wpdb_transaction_user_meta_snapshot = null;
+                            $mock_wpdb_transaction_inserts_snapshot = null;
+                        }
+                    }
+                    return true;
+                }
                 return true;
             }
 
@@ -1220,13 +1293,21 @@ if (!class_exists('Mock_WPDB')) {
                 && preg_match('/user_id\s*=\s*(\d+)/', $query, $user_match)
                 && preg_match('/GREATEST\(0,\s*CAST\(meta_value\s+AS\s+DECIMAL\([^)]+\)\)\s*-\s*([0-9.]+)/i', $query, $credit_amount_match);
             if ($is_coach_credits_update) {
+                global $mock_coach_credits_over_debit_drain_balance;
                 $user_id = (int) $user_match[1];
                 $amount = (float) $credit_amount_match[1];
                 if (!isset($mock_user_meta[$user_id]) || !is_array($mock_user_meta[$user_id])) {
                     $mock_user_meta[$user_id] = [];
                 }
                 $current = (float) ($mock_user_meta[$user_id]['intersoccer_credits'] ?? 0);
-                $mock_user_meta[$user_id]['intersoccer_credits'] = max(0.0, $current - $amount);
+                if (!empty($mock_coach_credits_over_debit_drain_balance)
+                    && is_array($mock_coach_credits_over_debit_drain_balance)
+                    && !empty($mock_coach_credits_over_debit_drain_balance[$user_id])
+                ) {
+                    $mock_user_meta[$user_id]['intersoccer_credits'] = 0.0;
+                } else {
+                    $mock_user_meta[$user_id]['intersoccer_credits'] = max(0.0, $current - $amount);
+                }
                 return 1;
             }
 
@@ -1451,11 +1532,24 @@ $mock_referral_reward_unique_key_present = true;
                 return 0;
             }
 
+            if (is_string($query) && stripos($query, '@@in_transaction') !== false) {
+                global $mock_wpdb_transaction_depth;
+                return (int) ($mock_wpdb_transaction_depth ?? 0) > 0 ? 1 : 0;
+            }
+
+            if (is_string($query) && stripos($query, 'SHOW TABLE STATUS') !== false) {
+                return (object) ['Engine' => 'InnoDB'];
+            }
+
             return 0;
         }
 
         public function get_row($query) {
             global $mock_wpdb_get_row_results, $mock_referral_reward_rows;
+
+            if (is_string($query) && stripos($query, 'SHOW TABLE STATUS') !== false) {
+                return (object) ['Engine' => 'InnoDB'];
+            }
 
             if (is_string($query)
                 && strpos($query, 'intersoccer_referral_rewards') !== false
@@ -1530,6 +1624,26 @@ $mock_referral_reward_unique_key_present = true;
                 && preg_match('/customer_id\s*=\s*(\d+)/', $query, $fifo_cust)
             ) {
                 return intersoccer_mock_customer_points_ledger_for_fifo((int) $fifo_cust[1]);
+            }
+
+            if (is_string($query)
+                && stripos($query, 'metadata') !== false
+                && strpos($query, 'points_log') !== false
+                && preg_match('/order_id\s*=\s*(\d+)/', $query, $writeoff_order_match)
+            ) {
+                global $mock_points_log_rows;
+                $order_id = (int) $writeoff_order_match[1];
+                $rows = [];
+                foreach ((array) $mock_points_log_rows as $row) {
+                    if ((int) ($row['order_id'] ?? 0) !== $order_id) {
+                        continue;
+                    }
+                    if (($row['transaction_type'] ?? '') !== 'reversal_write_off') {
+                        continue;
+                    }
+                    $rows[] = (object) ['metadata' => $row['metadata'] ?? ''];
+                }
+                return $rows;
             }
 
             if (is_string($query) && stripos($query, 'as total_earned') !== false && stripos($query, 'as total_spent') !== false) {
@@ -1621,7 +1735,18 @@ $mock_referral_reward_unique_key_present = true;
         }
 
         public function insert($table, $data) {
-            global $mock_wpdb_last_insert, $mock_wpdb_last_insert_by_table, $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_purchase_rewards_by_order;
+            global $mock_wpdb_last_insert, $mock_wpdb_last_insert_by_table, $mock_points_balances, $mock_order_points_allocated, $mock_points_log_rows, $mock_purchase_rewards_by_order, $mock_fail_wpdb_insert_tables;
+
+            if (is_string($table)
+                && !empty($mock_fail_wpdb_insert_tables)
+                && is_array($mock_fail_wpdb_insert_tables)
+            ) {
+                foreach ($mock_fail_wpdb_insert_tables as $needle => $fail) {
+                    if ($fail && $needle !== '' && strpos($table, (string) $needle) !== false) {
+                        return false;
+                    }
+                }
+            }
 
             static $insert_id = 1;
             $mock_wpdb_last_insert = compact('table', 'data');
@@ -2145,8 +2270,12 @@ $mock_purchase_rewards_by_order = [];
 $mock_wc_orders_by_id = [];
 $mock_wc_get_orders = null;
 $mock_referral_log_messages = null;
-$mock_coach_credits_stale_before = null;
-$mock_skip_coach_credit_lock = false;
+$mock_object_cache = [];
+$mock_wpdb_transaction_depth = 0;
+$mock_wpdb_transaction_user_meta_snapshot = null;
+$mock_wpdb_transaction_inserts_snapshot = null;
+$mock_coach_credits_over_debit_drain_balance = [];
+$mock_fail_wpdb_insert_tables = [];
 $mock_user_roles = [];
 $mock_wc_products = [];
 $mock_wc_product_lookup = [];

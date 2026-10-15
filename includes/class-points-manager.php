@@ -1744,6 +1744,45 @@ class InterSoccer_Points_Manager {
     }
 
     /**
+     * Sum prior reinstated-retake write-offs for an order (points already satisfied via write-off).
+     *
+     * @param int $order_id
+     * @return int
+     */
+    public function get_reinstated_retake_shortfall_written_off_for_order($order_id) {
+        global $wpdb;
+
+        $order_id = (int) $order_id;
+        if ($order_id <= 0) {
+            return 0;
+        }
+
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT metadata FROM {$this->points_log_table} WHERE order_id = %d AND transaction_type = %s",
+            $order_id,
+            'reversal_write_off'
+        ));
+
+        $sum = 0;
+        foreach ((array) $rows as $row) {
+            $raw = is_object($row) ? ($row->metadata ?? '') : ($row['metadata'] ?? '');
+            if (!is_string($raw) || $raw === '') {
+                continue;
+            }
+            $decoded = json_decode($raw, true);
+            if (!is_array($decoded)) {
+                continue;
+            }
+            if ((string) ($decoded['reason'] ?? '') !== 'reinstated_retake_shortfall') {
+                continue;
+            }
+            $sum += (int) ($decoded['written_off'] ?? 0);
+        }
+
+        return max(0, $sum);
+    }
+
+    /**
      * Customer Points Adjust / History access (admin or shop manager).
      *
      * @return bool
@@ -2139,7 +2178,8 @@ class InterSoccer_Points_Manager {
 
         $returned = $this->get_abs_points_log_sum_for_order_transaction_types($order_id, ['points_refund']);
         $retaken = $this->get_abs_points_log_sum_for_order_transaction_types($order_id, ['redeemed_retaken']);
-        $to_retake = max(0, $returned - $retaken);
+        $retake_written_off = $this->get_reinstated_retake_shortfall_written_off_for_order($order_id);
+        $to_retake = max(0, $returned - $retaken - $retake_written_off);
         $retake_shortfall = 0;
         if ($to_retake > 0) {
             $debitable = $this->get_attributable_balance_for_order_reversal($customer_id, $order_id);
