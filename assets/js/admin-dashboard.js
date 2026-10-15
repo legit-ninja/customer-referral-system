@@ -343,6 +343,148 @@
         if ($('#redemptionActivityChart').length && intersoccerChartData.redemption_activity) {
             initializeRedemptionActivityChart();
         }
+        
+        // New Families by Month Chart
+        if ($('#newFamiliesChart').length && intersoccerChartData.new_families_by_month) {
+            initializeNewFamiliesChart();
+        }
+        
+        // Points Activity Chart (earned, redeemed, expired)
+        if ($('#pointsActivityChart').length && intersoccerChartData.points_activity) {
+            initializePointsActivityChart();
+        }
+    }
+    
+    /**
+     * Initialize New Families by Month Chart
+     */
+    function initializeNewFamiliesChart() {
+        const ctx = document.getElementById('newFamiliesChart').getContext('2d');
+        const data = intersoccerChartData.new_families_by_month;
+        
+        charts.newFamilies = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.map(item => item.label),
+                datasets: [{
+                    label: 'New Families',
+                    data: data.map(item => item.value),
+                    backgroundColor: '#10b981',
+                    borderColor: '#059669',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.parsed.y + ' families';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Month'
+                        }
+                    },
+                    y: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'New Families'
+                        },
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    /**
+     * Initialize Points Activity Chart (earned, redeemed, expired)
+     */
+    function initializePointsActivityChart() {
+        const ctx = document.getElementById('pointsActivityChart').getContext('2d');
+        const data = intersoccerChartData.points_activity;
+        
+        charts.pointsActivity = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.map(item => item.label),
+                datasets: [{
+                    label: 'Earned',
+                    data: data.map(item => item.earned),
+                    backgroundColor: '#10b981',
+                    borderColor: '#059669',
+                    borderWidth: 1
+                }, {
+                    label: 'Redeemed',
+                    data: data.map(item => item.redeemed),
+                    backgroundColor: '#f59e0b',
+                    borderColor: '#d97706',
+                    borderWidth: 1
+                }, {
+                    label: 'Expired',
+                    data: data.map(item => item.expired),
+                    backgroundColor: '#94a3b8',
+                    borderColor: '#64748b',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' CHF';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'Month'
+                        },
+                        stacked: false
+                    },
+                    y: {
+                        display: true,
+                        title: {
+                            display: true,
+                            text: 'CHF'
+                        },
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return value.toLocaleString() + ' CHF';
+                            }
+                        }
+                    }
+                }
+            }
+        });
     }
 
     /**
@@ -445,7 +587,7 @@
     }
 
     /**
-     * Initialize Financial Performance Chart
+     * Initialize Financial Performance Chart (Points Activity)
      */
     function initializeFinancialChart() {
         const ctx = document.getElementById('financialChart').getContext('2d');
@@ -456,27 +598,27 @@
             data: {
                 labels: data.labels,
                 datasets: [{
-                    label: 'Commission Revenue',
+                    label: 'Points Earned',
                     data: data.revenue,
-                    backgroundColor: '#f39c12',
-                    borderColor: '#e67e22',
+                    backgroundColor: '#27ae60',
+                    borderColor: '#229954',
                     borderWidth: 1
                 }, {
-                    label: 'Redemption Costs',
+                    label: 'Points Redeemed',
                     data: data.costs,
-                    backgroundColor: '#9b59b6',
-                    borderColor: '#8e44ad',
+                    backgroundColor: '#e74c3c',
+                    borderColor: '#c0392b',
                     borderWidth: 1
                 }, {
-                    label: 'Net Profit/Loss',
+                    label: 'Net Points',
                     data: data.profit,
                     backgroundColor: function(context) {
                         const value = context.parsed.y;
-                        return value >= 0 ? '#27ae60' : '#e74c3c';
+                        return value >= 0 ? '#3498db' : '#9b59b6';
                     },
                     borderColor: function(context) {
                         const value = context.parsed.y;
-                        return value >= 0 ? '#229954' : '#c0392b';
+                        return value >= 0 ? '#2980b9' : '#8e44ad';
                     },
                     borderWidth: 1
                 }]
@@ -492,7 +634,7 @@
                     tooltip: {
                         callbacks: {
                             label: function(context) {
-                                return context.dataset.label + ': CHF ' + context.parsed.y.toLocaleString();
+                                return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' PTS';
                             }
                         }
                     }
@@ -509,12 +651,12 @@
                         display: true,
                         title: {
                             display: true,
-                            text: 'Amount (CHF)'
+                            text: 'Points'
                         },
                         beginAtZero: true,
                         ticks: {
                             callback: function(value) {
-                                return 'CHF ' + value.toLocaleString();
+                                return value.toLocaleString() + ' PTS';
                             }
                         }
                     }
@@ -531,7 +673,7 @@
         const data = intersoccerChartData.coach_performance;
 
         charts.coachPerformance = new Chart(ctx, {
-            type: 'horizontalBar',
+            type: 'bar',
             data: {
                 labels: data.labels,
                 datasets: [{
@@ -549,7 +691,7 @@
                 }]
             },
             options: {
-                indexAxis: 'y',
+                indexAxis: 'y',  // This makes it horizontal in Chart.js v3+
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
@@ -653,14 +795,14 @@
             data: {
                 labels: data.labels,
                 datasets: [{
-                    label: 'Credits Earned',
+                    label: 'Points Earned',
                     data: data.earned,
                     borderColor: '#27ae60',
                     backgroundColor: 'rgba(39, 174, 96, 0.1)',
                     tension: 0.4,
                     fill: true
                 }, {
-                    label: 'Credits Redeemed',
+                    label: 'Points Redeemed',
                     data: data.redeemed,
                     borderColor: '#e74c3c',
                     backgroundColor: 'rgba(231, 76, 60, 0.1)',
@@ -681,7 +823,7 @@
                         intersect: false,
                         callbacks: {
                             label: function(context) {
-                                return context.dataset.label + ': CHF ' + context.parsed.y.toLocaleString();
+                                return context.dataset.label + ': ' + context.parsed.y.toLocaleString() + ' PTS';
                             }
                         }
                     }
@@ -698,12 +840,12 @@
                         display: true,
                         title: {
                             display: true,
-                            text: 'Amount (CHF)'
+                            text: 'Points'
                         },
                         beginAtZero: true,
                         ticks: {
                             callback: function(value) {
-                                return 'CHF ' + value.toLocaleString();
+                                return value.toLocaleString() + ' PTS';
                             }
                         }
                     }

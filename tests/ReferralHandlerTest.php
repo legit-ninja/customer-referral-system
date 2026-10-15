@@ -21,10 +21,18 @@ class ReferralHandlerTest extends TestCase {
         // Include the referral handler class
         require_once __DIR__ . '/../includes/class-referral-handler.php';
         $this->clearUtmOptions();
+        // Reset mock_orders and mock_wc_get_orders to prevent test pollution
+        global $mock_orders, $mock_wc_get_orders;
+        $mock_orders = [];
+        $mock_wc_get_orders = null;
     }
 
     protected function tearDown(): void {
         $this->clearUtmOptions();
+        // Clean up mock_orders and mock_wc_get_orders
+        global $mock_orders, $mock_wc_get_orders;
+        $mock_orders = [];
+        $mock_wc_get_orders = null;
         parent::tearDown();
     }
 

@@ -1836,9 +1836,73 @@ class InterSoccer_Referral_Admin_Dashboard {
         $order->update_meta_data('_intersoccer_first_order_discount_amount', $amount);
         $order->update_meta_data('_intersoccer_first_order_discount_applied_at', current_time('mysql'));
 
+        // Mark the fee item itself with meta for reliable identification (WPML-safe)
+        $this->mark_first_order_discount_fee_item($order, $amount);
+
         // Clear pending markers; if payment fails/cancels, a later attempt can still apply again
         // because we only \"consume\" on a successful order status.
         $session->set('intersoccer_first_order_discount_pending', 'no');
+    }
+
+    /**
+     * Mark the first-order referral discount fee item with meta for reliable identification.
+     *
+     * This allows the ROI calculator to identify the fee without depending on translated
+     * display strings (WPML-safe).
+     *
+     * Identification priority (match name first, amount only as fallback):
+     * 1. Exact name match: 'Referral Discount' (translated via text domain)
+     * 2. WPML fallback names: FR/DE translations for older orders or WPML sites
+     * 3. Amount match: Only as last resort when no name matches
+     *
+     * Meta is added via add_meta_data() without calling save_meta_data() separately -
+     * WooCommerce saves order item meta when the order is saved during checkout.
+     *
+     * @param WC_Order $order  The order being created
+     * @param float    $amount The discount amount (positive)
+     * @return void
+     */
+    private function mark_first_order_discount_fee_item($order, $amount) {
+        if (!is_object($order) || !method_exists($order, 'get_items') || $amount <= 0) {
+            return;
+        }
+
+        $fee_labels = [
+            __('Referral Discount', 'intersoccer-referral'),
+            'Referral Discount',
+            'Réduction de parrainage',
+            'Empfehlungsrabatt',
+        ];
+        $expected_total = -$amount;
+
+        $fee_by_name = null;
+        $fee_by_amount = null;
+
+        foreach ($order->get_items('fee') as $fee) {
+            if (!is_object($fee) || !method_exists($fee, 'get_name') || !method_exists($fee, 'get_total')) {
+                continue;
+            }
+
+            $fee_name = $fee->get_name();
+            $fee_total = (float) $fee->get_total();
+
+            foreach ($fee_labels as $label) {
+                if ($fee_name === $label) {
+                    $fee_by_name = $fee;
+                    break 2;
+                }
+            }
+
+            if ($fee_by_amount === null && abs($fee_total - $expected_total) < 0.01) {
+                $fee_by_amount = $fee;
+            }
+        }
+
+        $target_fee = $fee_by_name ?? $fee_by_amount;
+
+        if ($target_fee && method_exists($target_fee, 'add_meta_data')) {
+            $target_fee->add_meta_data('_intersoccer_referral_discount_fee', '1', true);
+        }
     }
 
     /**
