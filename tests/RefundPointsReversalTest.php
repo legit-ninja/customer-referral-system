@@ -327,6 +327,82 @@ class RefundPointsReversalTest extends TestCase {
         $this->assertSame([10], $this->ledger_amounts_for_order(92032, 'order_purchase'));
     }
 
+    public function testLegacyEarnedRefundLedgerWithoutMetaPreventsSecondReversal() {
+        global $mock_order_points_allocated, $mock_points_log_rows;
+
+        $points = $this->manager();
+        $order = $this->make_order(92013, 9213, 100, 'refunded');
+        $this->seed_balance(9213, 0);
+
+        $mock_order_points_allocated[92013] = 10;
+        $mock_points_log_rows[] = [
+            'order_id' => 92013,
+            'customer_id' => 9213,
+            'transaction_type' => 'order_purchase',
+            'points_amount' => 10,
+        ];
+        $mock_points_log_rows[] = [
+            'order_id' => 92013,
+            'customer_id' => 9213,
+            'transaction_type' => 'order_refund',
+            'points_amount' => -10,
+        ];
+
+        $points->handle_order_status_refunded(92013);
+
+        $this->assertSame(0, $points->get_points_balance(9213));
+        $this->assertCount(1, $this->ledger_amounts_for_order(92013, 'order_refund'));
+    }
+
+    public function testLegacyRedeemedRefundLedgerWithoutMetaPreventsSecondReturn() {
+        global $mock_points_log_rows;
+
+        $points = $this->manager();
+        $order = $this->make_order(92014, 9214, 100, 'cancelled');
+        $order->update_meta_data('_intersoccer_points_redeemed', 60);
+        $order->update_meta_data('_intersoccer_credits_deducted_on_completion', 1);
+        $order->save();
+        $this->seed_balance(9214, 60);
+
+        $mock_points_log_rows[] = [
+            'order_id' => 92014,
+            'customer_id' => 9214,
+            'transaction_type' => 'points_refund',
+            'points_amount' => 60,
+        ];
+
+        $points->handle_order_status_cancelled(92014);
+
+        $this->assertSame(60, $points->get_points_balance(9214));
+        $this->assertCount(1, $this->ledger_amounts_for_order(92014, 'points_refund'));
+    }
+
+    public function testLegacyPartialEarnedRefundLedgerReversesOnlyRemainderOnFullRefund() {
+        global $mock_order_points_allocated, $mock_points_log_rows, $mock_user_meta;
+
+        $points = $this->manager();
+        $order = $this->make_order(92015, 9215, 100, 'completed');
+        $this->seed_balance(9215, 0);
+
+        $points->allocate_points_for_order(92015);
+        $this->assertSame(10, $points->get_points_balance(9215));
+
+        $mock_points_log_rows[] = [
+            'order_id' => 92015,
+            'customer_id' => 9215,
+            'transaction_type' => 'order_refund',
+            'points_amount' => -5,
+        ];
+        $mock_user_meta[9215]['intersoccer_points_balance'] = 5;
+
+        $order->set_status('refunded');
+        $points->handle_order_status_refunded(92015);
+
+        $this->assertSame(0, $points->get_points_balance(9215));
+        $this->assertSame(10, (int) $order->get_meta('_intersoccer_purchase_points_reversed_total', true));
+        $this->assertSame([-5, -5], $this->ledger_amounts_for_order(92015, 'order_refund'));
+    }
+
     public function testUnpaidPendingOrderAutoCancelReturnsRedeemedPointsOnce() {
         $points = $this->manager();
         $order = $this->make_order(92020, 9220, 50, 'pending');

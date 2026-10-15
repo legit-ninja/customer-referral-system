@@ -598,6 +598,12 @@ class InterSoccer_Points_Manager {
         $has_total_meta = $total_meta_raw !== '' && $total_meta_raw !== false && $total_meta_raw !== null;
         if ((int) $order->get_meta('_intersoccer_purchase_points_reversed', true) === 1 && !$has_total_meta) {
             $already_reversed = $earned;
+        } elseif (!$has_total_meta && (int) $order->get_meta('_intersoccer_purchase_points_reversed', true) !== 1) {
+            $ledger_reversed = $this->get_abs_points_log_sum_for_order_transaction_types(
+                $order_id,
+                ['order_refund', 'order_cancelled']
+            );
+            $already_reversed = (int) min($earned, max(0, $ledger_reversed));
         }
 
         $target_reversed = (int) min($earned, floor($earned * $fraction));
@@ -688,6 +694,12 @@ class InterSoccer_Points_Manager {
         $has_returned_total_meta = $returned_total_raw !== '' && $returned_total_raw !== false && $returned_total_raw !== null;
         if ((int) $order->get_meta('_intersoccer_redeemed_points_returned', true) === 1 && !$has_returned_total_meta) {
             $already_returned = $redeemed;
+        } elseif (!$has_returned_total_meta && (int) $order->get_meta('_intersoccer_redeemed_points_returned', true) !== 1) {
+            $ledger_returned = $this->get_abs_points_log_sum_for_order_transaction_types(
+                $order_id,
+                ['points_refund']
+            );
+            $already_returned = (int) min($redeemed, max(0, $ledger_returned));
         }
 
         $target_returned = (int) min($redeemed, floor($redeemed * $fraction));
@@ -1216,6 +1228,29 @@ class InterSoccer_Points_Manager {
         ));
 
         return $points ? floatval($points) : 0.0;
+    }
+
+    /**
+     * Sum of absolute points_amount for an order and given ledger transaction types.
+     *
+     * @param int      $order_id
+     * @param string[] $transaction_types
+     * @return int
+     */
+    private function get_abs_points_log_sum_for_order_transaction_types($order_id, array $transaction_types) {
+        global $wpdb;
+
+        $transaction_types = array_values(array_filter(array_map('strval', $transaction_types)));
+        if ($order_id <= 0 || empty($transaction_types)) {
+            return 0;
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($transaction_types), '%s'));
+        $sql = "SELECT COALESCE(SUM(ABS(points_amount)), 0) FROM {$this->points_log_table}
+                WHERE order_id = %d AND transaction_type IN ($placeholders)";
+        $prepared = $wpdb->prepare($sql, array_merge([(int) $order_id], $transaction_types));
+
+        return (int) $wpdb->get_var($prepared);
     }
 
     /**

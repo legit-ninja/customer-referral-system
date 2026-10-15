@@ -917,6 +917,55 @@ if (!function_exists('intersoccer_mock_excluded_transaction_types')) {
     }
 }
 
+if (!function_exists('intersoccer_mock_included_transaction_types')) {
+    function intersoccer_mock_included_transaction_types($query) {
+        $included = [];
+        if (!is_string($query) || !preg_match('/transaction_type\s+IN\s*\(([^)]*)\)/i', $query, $matches)) {
+            return $included;
+        }
+        if (preg_match_all("/'([^']+)'/", $matches[1], $types)) {
+            return $types[1];
+        }
+        $parts = preg_split('/\s*,\s*/', trim($matches[1]));
+        foreach ((array) $parts as $part) {
+            $part = trim($part);
+            if ($part !== '') {
+                $included[] = $part;
+            }
+        }
+        return $included;
+    }
+}
+
+if (!function_exists('intersoccer_mock_points_abs_sum_for_order')) {
+    function intersoccer_mock_points_abs_sum_for_order($query) {
+        global $mock_points_log_rows;
+
+        if (!is_string($query) || !preg_match('/order_id\s*=\s*(\d+)/', $query, $order_match)) {
+            return 0;
+        }
+        $order_id = (int) $order_match[1];
+        $included = intersoccer_mock_included_transaction_types($query);
+        if (empty($included)) {
+            return 0;
+        }
+
+        $sum = 0;
+        foreach ((array) $mock_points_log_rows as $row) {
+            if ((int) ($row['order_id'] ?? 0) !== $order_id) {
+                continue;
+            }
+            $type = (string) ($row['transaction_type'] ?? '');
+            if (!in_array($type, $included, true)) {
+                continue;
+            }
+            $sum += abs((int) ($row['points_amount'] ?? 0));
+        }
+
+        return $sum;
+    }
+}
+
 if (!function_exists('intersoccer_mock_points_sums')) {
     function intersoccer_mock_points_sums($query) {
         global $mock_points_log_rows;
@@ -1090,6 +1139,10 @@ $mock_referral_reward_unique_key_present = true;
 
             if (is_string($query) && stripos($query, 'RELEASE_LOCK(') !== false) {
                 return 1;
+            }
+
+            if (strpos($query, 'SUM(ABS(points_amount))') !== false && strpos($query, 'order_id') !== false) {
+                return intersoccer_mock_points_abs_sum_for_order($query);
             }
 
             if (strpos($query, 'SUM(points_amount)') !== false || strpos($query, 'COALESCE(SUM(points_amount)') !== false) {
