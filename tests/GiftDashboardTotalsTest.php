@@ -89,7 +89,8 @@ class GiftDashboardTotalsTest extends TestCase {
         $this->assertSame(140, $before['dashboard_issued']);
         $this->assertSame(20, $before['dashboard_spent']);
         $this->assertSame(140, $before['financial_issued']);
-        $this->assertSame(20, $before['overview_spent']);
+        // overview_spent now represents total_program_cost (points earned) not redemptions
+        $this->assertSame(140, $before['overview_spent']);
         $this->assertSame(100, $before['customer_earned'][$sender]);
         $this->assertSame(20, $before['customer_spent'][$sender]);
         $this->assertSame(40, $before['customer_earned'][$recipient]);
@@ -178,7 +179,7 @@ class GiftDashboardTotalsTest extends TestCase {
             'dashboard_spent' => (int) $credit['total_credits_used'],
             'financial_issued' => (int) $report['points_earned'],
             'overview_spent' => (int) $overview['total_program_cost'],
-            'distribution_redeemed' => (int) $distribution['values'][1],
+            'distribution_redeemed' => $this->extractDistributionRedeemed($distribution),
             'activity_earned' => array_map('intval', $activity['earned']),
             'activity_redeemed' => array_map('intval', $activity['redeemed']),
             'trend_redeemed' => array_map('intval', $trends['costs']),
@@ -196,5 +197,16 @@ class GiftDashboardTotalsTest extends TestCase {
         $reflection = new ReflectionMethod($object, $method);
         $reflection->setAccessible(true);
         return $reflection->invoke($object);
+    }
+
+    private function extractDistributionRedeemed(array $distribution): int {
+        $idx = array_search('Points Redeemed', $distribution['labels'], true);
+        if ($idx === false) {
+            $idx = array_search('Customer Redemptions', $distribution['labels'], true);
+        }
+        if ($idx === false) {
+            return 0;
+        }
+        return (int) $distribution['values'][$idx];
     }
 }
