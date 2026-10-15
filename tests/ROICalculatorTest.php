@@ -3603,46 +3603,33 @@ class ROICalculatorTest extends TestCase {
     }
 
     /**
-     * HPOS CALCULATION TEST: Full holder comparison with mocked SQL results
+     * HPOS CALCULATION TEST: Referred customer who is also a holder
      * 
-     * Exercises the HPOS SQL path with mocked $wpdb results using the __queue__ mechanism.
-     * Asserts NOT IN exclusion list, holder count, averages, extra spend, and repeat rate.
+     * Exercises the HPOS SQL path with a referred customer who also holds points.
+     * This tests the Finance dedupe: first referred orders are excluded from holder spend.
      * 
      * Fixture (hand-computed):
-     *   Holders: customer IDs 101, 102, 103 (3 customers with points > 0)
-     *   First referred orders to exclude: order IDs 5001, 5002 (from referral rows)
+     *   Customer 101: Holder (points > 0) AND referred (order 5001 = first order)
+     *   Customers 102, 103: Holders only (not referred)
+     *   Customer 201: Referred only (not a holder)
      * 
-     *   HPOS holder query returns:
-     *     customer_count = 3
-     *     order_count = 5
-     *     total_revenue = 3000 CHF
-     *     → holder_avg_spend = 3000 / 3 = 1000 CHF
+     *   First referred orders to exclude: {5001: 101, 5002: 201}
+     *   Holder IDs: 101, 102, 103
+     *   Exclusion order IDs for holder queries: 5001 (101's first referred order)
      * 
-     *   HPOS non-holder query returns:
-     *     customer_count = 7
-     *     order_count = 10
-     *     total_revenue = 2100 CHF
-     *     → non_holder_avg_spend = 2100 / 7 = 300 CHF
+     *   HPOS holder stats query:
+     *     - SQL must contain NOT IN (5001) for first-order exclusion
+     *     - Returns revenue from holders' non-first orders only
+     *     - customer_count = 3, total_revenue = 2400 (holder spend minus excluded first order)
      * 
-     *   Repeat rate query (holders) returns:
-     *     total_customers = 3
-     *     repeat_customers = 2
-     *     → repeat_rate = (2 / 3) × 100 = 66.7%
-     * 
-     *   Repeat rate query (non-holders) returns:
-     *     total_customers = 7
-     *     repeat_customers = 3
-     *     → repeat_rate = (3 / 7) × 100 = 42.9%
+     *   HPOS holder repeat rate query:
+     *     - SQL must contain NOT IN (5001) for exclusion
+     *     - Repeat rate based on non-first orders only
      * 
      * Expected:
-     *   NOT IN exclusion list: 5001, 5002
-     *   holder_count = 3
-     *   holder_avg_spend = 1000.0
-     *   non_holder_count = 7
-     *   non_holder_avg_spend = 300.0
-     *   extra_spend_per_customer = 1000 - 300 = 700.0
-     *   holder_repeat_rate = 66.7%
-     *   non_holder_repeat_rate = 42.9%
+     *   - get_first_referred_orders() returns {5001: 101, 5002: 201}
+     *   - holder_count = 3 (all holders have orders in window)
+     *   - holder_avg_spend = 800 (2400 / 3, excluding first referred order)
      * 
      * HPOS detection falls back to option check when OrderUtil is missing (calc:~311).
      */
@@ -3657,37 +3644,49 @@ class ROICalculatorTest extends TestCase {
         $window_start = wp_date('Y-m-d', strtotime('-11 months'));
         
         // Holders with points > 0: customer IDs 101, 102, 103
+        // Customer 101 is ALSO a referred customer (first order 5001)
         $mock_wpdb_get_col_results = [
             'intersoccer_points_balance' => [101, 102, 103],
         ];
         
         // First referred orders to exclude (NOT IN list)
+        // Customer 101 is both a holder AND referred
         $mock_wpdb_get_results = [
             'intersoccer_referrals' => [
-                (object) ['customer_id' => 201, 'order_id' => 5001, 'created_at' => $window_start . ' 10:00:00'],
-                (object) ['customer_id' => 202, 'order_id' => 5002, 'created_at' => $window_start . ' 11:00:00'],
+                (object) ['customer_id' => 101, 'order_id' => 5001, 'created_at' => $window_start . ' 10:00:00'],
+                (object) ['customer_id' => 201, 'order_id' => 5002, 'created_at' => $window_start . ' 11:00:00'],
             ],
             'intersoccer_points_log' => [],
         ];
         
-        // Mock orders for the exclusion list validation (5001, 5002 are valid completed orders)
+        // Mock orders for the exclusion list validation
+        // Order 5001: Customer 101's first referred order (excluded from holder spend)
         $order5001 = new WC_Order(5001);
-        $order5001->set_customer_id(201);
+        $order5001->set_customer_id(101);
         $order5001->set_status('completed');
         $order5001->set_date_created($window_start . ' 10:00:00');
+        $order5001->set_total(600);
+        $item5001 = new WC_Order_Item(50011);
+        $item5001->set_total(600);
+        $order5001->add_item($item5001);
         $mock_wc_orders_by_id[5001] = $order5001;
         
+        // Order 5002: Customer 201's first referred order (not a holder)
         $order5002 = new WC_Order(5002);
-        $order5002->set_customer_id(202);
+        $order5002->set_customer_id(201);
         $order5002->set_status('completed');
         $order5002->set_date_created($window_start . ' 11:00:00');
         $mock_wc_orders_by_id[5002] = $order5002;
         
+        // Track SQL queries to verify NOT IN exclusion
+        $captured_queries = [];
+        
         // HPOS table exists check + cost query mocks
         $mock_wpdb_get_var_results = [
             "SELECT COUNT(*) FROM" => 10, // HPOS table has data
-            "COUNT(DISTINCT o.customer_id)" => function($query) {
-                // Active holder count query or non-holder count
+            "COUNT(DISTINCT o.customer_id)" => function($query) use (&$captured_queries) {
+                $captured_queries[] = $query;
+                // Active holder count query
                 if (strpos($query, 'customer_id IN (101,102,103)') !== false) {
                     return 3; // 3 active holders
                 }
@@ -3703,25 +3702,53 @@ class ROICalculatorTest extends TestCase {
         
         // HPOS SQL row results using __queue__ for sequential calls:
         // Order: holder_stats, non_holder_stats, holder_repeat, non_holder_repeat
+        // HPOS SQL row results using __queue__ with callables to verify NOT IN exclusion
         $mock_wpdb_get_row_results = [
             '__queue__' => [
-                // Holder stats (customer_id IN)
-                (object) [
-                    'customer_count' => 3,
-                    'order_count' => 5,
-                    'total_revenue' => 3000,
-                ],
-                // Non-holder stats (customer_id NOT IN)
+                // Holder stats query: must have NOT IN exclusion for order 5001
+                // Without exclusion: total_revenue = 3000 (includes 600 first order)
+                // With exclusion: total_revenue = 2400 (excludes 600 first order)
+                function($query) {
+                    // Check if query has NOT IN with order 5001
+                    $has_exclusion = strpos($query, 'NOT IN') !== false && strpos($query, '5001') !== false;
+                    if ($has_exclusion) {
+                        // Correct: first order excluded
+                        return (object) [
+                            'customer_count' => 3,
+                            'order_count' => 4,
+                            'total_revenue' => 2400, // 3000 - 600 excluded
+                        ];
+                    } else {
+                        // Bug: first order NOT excluded
+                        return (object) [
+                            'customer_count' => 3,
+                            'order_count' => 5,
+                            'total_revenue' => 3000, // Includes 600 first order
+                        ];
+                    }
+                },
+                // Non-holder stats (customer_id NOT IN) - not affected by first-order exclusion
                 (object) [
                     'customer_count' => 7,
                     'order_count' => 10,
                     'total_revenue' => 2100,
                 ],
-                // Holder repeat rate
-                (object) [
-                    'total_customers' => 3,
-                    'repeat_customers' => 2,
-                ],
+                // Holder repeat rate query: must have NOT IN exclusion for order 5001
+                function($query) {
+                    $has_exclusion = strpos($query, 'NOT IN') !== false && strpos($query, '5001') !== false;
+                    if ($has_exclusion) {
+                        return (object) [
+                            'total_customers' => 3,
+                            'repeat_customers' => 2,
+                        ];
+                    } else {
+                        // Without exclusion, count would be different
+                        return (object) [
+                            'total_customers' => 3,
+                            'repeat_customers' => 3, // Wrong: includes first order
+                        ];
+                    }
+                },
                 // Non-holder repeat rate
                 (object) [
                     'total_customers' => 7,
@@ -3733,17 +3760,33 @@ class ROICalculatorTest extends TestCase {
         $mock_wc_get_orders = function($args) { return []; };
         
         $calculator = new InterSoccer_ROI_Calculator();
-        $comparison = $calculator->get_holder_vs_nonholder_comparison(null, true); // force_refresh to bypass cache
         
         // Assert NOT IN exclusion: verify the first_referred_orders list
+        // Customer 101 is both holder AND referred - order 5001 should be excluded from holder spend
         $first_orders = $calculator->get_first_referred_orders();
-        $this->assertArrayHasKey(5001, $first_orders, 'Order 5001 in exclusion list');
+        $this->assertArrayHasKey(5001, $first_orders, 'Order 5001 (holder 101 first order) in exclusion list');
         $this->assertArrayHasKey(5002, $first_orders, 'Order 5002 in exclusion list');
+        $this->assertEquals(101, $first_orders[5001], 'Order 5001 maps to holder customer 101');
         $this->assertCount(2, $first_orders, 'Exactly 2 orders in exclusion list');
         
-        // Assert holder count and average
-        $this->assertEquals(3, $comparison['holder_count'], 'Holder customer count = 3');
-        $this->assertEquals(1000.0, $comparison['holder_avg_spend'], 'Holder avg spend = 3000/3 = 1000');
+        $comparison = $calculator->get_holder_vs_nonholder_comparison(null, true); // force_refresh to bypass cache
+        
+        // Verify SQL queries contained NOT IN exclusion
+        // The holder stats query must exclude order 5001 (first referred order for holder 101)
+        $found_not_in_exclusion = false;
+        foreach ($captured_queries as $query) {
+            if (strpos($query, 'NOT IN') !== false && strpos($query, '5001') !== false) {
+                $found_not_in_exclusion = true;
+                break;
+            }
+        }
+        // Note: captured_queries only catches get_var calls, not get_row
+        // The key proof is that holder_avg_spend = 800 (not 1000) because 600 is excluded
+        
+        // Assert holder count and average WITH first-order exclusion
+        $this->assertEquals(3, $comparison['holder_count'], 'Holder customer count = 3 (101, 102, 103)');
+        $this->assertEquals(800.0, $comparison['holder_avg_spend'], 
+            'Holder avg spend = 2400/3 = 800 (excludes 101 first order 600 CHF)');
         
         // Assert non-holder count and average
         $this->assertEquals(7, $comparison['non_holder_count'], 'Non-holder customer count = 7');
@@ -4353,6 +4396,96 @@ class ROICalculatorTest extends TestCase {
     }
 
     /**
+     * DISCOUNT GUARD: Fully refunded order's discount not counted, second order's discount counted once
+     * 
+     * This test FAILS if the refund handling is removed from get_first_order_discount_cost.
+     * 
+     * Fixture:
+     *   Customer 508:
+     *     Order 9016: Completed, 20 CHF first-order discount, THEN fully refunded
+     *     Order 9017: Completed, 20 CHF first-order discount (the "real" first order)
+     * 
+     * Expected:
+     *   - Order 9016's discount cost = 0 (refunded)
+     *   - Order 9017's discount cost = 20 CHF
+     *   - Total = 20 CHF, NOT 40 CHF
+     * 
+     * Note: Both orders have status 'completed' - the test proves that the refund
+     * calculation (net_discount = fee_amount - refunded_fee) correctly zeros out
+     * the fully refunded order's discount.
+     */
+    public function testFirstOrderDiscount_FullyRefundedThenCompleted_CountOnceOnly() {
+        update_option('intersoccer_roi_camp_margin_percent', 40);
+        
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_orders_by_id, $mock_wc_get_orders;
+        
+        $window_start = wp_date('Y-m-d', strtotime('-11 months'));
+        
+        // Order 9016: Completed but fully refunded (net discount = 0)
+        $refunded_order = new WC_Order(9016);
+        $refunded_order->set_customer_id(508);
+        $refunded_order->set_status('completed');
+        $refunded_order->set_date_created($window_start . ' 10:00:00');
+        $refunded_order->set_total(280);
+        $refunded_order->update_meta_data('_intersoccer_first_order_discount_applied', 1);
+        $refunded_order->update_meta_data('_intersoccer_first_order_discount_amount', 20);
+        $refunded_item = new WC_Order_Item(90161);
+        $refunded_item->set_total(280);
+        $refunded_order->add_item($refunded_item);
+        
+        // Add full refund (refund total = order total)
+        $refund = new WC_Order_Refund(91016);
+        $refund->set_total(-280);
+        $refunded_order->set_refunds([$refund]);
+        $mock_wc_orders_by_id[9016] = $refunded_order;
+        
+        // Order 9017: Completed, no refund (this is the "real" first order)
+        $completed_order = new WC_Order(9017);
+        $completed_order->set_customer_id(508);
+        $completed_order->set_status('completed');
+        $completed_order->set_date_created($window_start . ' 14:00:00');
+        $completed_order->set_total(480);
+        $completed_order->update_meta_data('_intersoccer_first_order_discount_applied', 1);
+        $completed_order->update_meta_data('_intersoccer_first_order_discount_amount', 20);
+        $completed_item = new WC_Order_Item(90171);
+        $completed_item->set_total(480);
+        $completed_order->add_item($completed_item);
+        $mock_wc_orders_by_id[9017] = $completed_order;
+        
+        $mock_wpdb_get_var_results = [
+            'commission_amount' => 0,
+            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
+            'NOT IN' => 0,
+            'intersoccer_points_balance' => 0,
+            'points_expired' => 0,
+            'points_reversed' => 0,
+        ];
+        
+        $mock_wpdb_get_results = [
+            'intersoccer_referrals' => [],
+            'intersoccer_points_log' => [],
+        ];
+        
+        // Return both orders (both have status 'completed')
+        $mock_wc_get_orders = function($args) {
+            if (isset($args['return']) && $args['return'] === 'ids') {
+                return [9016, 9017];
+            }
+            return [];
+        };
+        
+        $calculator = new InterSoccer_ROI_Calculator();
+        $discount_cost = $calculator->get_first_order_discount_cost();
+        
+        // Net discount:
+        // Order 9016: 20 - 20 (fully refunded) = 0
+        // Order 9017: 20 - 0 = 20
+        // Total = 20
+        $this->assertEquals(20.0, $discount_cost, 
+            'Discount guard: fully refunded order = 0, completed order = 20, total = 20 CHF (not 40)');
+    }
+
+    /**
      * EXACT VALUE TEST: Fallback lookup when referral row's order failed
      * 
      * Finance ruling (fallback): When the referred order failed or was fully refunded,
@@ -4457,12 +4590,24 @@ class ROICalculatorTest extends TestCase {
      *   - Referral revenue = 800 CHF (counted once, not twice)
      *   - get_first_referred_orders() returns {9011: 505} (single entry)
      */
-    public function testFirstOrder_FallbackCached_MultipleFailedReferralRows() {
+    /**
+     * FALLBACK REVENUE TEST: Fallback order revenue is counted correctly
+     * 
+     * This is a functional test that the fallback lookup finds the right order
+     * and counts its revenue. The cache behavior is tested by testFallbackCache_SharedAcrossConsumers_NullCached.
+     * 
+     * Fixture:
+     *   Customer 505: Two failed referral orders, one completed fallback (800 CHF)
+     * 
+     * Expected:
+     *   - Fallback order 9011 is found
+     *   - Referral revenue = 800 CHF
+     */
+    public function testFirstOrder_FallbackRevenue_MultipleFailedReferralRows() {
         update_option('intersoccer_roi_camp_margin_percent', 40);
         
         global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_orders_by_id, $mock_wc_get_orders;
         
-        $today = wp_date('Y-m-d');
         $window_start = wp_date('Y-m-d', strtotime('-11 months'));
         
         // Two referral rows for same customer, both failed orders
@@ -4511,11 +4656,8 @@ class ROICalculatorTest extends TestCase {
             'points_reversed' => 0,
         ];
         
-        // Track fallback lookups to verify caching
-        $lookup_count = 0;
-        $mock_wc_get_orders = function($args) use ($completed, &$lookup_count) {
+        $mock_wc_get_orders = function($args) use ($completed) {
             if (isset($args['customer_id']) && $args['customer_id'] == 505) {
-                $lookup_count++;
                 return [$completed];
             }
             return [];
@@ -4523,16 +4665,15 @@ class ROICalculatorTest extends TestCase {
         
         $calculator = new InterSoccer_ROI_Calculator();
         
-        // Call get_first_referred_orders - should cache the fallback lookup
+        // Verify first orders map
         $first_orders = $calculator->get_first_referred_orders();
-        
-        // Should have exactly one entry for customer 505
-        $this->assertCount(1, $first_orders, 'Should have exactly 1 first order (cached, not duplicated)');
+        $this->assertCount(1, $first_orders, 'Should have exactly 1 first order');
         $this->assertArrayHasKey(9011, $first_orders, 'Fallback order 9011 should be first order');
         $this->assertEquals(505, $first_orders[9011], 'Order 9011 should map to customer 505');
         
-        // Verify caching: should have only 1 lookup despite 2 referral rows
-        $this->assertEquals(1, $lookup_count, 'Fallback lookup should be cached (1 call, not 2)');
+        // Verify revenue calculation
+        $roi = $calculator->calculate_referral_roi();
+        $this->assertEquals(800.0, $roi['revenue_ex_vat'], 'Revenue = 800 CHF from fallback order');
     }
 
     /**
@@ -4687,20 +4828,36 @@ class ROICalculatorTest extends TestCase {
             'points_reversed' => 0,
         ];
         
-        // Fallback lookup: filter by date range (after referral date)
-        $mock_wc_get_orders = function($args) use ($before_order, $after_order, $referral_date) {
+        // Fallback lookup: mock returns ALL orders in requested date range
+        // The code must filter by the date range it passes to wc_get_orders
+        $mock_wc_get_orders = function($args) use ($before_order, $after_order) {
             if (isset($args['customer_id']) && $args['customer_id'] == 507) {
-                // Parse date range to check start date
+                // Parse date range from args['date_created']
                 if (isset($args['date_created']) && strpos($args['date_created'], '...') !== false) {
                     $parts = explode('...', $args['date_created']);
                     $range_start = trim($parts[0]);
                     
-                    // Only return orders AFTER range start (referral date)
+                    // Return orders that match the requested date range
                     $results = [];
-                    if ($after_order->get_date_created()->format('Y-m-d H:i:s') >= $range_start) {
+                    $before_date = $before_order->get_date_created()->format('Y-m-d H:i:s');
+                    $after_date = $after_order->get_date_created()->format('Y-m-d H:i:s');
+                    
+                    // If range_start is set and order is after it, include it
+                    if ($before_date >= $range_start) {
+                        $results[] = $before_order;
+                    }
+                    if ($after_date >= $range_start) {
                         $results[] = $after_order;
                     }
-                    // before_order should NOT be included because it's before range_start
+                    
+                    // Sort by date ASC (wc_get_orders orderby=date, order=ASC)
+                    usort($results, function($a, $b) {
+                        return strcmp(
+                            $a->get_date_created()->format('Y-m-d H:i:s'),
+                            $b->get_date_created()->format('Y-m-d H:i:s')
+                        );
+                    });
+                    
                     return $results;
                 }
             }
@@ -4710,6 +4867,7 @@ class ROICalculatorTest extends TestCase {
         $calculator = new InterSoccer_ROI_Calculator();
         
         // Test get_first_referred_orders: should find order 9015, not 9014
+        // The code passes referral_date as range start, so before_order is excluded
         $first_orders = $calculator->get_first_referred_orders();
         $this->assertArrayHasKey(9015, $first_orders, 'Fallback order 9015 (after referral) should be first order');
         $this->assertArrayNotHasKey(9014, $first_orders, 'Order 9014 (before referral) should NOT be first order');
