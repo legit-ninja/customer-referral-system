@@ -519,6 +519,53 @@ if (!function_exists('wp_cache_delete')) {
     }
 }
 
+if (!function_exists('intersoccer_mock_sum_commission_clawback_for_order')) {
+    function intersoccer_mock_sum_commission_clawback_for_order($order_id) {
+        global $mock_wpdb_inserts;
+        $sum = 0.0;
+        foreach ((array) $mock_wpdb_inserts as $row) {
+            $table = (string) ($row['table'] ?? '');
+            if (strpos($table, 'intersoccer_referral_credits') === false) {
+                continue;
+            }
+            $data = $row['data'] ?? [];
+            if ((int) ($data['order_id'] ?? 0) !== (int) $order_id) {
+                continue;
+            }
+            $type = (string) ($data['credit_type'] ?? '');
+            $amount = (float) ($data['credit_amount'] ?? 0);
+            if ($type === 'commission_reversal') {
+                $sum += abs($amount);
+            } elseif ($type === 'commission_write_off') {
+                $sum += $amount;
+            }
+        }
+        return $sum;
+    }
+}
+
+if (!function_exists('intersoccer_mock_sum_commission_reinstatement_for_order')) {
+    function intersoccer_mock_sum_commission_reinstatement_for_order($order_id) {
+        global $mock_wpdb_inserts;
+        $sum = 0.0;
+        foreach ((array) $mock_wpdb_inserts as $row) {
+            $table = (string) ($row['table'] ?? '');
+            if (strpos($table, 'intersoccer_referral_credits') === false) {
+                continue;
+            }
+            $data = $row['data'] ?? [];
+            if ((int) ($data['order_id'] ?? 0) !== (int) $order_id) {
+                continue;
+            }
+            if ((string) ($data['credit_type'] ?? '') !== 'commission_reinstatement') {
+                continue;
+            }
+            $sum += (float) ($data['credit_amount'] ?? 0);
+        }
+        return $sum;
+    }
+}
+
 if (!function_exists('intersoccer_mock_sum_commission_reversal_credits')) {
     function intersoccer_mock_sum_commission_reversal_credits($order_id, $referral_id) {
         global $mock_wpdb_inserts;
@@ -1709,6 +1756,23 @@ $mock_referral_reward_unique_key_present = true;
                 );
             }
 
+            if (is_string($query)
+                && strpos($query, 'intersoccer_referral_credits') !== false
+                && strpos($query, 'commission_write_off') !== false
+                && preg_match('/order_id\s*=\s*(\d+)/', $query, $order_match)
+                && stripos($query, 'referral_id') === false
+            ) {
+                return intersoccer_mock_sum_commission_clawback_for_order((int) $order_match[1]);
+            }
+
+            if (is_string($query)
+                && strpos($query, 'intersoccer_referral_credits') !== false
+                && strpos($query, 'commission_reinstatement') !== false
+                && preg_match('/order_id\s*=\s*(\d+)/', $query, $order_match)
+            ) {
+                return intersoccer_mock_sum_commission_reinstatement_for_order((int) $order_match[1]);
+            }
+
             if (strpos($query, 'usermeta') !== false
                 && strpos($query, 'intersoccer_credits') !== false
                 && preg_match('/user_id\s*=\s*(\d+)/', $query, $matches)
@@ -1768,6 +1832,35 @@ $mock_referral_reward_unique_key_present = true;
                     }
                 }
                 return null;
+            }
+
+            if (is_string($query)
+                && strpos($query, 'intersoccer_referrals') !== false
+                && preg_match('/order_id\s*=\s*(\d+)/', $query, $order_match)
+            ) {
+                global $mock_wpdb_get_results;
+                if (array_key_exists('intersoccer_referrals', $mock_wpdb_get_results)) {
+                    $order_id = (int) $order_match[1];
+                    $coach_id = null;
+                    if (preg_match('/coach_id\s*=\s*(\d+)/', $query, $coach_match)) {
+                        $coach_id = (int) $coach_match[1];
+                    }
+                    $rows = $mock_wpdb_get_results['intersoccer_referrals'];
+                    if (!is_array($rows)) {
+                        $rows = $rows ? [$rows] : [];
+                    }
+                    foreach ($rows as $row) {
+                        $r = is_array($row) ? (object) $row : $row;
+                        if ((int) ($r->order_id ?? 0) !== $order_id) {
+                            continue;
+                        }
+                        if ($coach_id !== null && (int) ($r->coach_id ?? 0) !== $coach_id) {
+                            continue;
+                        }
+                        return $r;
+                    }
+                    return null;
+                }
             }
 
             foreach ($mock_wpdb_get_row_results as $needle => $result) {
