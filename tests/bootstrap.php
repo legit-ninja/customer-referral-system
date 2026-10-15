@@ -647,6 +647,8 @@ if (!class_exists('WC_Order')) {
         private $fees = [];
         private $line_items = [];
         private $refunds = [];
+        private $total_refunded = 0.0;
+        private $date_paid = null;
         private $created_at = '2025-01-01 12:00:00';
         private $status = 'pending';
         private $id = 0;
@@ -686,6 +688,22 @@ if (!class_exists('WC_Order')) {
 
         public function get_date_created() {
             return $this->created_at;
+        }
+
+        public function get_date_paid() {
+            return $this->date_paid;
+        }
+
+        public function set_date_paid($value) {
+            $this->date_paid = $value;
+        }
+
+        public function get_total_refunded() {
+            return $this->total_refunded;
+        }
+
+        public function set_total_refunded($amount) {
+            $this->total_refunded = (float) $amount;
         }
 
         public function set_total($total) {
@@ -966,6 +984,61 @@ if (!function_exists('intersoccer_mock_points_abs_sum_for_order')) {
     }
 }
 
+if (!function_exists('intersoccer_mock_purchase_log_id_for_order')) {
+    function intersoccer_mock_purchase_log_id_for_order($order_id) {
+        global $mock_points_log_rows;
+        $order_id = (int) $order_id;
+        foreach ((array) $mock_points_log_rows as $row) {
+            if ((int) ($row['order_id'] ?? 0) === $order_id
+                && ($row['transaction_type'] ?? '') === 'order_purchase'
+            ) {
+                return (int) ($row['id'] ?? 0);
+            }
+        }
+        return 0;
+    }
+}
+
+if (!function_exists('intersoccer_mock_sum_positive_points_after_id')) {
+    function intersoccer_mock_sum_positive_points_after_id($customer_id, $after_id) {
+        global $mock_points_log_rows;
+        $sum = 0;
+        foreach ((array) $mock_points_log_rows as $row) {
+            if ((int) ($row['customer_id'] ?? 0) !== (int) $customer_id) {
+                continue;
+            }
+            $row_id = (int) ($row['id'] ?? 0);
+            if ($row_id <= (int) $after_id) {
+                continue;
+            }
+            $amount = (int) ($row['points_amount'] ?? 0);
+            if ($amount > 0) {
+                $sum += $amount;
+            }
+        }
+        return $sum;
+    }
+}
+
+if (!function_exists('intersoccer_mock_points_expired_after_id')) {
+    function intersoccer_mock_points_expired_after_id($customer_id, $after_id) {
+        global $mock_points_log_rows;
+        $count = 0;
+        foreach ((array) $mock_points_log_rows as $row) {
+            if ((int) ($row['customer_id'] ?? 0) !== (int) $customer_id) {
+                continue;
+            }
+            if ((int) ($row['id'] ?? 0) <= (int) $after_id) {
+                continue;
+            }
+            if (($row['transaction_type'] ?? '') === 'points_expired') {
+                $count++;
+            }
+        }
+        return $count;
+    }
+}
+
 if (!function_exists('intersoccer_mock_points_sums')) {
     function intersoccer_mock_points_sums($query) {
         global $mock_points_log_rows;
@@ -1143,6 +1216,31 @@ $mock_referral_reward_unique_key_present = true;
 
             if (strpos($query, 'SUM(ABS(points_amount))') !== false && strpos($query, 'order_id') !== false) {
                 return intersoccer_mock_points_abs_sum_for_order($query);
+            }
+
+            if (is_string($query)
+                && strpos($query, "transaction_type = 'order_purchase'") !== false
+                && stripos($query, 'SELECT id') !== false
+                && preg_match('/order_id\s*=\s*(\d+)/', $query, $purchase_match)
+            ) {
+                return intersoccer_mock_purchase_log_id_for_order((int) $purchase_match[1]);
+            }
+
+            if (is_string($query)
+                && strpos($query, 'points_amount > 0') !== false
+                && strpos($query, 'id >') !== false
+                && preg_match('/customer_id\s*=\s*(\d+)/', $query, $cust_match)
+                && preg_match('/id\s*>\s*(\d+)/', $query, $id_match)
+            ) {
+                return intersoccer_mock_sum_positive_points_after_id((int) $cust_match[1], (int) $id_match[1]);
+            }
+
+            if (is_string($query)
+                && strpos($query, "transaction_type = 'points_expired'") !== false
+                && preg_match('/customer_id\s*=\s*(\d+)/', $query, $cust_match)
+                && preg_match('/id\s*>\s*(\d+)/', $query, $id_match)
+            ) {
+                return intersoccer_mock_points_expired_after_id((int) $cust_match[1], (int) $id_match[1]);
             }
 
             if (strpos($query, 'SUM(points_amount)') !== false || strpos($query, 'COALESCE(SUM(points_amount)') !== false) {
@@ -1394,6 +1492,7 @@ $mock_referral_reward_unique_key_present = true;
             $mock_wpdb_last_insert_by_table[$table] = $data;
 
             if (strpos($table, 'points_log') !== false) {
+                $data['id'] = $insert_id;
                 $mock_points_log_rows[] = $data;
                 if (isset($data['customer_id'], $data['points_balance'])) {
                     $mock_points_balances[(int) $data['customer_id']] = $data['points_balance'];

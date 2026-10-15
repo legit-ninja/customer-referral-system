@@ -92,6 +92,7 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-coach-assignments
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-events-manager.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-coach-events.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-manager.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-cli-redeemed-backfill.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-audit-logger.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-audit.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-dashboard.php';
@@ -1738,6 +1739,8 @@ function intersoccer_send_weekly_report($coach_id) {
     }
 
 if (defined('WP_CLI') && WP_CLI) {
+    InterSoccer_CLI_Redeemed_Backfill::register_cli_commands();
+
     WP_CLI::add_command('intersoccer sync-commissions', function($args, $assoc_args) {
         $manager = InterSoccer_Commission_Manager::get_instance();
 

@@ -252,6 +252,20 @@ class InterSoccer_Admin_Settings {
                             </td>
                         </tr>
                         <tr>
+                            <th scope="row"><?php esc_html_e('Proportional commission reversal on partial refunds', 'intersoccer-referral'); ?></th>
+                            <td>
+                                <input type="hidden" name="intersoccer_proportional_commission_reversal" value="no">
+                                <input type="checkbox" name="intersoccer_proportional_commission_reversal" value="yes" <?php checked(get_option('intersoccer_proportional_commission_reversal', 'yes'), 'yes'); ?>>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php esc_html_e('Release redeemed points on unpaid orders (days)', 'intersoccer-referral'); ?></th>
+                            <td>
+                                <input type="number" name="intersoccer_unpaid_redeemed_release_days" value="<?php echo esc_attr((int) get_option('intersoccer_unpaid_redeemed_release_days', 14)); ?>" min="0" step="1">
+                                <p class="description"><?php esc_html_e('Pending/on-hold orders older than this many days return redeemed points once (0 disables).', 'intersoccer-referral'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
                             <th scope="row"><?php esc_html_e('Enable Passive Mode', 'intersoccer-referral'); ?></th>
                             <td>
                                 <input type="checkbox" name="intersoccer_passive_mode" value="1" <?php checked(get_option('intersoccer_passive_mode', false), true); ?>>
@@ -4018,6 +4032,20 @@ class InterSoccer_Admin_Settings {
             'type' => 'boolean',
             'default' => true,
             'sanitize_callback' => 'boolval'
+        ]);
+
+        register_setting('intersoccer_settings', 'intersoccer_proportional_commission_reversal', [
+            'type' => 'string',
+            'default' => 'yes',
+            'sanitize_callback' => function ($value) {
+                return ($value === 'yes' || $value === '1' || $value === true) ? 'yes' : 'no';
+            },
+        ]);
+
+        register_setting('intersoccer_settings', 'intersoccer_unpaid_redeemed_release_days', [
+            'type' => 'integer',
+            'default' => 14,
+            'sanitize_callback' => [$this, 'sanitize_non_negative_int_option'],
         ]);
 
         register_setting('intersoccer_settings', 'intersoccer_enable_email_notifications', [

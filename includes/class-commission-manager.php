@@ -30,6 +30,7 @@ class InterSoccer_Commission_Manager {
         add_action('woocommerce_order_status_completed', [$this, 'process_referral_code_rewards']);
         add_action('woocommerce_order_status_cancelled', [$this, 'reverse_paid_rewards']);
         add_action('woocommerce_order_status_refunded', [$this, 'reverse_paid_rewards']);
+        add_action('woocommerce_order_refunded', [$this, 'handle_order_refunded_rewards'], 10, 2);
     }
 
     /**
@@ -1404,13 +1405,30 @@ The InterSoccer Team', 'intersoccer-referral'),
     }
 
     /**
+     * Partial refund hook — proportional referral / coach points; commission when enabled.
+     *
+     * @param int $order_id
+     * @param int $refund_id
+     */
+    public function handle_order_refunded_rewards($order_id, $refund_id) {
+        $this->sync_paid_rewards_reversal((int) $order_id, false);
+    }
+
+    /**
      * Undo coach commission, coach first-order points, and the customer referral
-     * reward after a cancel or a full refund. Partial refunds are not reversed
-     * proportionally. Duplicate reward rows are marked reversed, not deleted.
+     * reward after a cancel or a full refund. Supports proportional partial refunds.
      *
      * @param int $order_id
      */
     public function reverse_paid_rewards($order_id) {
+        $this->sync_paid_rewards_reversal((int) $order_id, true);
+    }
+
+    /**
+     * @param int  $order_id
+     * @param bool $force_full Cancel/refunded status path (fraction 1, remainder only).
+     */
+    public function sync_paid_rewards_reversal($order_id, $force_full = false) {
         $order = function_exists('wc_get_order') ? wc_get_order($order_id) : null;
         if (!$order || !method_exists($order, 'get_status')) {
             return;
@@ -1420,20 +1438,354 @@ The InterSoccer Team', 'intersoccer-referral'),
         if (strpos($status, 'wc-') === 0) {
             $status = substr($status, 3);
         }
-        if (!in_array($status, ['cancelled', 'refunded'], true)) {
-            return;
+
+        if ($force_full) {
+            if (!in_array($status, ['cancelled', 'refunded'], true)) {
+                return;
+            }
+            $fraction = 1.0;
+        } else {
+            if (!class_exists('InterSoccer_Points_Manager')) {
+                $path = dirname(__FILE__) . '/class-points-manager.php';
+                if (is_readable($path)) {
+                    require_once $path;
+                }
+            }
+            if (!class_exists('InterSoccer_Points_Manager')) {
+                return;
+            }
+            $fraction = InterSoccer_Points_Manager::get_instance()->get_cumulative_refunded_fraction($order);
+            if ($fraction <= 0) {
+                return;
+            }
         }
-        if ((int) $order->get_meta('_intersoccer_paid_rewards_reversed', true) === 1) {
+
+        $this->sync_customer_referral_reward_reversal_proportional($order, (int) $order_id, $fraction);
+        $this->sync_coach_first_order_points_reversal_proportional((int) $order_id, $fraction);
+
+        $proportional_commission = get_option('intersoccer_proportional_commission_reversal', 'yes') === 'yes';
+        if ($force_full && !$proportional_commission) {
+            if ((int) $order->get_meta('_intersoccer_paid_rewards_reversed', true) !== 1) {
+                $this->reverse_paid_commission_rows((int) $order_id);
+            }
+        } elseif ($proportional_commission) {
+            $this->sync_commission_reversal_proportional($order, (int) $order_id, $fraction);
+        }
+
+        if ($fraction >= 1.0 || $force_full) {
+            $this->mark_customer_referral_rows_reversed((int) $order_id);
+            if ($fraction >= 1.0) {
+                $this->mark_coach_reward_rows_reversed((int) $order_id);
+            }
+            $order->update_meta_data('_intersoccer_paid_rewards_reversed', 1);
+            if (method_exists($order, 'save')) {
+                $order->save();
+            }
+        }
+    }
+
+    /**
+     * @param WC_Order $order
+     * @param int      $order_id
+     * @param float    $fraction
+     */
+    private function sync_customer_referral_reward_reversal_proportional($order, $order_id, $fraction) {
+        $points = (int) $order->get_meta('_intersoccer_referrer_reward_points', true);
+        $user_id = (int) $order->get_meta('_intersoccer_referrer_reward_user_id', true);
+        if ($points <= 0 || $user_id <= 0) {
             return;
         }
 
-        $this->reverse_paid_commission_rows((int) $order_id);
-        $this->reverse_coach_first_order_point_rows((int) $order_id);
-        $this->reverse_customer_referral_reward($order, (int) $order_id);
+        $already = (int) $order->get_meta('_intersoccer_referrer_reward_points_reversed_total', true);
+        if ((int) $order->get_meta('_intersoccer_referrer_reward_reversed', true) === 1 && $already <= 0) {
+            $already = $points;
+        }
 
-        $order->update_meta_data('_intersoccer_paid_rewards_reversed', 1);
+        $target = (int) min($points, floor($points * $fraction));
+        $delta = $target - $already;
+        if ($delta <= 0) {
+            return;
+        }
+
+        $points_manager = $this->get_points_manager();
+        if (!$points_manager) {
+            return;
+        }
+
+        $attributable = $points_manager->get_attributable_balance_for_order_reversal($user_id, $order_id);
+        $debit = min($delta, max(0, $attributable));
+        $shortfall = $delta - $debit;
+
+        if ($debit > 0) {
+            $points_manager->add_points_transaction(
+                $user_id,
+                'customer_referral_reversal',
+                -$debit,
+                $order_id,
+                sprintf('Reversed customer referral reward for order #%d', $order_id),
+                ['fraction' => $fraction]
+            );
+        }
+        if ($shortfall > 0) {
+            $points_manager->insert_reversal_write_off_log_row(
+                $user_id,
+                $order_id,
+                $shortfall,
+                'customer_referral_reversal',
+                $fraction
+            );
+        }
+
+        $order->update_meta_data('_intersoccer_referrer_reward_points_reversed_total', $target);
+        if ($target >= $points) {
+            $order->update_meta_data('_intersoccer_referrer_reward_reversed', 1);
+        }
         if (method_exists($order, 'save')) {
             $order->save();
+        }
+    }
+
+    /**
+     * @param int   $order_id
+     * @param float $fraction
+     */
+    private function sync_coach_first_order_points_reversal_proportional($order_id, $fraction) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'intersoccer_referral_rewards';
+        $this->ensure_reward_status_column($table);
+
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$table} WHERE order_id = %d",
+            $order_id
+        ));
+
+        $total_points = 0;
+        foreach ((array) $rows as $row) {
+            if (!is_object($row) || !isset($row->points_awarded)) {
+                continue;
+            }
+            $row_status = isset($row->status) ? (string) $row->status : '';
+            if ($row_status === 'reversed') {
+                continue;
+            }
+            $total_points += abs((int) $row->points_awarded);
+        }
+        if ($total_points <= 0) {
+            return;
+        }
+
+        $order = wc_get_order($order_id);
+        $already = $order ? (int) $order->get_meta('_intersoccer_coach_referral_points_reversed_total', true) : 0;
+        $target = (int) min($total_points, floor($total_points * $fraction));
+        $delta = $target - $already;
+        if ($delta <= 0) {
+            return;
+        }
+
+        $points_manager = $this->get_points_manager();
+        if (!$points_manager) {
+            return;
+        }
+
+        $coach_id = 0;
+        foreach ((array) $rows as $row) {
+            if (is_object($row) && !empty($row->coach_id)) {
+                $coach_id = (int) $row->coach_id;
+                break;
+            }
+        }
+        if ($coach_id <= 0) {
+            return;
+        }
+
+        $attributable = $points_manager->get_attributable_balance_for_order_reversal($coach_id, $order_id);
+        $debit = min($delta, max(0, $attributable));
+        $shortfall = $delta - $debit;
+
+        if ($debit > 0) {
+            $points_manager->add_points_transaction(
+                $coach_id,
+                'coach_referral_reversal',
+                -$debit,
+                $order_id,
+                sprintf('Reversed coach first-order points for order #%d', $order_id),
+                ['fraction' => $fraction]
+            );
+        }
+        if ($shortfall > 0) {
+            $points_manager->insert_reversal_write_off_log_row(
+                $coach_id,
+                $order_id,
+                $shortfall,
+                'coach_referral_reversal',
+                $fraction
+            );
+        }
+
+        if ($order) {
+            $order->update_meta_data('_intersoccer_coach_referral_points_reversed_total', $target);
+            if (method_exists($order, 'save')) {
+                $order->save();
+            }
+        }
+    }
+
+    /**
+     * @param WC_Order $order
+     * @param int      $order_id
+     * @param float    $fraction
+     */
+    private function sync_commission_reversal_proportional($order, $order_id, $fraction) {
+        global $wpdb;
+        $referrals = $wpdb->prefix . 'intersoccer_referrals';
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$referrals} WHERE order_id = %d",
+            $order_id
+        ));
+
+        $already_reversed = (float) $order->get_meta('_intersoccer_commission_amount_reversed_total', true);
+
+        foreach ((array) $rows as $row) {
+            if (!is_object($row) || empty($row->id)) {
+                continue;
+            }
+            $row_status = isset($row->status) ? (string) $row->status : '';
+            if ($row_status === 'reversed') {
+                continue;
+            }
+            $paid = in_array($row_status, ['completed', 'approved', 'paid'], true);
+            if (!$paid) {
+                continue;
+            }
+
+            $coach_id = (int) ($row->coach_id ?? 0);
+            $total = (float) ($row->commission_amount ?? 0)
+                + (float) ($row->loyalty_bonus ?? 0)
+                + (float) ($row->retention_bonus ?? 0);
+            if ($coach_id <= 0 || $total <= 0) {
+                continue;
+            }
+
+            $target = round(min($total, $total * $fraction), 2);
+            $remaining_order_cap = max(0.0, round($total * $fraction, 2) - $already_reversed);
+            $delta = min($target, $remaining_order_cap);
+            if ($delta <= 0) {
+                continue;
+            }
+
+            $current = (float) get_user_meta($coach_id, 'intersoccer_credits', true);
+            $claw = min($delta, max(0.0, $current));
+            $writeoff = round($delta - $claw, 2);
+            if ($claw > 0) {
+                update_user_meta($coach_id, 'intersoccer_credits', round($current - $claw, 2));
+                $wpdb->insert(
+                    $wpdb->prefix . 'intersoccer_referral_credits',
+                    [
+                        'referral_id' => (int) $row->id,
+                        'coach_id' => $coach_id,
+                        'customer_id' => (int) ($row->customer_id ?? 0),
+                        'order_id' => $order_id,
+                        'credit_amount' => round(-$claw, 2),
+                        'credit_type' => 'commission_reversal',
+                        'status' => 'reversed',
+                        'created_at' => current_time('mysql'),
+                        'updated_at' => current_time('mysql'),
+                    ]
+                );
+            }
+            if ($writeoff > 0) {
+                intersoccer_referral_log(
+                    "InterSoccer: Commission reversal write-off CHF {$writeoff} for order {$order_id}, coach {$coach_id}, fraction {$fraction}"
+                );
+            }
+
+            $already_reversed += $claw;
+            if ($fraction >= 1.0) {
+                $wpdb->update($referrals, ['status' => 'reversed'], ['id' => (int) $row->id]);
+            }
+        }
+
+        $order->update_meta_data('_intersoccer_commission_amount_reversed_total', $already_reversed);
+        if (method_exists($order, 'save')) {
+            $order->save();
+        }
+
+        if ($fraction >= 1.0) {
+            $commissions = $wpdb->prefix . 'intersoccer_coach_commissions';
+            $commission_rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM {$commissions} WHERE order_id = %d",
+                $order_id
+            ));
+            foreach ((array) $commission_rows as $row) {
+                if (!is_object($row) || empty($row->id)) {
+                    continue;
+                }
+                $row_status = isset($row->status) ? (string) $row->status : '';
+                if ($row_status === 'reversed' || !in_array($row_status, ['approved', 'completed', 'paid'], true)) {
+                    continue;
+                }
+                $wpdb->update($commissions, ['status' => 'reversed'], ['id' => (int) $row->id]);
+            }
+        }
+    }
+
+    /**
+     * @return InterSoccer_Points_Manager|null
+     */
+    private function get_points_manager() {
+        if (!class_exists('InterSoccer_Points_Manager')) {
+            $path = dirname(__FILE__) . '/class-points-manager.php';
+            if (is_readable($path)) {
+                require_once $path;
+            }
+        }
+        return class_exists('InterSoccer_Points_Manager') ? InterSoccer_Points_Manager::get_instance() : null;
+    }
+
+    /**
+     * @param int $order_id
+     */
+    private function mark_customer_referral_rows_reversed($order_id) {
+        global $wpdb;
+        $referrals = $wpdb->prefix . 'intersoccer_referrals';
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$referrals} WHERE order_id = %d",
+            $order_id
+        ));
+        foreach ((array) $rows as $row) {
+            if (!is_object($row) || empty($row->id)) {
+                continue;
+            }
+            if (!isset($row->referrer_type) || $row->referrer_type !== 'customer') {
+                continue;
+            }
+            if (isset($row->status) && $row->status === 'reversed') {
+                continue;
+            }
+            $wpdb->update($referrals, ['status' => 'reversed'], ['id' => (int) $row->id]);
+        }
+    }
+
+    /**
+     * @param int $order_id
+     */
+    private function mark_coach_reward_rows_reversed($order_id) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'intersoccer_referral_rewards';
+        $this->ensure_reward_status_column($table);
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$table} WHERE order_id = %d",
+            $order_id
+        ));
+        foreach ((array) $rows as $row) {
+            if (!is_object($row) || empty($row->id)) {
+                continue;
+            }
+            $row_status = isset($row->status) ? (string) $row->status : '';
+            if ($row_status === 'reversed') {
+                continue;
+            }
+            $wpdb->update($table, ['status' => 'reversed'], ['id' => (int) $row->id]);
         }
     }
 

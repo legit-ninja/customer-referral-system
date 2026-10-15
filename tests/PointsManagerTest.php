@@ -211,6 +211,7 @@ class PointsManagerTest extends TestCase {
         $order = new WC_Order(123);
         $order->set_id(123);
         $order->set_total(100); // 100 CHF order
+        $order->set_status('completed');
         $mock_wc_orders_by_id[123] = $order;
 
         // Test points allocation
@@ -294,6 +295,7 @@ class PointsManagerTest extends TestCase {
         $order = new WC_Order(301);
         $order->set_id(301);
         $order->set_total(100);
+        $order->set_status('processing');
         $mock_wc_orders_by_id[301] = $order;
 
         // First allocation on processing
@@ -327,6 +329,7 @@ class PointsManagerTest extends TestCase {
         $order = new WC_Order(123);
         $order->set_id(123);
         $order->set_total(50); // 50 CHF = 5 points
+        $order->set_status('completed');
         $mock_wc_orders_by_id[123] = $order;
         
         $points_manager->allocate_points_for_order(123);
@@ -1522,6 +1525,7 @@ class PointsManagerTest extends TestCase {
         $order->set_id(84401);
         $order->set_customer_id($customer_id);
         $order->set_total(100);
+        $order->set_status('completed');
         $mock_wc_orders_by_id[84401] = $order;
 
         $points->allocate_points_for_order(84401);
