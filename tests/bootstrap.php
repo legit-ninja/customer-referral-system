@@ -36,7 +36,37 @@ if (!defined('WEEK_IN_SECONDS')) {
 
 if (!function_exists('add_action')) {
     function add_action($hook, $callback, $priority = 10, $accepted_args = 1) {
+        global $mock_wp_action_callbacks;
+        if (!is_array($mock_wp_action_callbacks)) {
+            $mock_wp_action_callbacks = [];
+        }
+        if (!isset($mock_wp_action_callbacks[$hook])) {
+            $mock_wp_action_callbacks[$hook] = [];
+        }
+        $mock_wp_action_callbacks[$hook][] = [
+            'callback' => $callback,
+            'priority' => (int) $priority,
+            'accepted_args' => (int) $accepted_args,
+        ];
         return true;
+    }
+}
+
+if (!function_exists('has_action')) {
+    function has_action($hook, $callback = false) {
+        global $mock_wp_action_callbacks;
+        if (!is_array($mock_wp_action_callbacks) || !isset($mock_wp_action_callbacks[$hook])) {
+            return false;
+        }
+        if ($callback === false) {
+            return count($mock_wp_action_callbacks[$hook]) > 0;
+        }
+        foreach ($mock_wp_action_callbacks[$hook] as $entry) {
+            if ($entry['callback'] === $callback) {
+                return $entry['priority'];
+            }
+        }
+        return false;
     }
 }
 
