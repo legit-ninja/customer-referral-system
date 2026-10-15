@@ -1531,7 +1531,7 @@ The InterSoccer Team', 'intersoccer-referral'),
                 $user_id,
                 $order_id,
                 $shortfall,
-                'customer_referral_reversal',
+                'spent_or_gift_protected',
                 $fraction
             );
         }
@@ -1617,7 +1617,7 @@ The InterSoccer Team', 'intersoccer-referral'),
                 $coach_id,
                 $order_id,
                 $shortfall,
-                'coach_referral_reversal',
+                'spent_or_gift_protected',
                 $fraction
             );
         }
@@ -1636,6 +1636,8 @@ The InterSoccer Team', 'intersoccer-referral'),
      * @param float    $fraction
      */
     private function sync_commission_reversal_proportional($order, $order_id, $fraction) {
+        // Coach commission clawback uses intersoccer_credits (CHF usermeta), not the points ledger;
+        // gifted points protection does not apply to money credits.
         global $wpdb;
         $referrals = $wpdb->prefix . 'intersoccer_referrals';
         $rows = $wpdb->get_results($wpdb->prepare(

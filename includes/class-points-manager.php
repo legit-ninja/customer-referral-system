@@ -668,58 +668,103 @@ class InterSoccer_Points_Manager {
     }
 
     /**
-     * Sum of positive points credited to the customer after a ledger row id (any type).
+     * Transaction types that form gift credit lots when points_amount is positive.
      *
-     * @param int $customer_id
-     * @param int $after_log_id
-     * @return int
+     * @return string[]
      */
-    public function get_positive_points_credited_after_log_id($customer_id, $after_log_id) {
-        global $wpdb;
-
-        $customer_id = (int) $customer_id;
-        $after_log_id = (int) $after_log_id;
-        if ($customer_id <= 0 || $after_log_id <= 0) {
-            return 0;
-        }
-
-        $sum = $wpdb->get_var($wpdb->prepare(
-            "SELECT COALESCE(SUM(points_amount), 0) FROM {$this->points_log_table}
-             WHERE customer_id = %d AND id > %d AND points_amount > 0",
-            $customer_id,
-            $after_log_id
-        ));
-
-        return (int) max(0, (float) $sum);
+    public function get_points_gift_credit_types() {
+        return (array) apply_filters('intersoccer_points_gift_credit_types', ['gift_received', 'admin_adjustment']);
     }
 
     /**
-     * Points from this order's purchase that may be debited on reversal.
+     * Gift points still available on the customer's balance (FIFO ledger walk).
      *
-     * Rule: attributable balance = max(0, current balance − sum of positive ledger credits
-     * after this order's order_purchase row). Gifted points (gift_received) after purchase are
-     * excluded from that sum only when they appear as positive credits after the purchase row;
-     * spent points from other orders are never clawed back via this order's reversal.
+     * Definition:
+     * - Load all of this customer's points-log rows ordered by created_at, id ascending
+     *   (columns: id, transaction_type, points_amount).
+     * - Walk FIFO: each positive row opens a lot (amount, is_gift). A lot is a gift when
+     *   transaction_type is in {@see get_points_gift_credit_types()} and points_amount > 0
+     *   (so positive admin_adjustment counts; negative rows do not).
+     * - Each negative row consumes the oldest remaining lots first (gift or not) until its
+     *   absolute amount is exhausted. Zero rows are ignored.
+     * - Unspent gifted points = sum of remaining gift-lot amounts, capped at max(0, current balance).
      *
      * @param int $customer_id
-     * @param int $order_id
+     * @return int
+     */
+    public function get_unspent_gifted_points($customer_id) {
+        global $wpdb;
+
+        $customer_id = (int) $customer_id;
+        if ($customer_id <= 0) {
+            return 0;
+        }
+
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT id, transaction_type, points_amount FROM {$this->points_log_table}
+             WHERE customer_id = %d
+             ORDER BY created_at ASC, id ASC",
+            $customer_id
+        ));
+
+        $gift_types = array_map('strval', $this->get_points_gift_credit_types());
+        $lots = [];
+
+        foreach ((array) $rows as $row) {
+            $amount = (int) (is_array($row) ? ($row['points_amount'] ?? 0) : ($row->points_amount ?? 0));
+            if ($amount === 0) {
+                continue;
+            }
+            if ($amount > 0) {
+                $type = (string) (is_array($row) ? ($row['transaction_type'] ?? '') : ($row->transaction_type ?? ''));
+                $is_gift = in_array($type, $gift_types, true);
+                $lots[] = ['amount' => $amount, 'is_gift' => $is_gift];
+                continue;
+            }
+
+            $remaining = abs($amount);
+            while ($remaining > 0 && !empty($lots)) {
+                $take = min($lots[0]['amount'], $remaining);
+                $lots[0]['amount'] -= $take;
+                $remaining -= $take;
+                if ($lots[0]['amount'] <= 0) {
+                    array_shift($lots);
+                }
+            }
+        }
+
+        $gift_remaining = 0;
+        foreach ($lots as $lot) {
+            if (!empty($lot['is_gift'])) {
+                $gift_remaining += (int) $lot['amount'];
+            }
+        }
+
+        $balance = max(0, (int) $this->get_points_balance($customer_id));
+
+        return min($gift_remaining, $balance);
+    }
+
+    /**
+     * Points balance that may be debited when clawing back earned or referral points.
+     *
+     * Rule 2: gifted points are never clawed back. Clawback debit cap =
+     * max(0, current balance − unspent gifted points). {@see get_unspent_gifted_points()}.
+     *
+     * @param int $customer_id
+     * @param int $order_id Unused; kept for call-site compatibility.
      * @return int
      */
     public function get_attributable_balance_for_order_reversal($customer_id, $order_id) {
         $customer_id = (int) $customer_id;
-        $order_id = (int) $order_id;
         if ($customer_id <= 0) {
             return 0;
         }
 
         $balance = (int) $this->get_points_balance($customer_id);
-        $purchase_log_id = $this->get_order_purchase_log_row_id($order_id);
-        if ($purchase_log_id <= 0) {
-            return max(0, $balance);
-        }
+        $unspent_gifted = $this->get_unspent_gifted_points($customer_id);
 
-        $credited_after = $this->get_positive_points_credited_after_log_id($customer_id, $purchase_log_id);
-        return max(0, $balance - $credited_after);
+        return max(0, $balance - $unspent_gifted);
     }
 
     /**
@@ -883,8 +928,11 @@ class InterSoccer_Points_Manager {
             $write_off_reason = 'expired';
         } else {
             $attributable = $this->get_attributable_balance_for_order_reversal($customer_id, $order_id);
-            $debit_amount = min($delta, max(0, $attributable));
+            $debit_amount = min($delta, $attributable);
             $shortfall = $delta - $debit_amount;
+            if ($shortfall > 0) {
+                $write_off_reason = 'spent_or_gift_protected';
+            }
         }
 
         $ledger_type = $reason === 'order_cancelled' ? 'order_cancelled' : 'order_refund';
@@ -1913,8 +1961,8 @@ class InterSoccer_Points_Manager {
         $retaken = $this->get_abs_points_log_sum_for_order_transaction_types($order_id, ['redeemed_retaken']);
         $to_retake = max(0, $returned - $retaken);
         if ($to_retake > 0) {
-            $balance = (int) $this->get_points_balance($customer_id);
-            $debit = min($to_retake, max(0, $balance));
+            $debitable = $this->get_attributable_balance_for_order_reversal($customer_id, $order_id);
+            $debit = min($to_retake, $debitable);
             $shortfall = $to_retake - $debit;
             if ($debit > 0) {
                 $this->add_points_transaction(
@@ -1968,8 +2016,8 @@ class InterSoccer_Points_Manager {
             return;
         }
 
-        $balance = (int) $this->get_points_balance($customer_id);
-        $debit = min($to_retake, max(0, $balance));
+        $debitable = $this->get_attributable_balance_for_order_reversal($customer_id, $order_id);
+        $debit = min($to_retake, $debitable);
         $shortfall = $to_retake - $debit;
         if ($debit > 0) {
             $this->add_points_transaction(

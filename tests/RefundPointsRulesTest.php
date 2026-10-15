@@ -53,8 +53,12 @@ class RefundPointsRulesTest extends TestCase {
     private function seed_ledger_row(array $row) {
         global $mock_points_log_rows, $mock_points_balances, $mock_order_points_allocated;
         static $next_id = 1000;
+        static $ledger_seq = 0;
         if (!isset($row['id'])) {
             $row['id'] = $next_id++;
+        }
+        if (!isset($row['created_at'])) {
+            $row['created_at'] = gmdate('Y-m-d H:i:s', 1700000000 + $ledger_seq++);
         }
         $mock_points_log_rows[] = $row;
         if (isset($row['customer_id'], $row['points_balance'])) {
@@ -106,26 +110,109 @@ class RefundPointsRulesTest extends TestCase {
         $this->assertArrayHasKey('fraction', $meta);
     }
 
-    public function testRule2AttributableBalanceExcludesLaterCredits() {
+    public function testRule2GiftReceivedBeforePurchaseIsProtected() {
         $points = $this->manager();
-        $order = $this->make_order(93002, 9302, 100, 'completed');
-        $this->seed_balance(9302, 0);
-        $points->allocate_points_for_order(93002);
+        $customer_id = 93021;
+        $this->seed_ledger_row([
+            'customer_id' => $customer_id,
+            'order_id' => 0,
+            'transaction_type' => 'gift_received',
+            'points_amount' => 80,
+            'points_balance' => 80,
+            'created_at' => '2024-01-01 10:00:00',
+            'id' => 1,
+        ]);
+        $this->seed_balance($customer_id, 90);
+        $this->seed_ledger_row([
+            'customer_id' => $customer_id,
+            'order_id' => 93002,
+            'transaction_type' => 'order_purchase',
+            'points_amount' => 10,
+            'points_balance' => 90,
+            'created_at' => '2024-01-02 10:00:00',
+            'id' => 2,
+        ]);
 
-        $purchase_id = $points->get_order_purchase_log_row_id(93002);
-        $this->assertGreaterThan(0, $purchase_id);
+        $this->assertSame(80, $points->get_unspent_gifted_points($customer_id));
+        $this->assertSame(10, $points->get_attributable_balance_for_order_reversal($customer_id, 93002));
+
+        $order = $this->make_order(93002, $customer_id, 100, 'completed');
+        $order->set_status('refunded');
+        $points->handle_order_status_refunded(93002);
+
+        $this->assertSame(10, abs((int) ($this->ledger_types_for_order(93002, 'order_refund')[0]['points_amount'] ?? 0)));
+        $this->assertSame(80, $points->get_points_balance($customer_id));
+    }
+
+    public function testRule2GiftReceivedAfterPurchaseIsProtected() {
+        $points = $this->manager();
+        $customer_id = 93022;
+        $order = $this->make_order(930022, $customer_id, 100, 'completed');
+        $this->seed_balance($customer_id, 0);
+        $points->allocate_points_for_order(930022);
 
         $this->seed_ledger_row([
-            'customer_id' => 9302,
-            'order_id' => 99999,
-            'transaction_type' => 'order_purchase',
+            'customer_id' => $customer_id,
+            'order_id' => 0,
+            'transaction_type' => 'gift_received',
             'points_amount' => 50,
             'points_balance' => 60,
+            'created_at' => '2024-02-02 10:00:00',
+            'id' => 5002,
         ]);
-        $this->seed_balance(9302, 60);
+        $this->seed_balance($customer_id, 60);
 
-        $attributable = $points->get_attributable_balance_for_order_reversal(9302, 93002);
-        $this->assertSame(10, $attributable);
+        $this->assertSame(50, $points->get_unspent_gifted_points($customer_id));
+        $this->assertSame(10, $points->get_attributable_balance_for_order_reversal($customer_id, 930022));
+
+        $order->set_status('refunded');
+        $points->handle_order_status_refunded(930022);
+
+        $this->assertSame(10, abs((int) ($this->ledger_types_for_order(930022, 'order_refund')[0]['points_amount'] ?? 0)));
+        $this->assertSame(50, $points->get_points_balance($customer_id));
+    }
+
+    public function testRule2PartlySpentGiftProtectedOnlyForUnspentPart() {
+        $points = $this->manager();
+        $customer_id = 93023;
+        $this->seed_ledger_row([
+            'customer_id' => $customer_id,
+            'order_id' => 0,
+            'transaction_type' => 'gift_received',
+            'points_amount' => 30,
+            'points_balance' => 30,
+            'created_at' => '2024-03-01 10:00:00',
+            'id' => 10,
+        ]);
+        $this->seed_ledger_row([
+            'customer_id' => $customer_id,
+            'order_id' => 777,
+            'transaction_type' => 'points_redemption',
+            'points_amount' => -20,
+            'points_balance' => 10,
+            'created_at' => '2024-03-02 10:00:00',
+            'id' => 11,
+        ]);
+        $this->seed_ledger_row([
+            'customer_id' => $customer_id,
+            'order_id' => 930023,
+            'transaction_type' => 'order_purchase',
+            'points_amount' => 10,
+            'points_balance' => 20,
+            'created_at' => '2024-03-03 10:00:00',
+            'id' => 12,
+        ]);
+        $this->seed_balance($customer_id, 20);
+
+        $this->assertSame(10, $points->get_unspent_gifted_points($customer_id));
+        $this->assertSame(10, $points->get_attributable_balance_for_order_reversal($customer_id, 930023));
+
+        $order = $this->make_order(930023, $customer_id, 100, 'completed');
+        $order->set_status('refunded');
+        $points->handle_order_status_refunded(930023);
+
+        $this->assertSame(10, abs((int) ($this->ledger_types_for_order(930023, 'order_refund')[0]['points_amount'] ?? 0)));
+        $this->assertSame(10, $points->get_points_balance($customer_id));
     }
 
     public function testRule3ExpiredPointsWriteOffFullDelta() {
@@ -203,6 +290,56 @@ class RefundPointsRulesTest extends TestCase {
             }
         }
         $this->assertTrue($found);
+    }
+
+    public function testRule7ReferralRewardReversalDoesNotTakeReferrersGiftedPoints() {
+        global $mock_wpdb_get_results;
+        $referrer_id = 931201;
+        $order = $this->make_order(931201, 931200, 100, 'completed');
+        $order->update_meta_data('_intersoccer_referrer_reward_points', 10);
+        $order->update_meta_data('_intersoccer_referrer_reward_user_id', $referrer_id);
+        $order->save();
+
+        $this->seed_ledger_row([
+            'customer_id' => $referrer_id,
+            'order_id' => 0,
+            'transaction_type' => 'gift_received',
+            'points_amount' => 50,
+            'points_balance' => 50,
+            'created_at' => '2024-05-01 10:00:00',
+            'id' => 8001,
+        ]);
+        $this->seed_ledger_row([
+            'customer_id' => $referrer_id,
+            'order_id' => 888001,
+            'transaction_type' => 'points_redemption',
+            'points_amount' => -40,
+            'points_balance' => 10,
+            'created_at' => '2024-05-02 10:00:00',
+            'id' => 8002,
+        ]);
+        $this->seed_balance($referrer_id, 10);
+
+        $mock_wpdb_get_results['intersoccer_referral_rewards'] = [];
+        $mock_wpdb_get_results['intersoccer_referrals'] = [];
+        $mock_wpdb_get_results['intersoccer_coach_commissions'] = [];
+
+        $refund = new WC_Order_Refund(9312011, 100);
+        $order->add_refund($refund);
+        InterSoccer_Commission_Manager::get_instance()->handle_order_refunded_rewards(931201, 9312011);
+
+        $points = $this->manager();
+        $this->assertSame(10, $points->get_points_balance($referrer_id));
+        $reversals = array_filter((array) $GLOBALS['mock_points_log_rows'], static function ($row) use ($referrer_id) {
+            return (int) ($row['customer_id'] ?? 0) === $referrer_id
+                && ($row['transaction_type'] ?? '') === 'customer_referral_reversal';
+        });
+        $this->assertSame([], array_values($reversals));
+        $writeoffs = $this->ledger_types_for_order(931201, 'reversal_write_off');
+        $this->assertNotEmpty($writeoffs);
+        $meta = json_decode($writeoffs[0]['metadata'] ?? '{}', true);
+        $this->assertSame('spent_or_gift_protected', $meta['reason'] ?? '');
+        $this->assertSame(10, (int) ($meta['written_off'] ?? 0));
     }
 
     public function testRule7PartialRefundReversesReferrerRewardProportionally() {
@@ -527,6 +664,37 @@ class RefundPointsRulesTest extends TestCase {
         $points = $this->manager();
         $this->assertSame(0, $points->get_points_balance(93120));
         $this->assertSame(10, (int) $order->get_meta('_intersoccer_referrer_reward_points_reversed_total', true));
+    }
+
+    public function testRule8ReinstatementRetakeDoesNotTakeGiftedPoints() {
+        $points = $this->manager();
+        $customer_id = 931111;
+        $order = $this->make_order(931111, $customer_id, 100, 'completed');
+        $order->update_meta_data('_intersoccer_points_redeemed', 25);
+        $order->update_meta_data('_intersoccer_credits_deducted_on_completion', 1);
+        $order->save();
+        $this->seed_balance($customer_id, 0);
+
+        $order->set_status('refunded');
+        $points->handle_order_status_refunded(931111);
+        $this->assertSame(25, $points->get_points_balance($customer_id));
+
+        $this->seed_ledger_row([
+            'customer_id' => $customer_id,
+            'order_id' => 0,
+            'transaction_type' => 'gift_received',
+            'points_amount' => 100,
+            'points_balance' => 125,
+            'created_at' => '2024-04-01 10:00:00',
+            'id' => 9001,
+        ]);
+        $this->seed_balance($customer_id, 125);
+
+        $points->handle_order_status_changed(931111, 'refunded', 'processing', $order);
+
+        $this->assertSame(25, $this->sum_abs_ledger_for_order(931111, 'redeemed_retaken'));
+        $this->assertSame([], $this->ledger_types_for_order(931111, 'reversal_write_off'));
+        $this->assertSame(100, $points->get_points_balance($customer_id));
     }
 
     public function testRule8ReinstatementRetakesRedeemedOnceWithShortfallWriteOff() {

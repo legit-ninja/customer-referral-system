@@ -999,24 +999,40 @@ if (!function_exists('intersoccer_mock_purchase_log_id_for_order')) {
     }
 }
 
-if (!function_exists('intersoccer_mock_sum_positive_points_after_id')) {
-    function intersoccer_mock_sum_positive_points_after_id($customer_id, $after_id) {
+if (!function_exists('intersoccer_mock_customer_points_ledger_for_fifo')) {
+    /**
+     * Rows for SELECT id, transaction_type, points_amount … ORDER BY created_at, id ASC.
+     *
+     * @param int $customer_id
+     * @return array<int, object>
+     */
+    function intersoccer_mock_customer_points_ledger_for_fifo($customer_id) {
         global $mock_points_log_rows;
-        $sum = 0;
+        $customer_id = (int) $customer_id;
+        $rows = [];
         foreach ((array) $mock_points_log_rows as $row) {
-            if ((int) ($row['customer_id'] ?? 0) !== (int) $customer_id) {
+            if ((int) ($row['customer_id'] ?? 0) !== $customer_id) {
                 continue;
             }
-            $row_id = (int) ($row['id'] ?? 0);
-            if ($row_id <= (int) $after_id) {
-                continue;
-            }
-            $amount = (int) ($row['points_amount'] ?? 0);
-            if ($amount > 0) {
-                $sum += $amount;
-            }
+            $rows[] = $row;
         }
-        return $sum;
+        usort($rows, static function ($a, $b) {
+            $ta = strtotime((string) ($a['created_at'] ?? '1970-01-01 00:00:00'));
+            $tb = strtotime((string) ($b['created_at'] ?? '1970-01-01 00:00:00'));
+            if ($ta !== $tb) {
+                return $ta <=> $tb;
+            }
+            return (int) ($a['id'] ?? 0) <=> (int) ($b['id'] ?? 0);
+        });
+        $out = [];
+        foreach ($rows as $row) {
+            $out[] = (object) [
+                'id' => (int) ($row['id'] ?? 0),
+                'transaction_type' => (string) ($row['transaction_type'] ?? ''),
+                'points_amount' => (int) ($row['points_amount'] ?? 0),
+            ];
+        }
+        return $out;
     }
 }
 
@@ -1227,15 +1243,6 @@ $mock_referral_reward_unique_key_present = true;
             }
 
             if (is_string($query)
-                && strpos($query, 'points_amount > 0') !== false
-                && strpos($query, 'id >') !== false
-                && preg_match('/customer_id\s*=\s*(\d+)/', $query, $cust_match)
-                && preg_match('/id\s*>\s*(\d+)/', $query, $id_match)
-            ) {
-                return intersoccer_mock_sum_positive_points_after_id((int) $cust_match[1], (int) $id_match[1]);
-            }
-
-            if (is_string($query)
                 && strpos($query, "transaction_type = 'points_expired'") !== false
                 && preg_match('/customer_id\s*=\s*(\d+)/', $query, $cust_match)
                 && preg_match('/id\s*>\s*(\d+)/', $query, $id_match)
@@ -1386,6 +1393,16 @@ $mock_referral_reward_unique_key_present = true;
                 if ($needle !== '' && strpos($query, $needle) !== false) {
                     return is_callable($result) ? $result($query) : $result;
                 }
+            }
+
+            if (is_string($query)
+                && stripos($query, 'SELECT id') !== false
+                && strpos($query, 'transaction_type') !== false
+                && strpos($query, 'points_amount') !== false
+                && stripos($query, 'ORDER BY created_at') !== false
+                && preg_match('/customer_id\s*=\s*(\d+)/', $query, $fifo_cust)
+            ) {
+                return intersoccer_mock_customer_points_ledger_for_fifo((int) $fifo_cust[1]);
             }
 
             if (is_string($query) && stripos($query, 'as total_earned') !== false && stripos($query, 'as total_spent') !== false) {
