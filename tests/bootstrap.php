@@ -637,13 +637,30 @@ if (!function_exists('is_ssl')) {
 if (!function_exists('get_user_meta')) {
     function get_user_meta($user_id, $key, $single = true) {
         global $mock_user_meta, $mock_force_points_balance_read;
+        $user_id = (int) $user_id;
         if ($key === 'intersoccer_points_balance'
             && isset($mock_force_points_balance_read)
             && is_array($mock_force_points_balance_read)
-            && array_key_exists((int) $user_id, $mock_force_points_balance_read)
+            && array_key_exists($user_id, $mock_force_points_balance_read)
         ) {
-            return $mock_force_points_balance_read[(int) $user_id];
+            return $mock_force_points_balance_read[$user_id];
         }
+
+        if (function_exists('wp_cache_get')) {
+            $cached = wp_cache_get($user_id, 'user_meta');
+            if ($cached !== false) {
+                if (is_array($cached)) {
+                    if (!array_key_exists($key, $cached)) {
+                        return $single ? '' : [];
+                    }
+                    return $cached[$key];
+                }
+                if ($single && $key === 'intersoccer_credits') {
+                    return $cached;
+                }
+            }
+        }
+
         if (!isset($mock_user_meta[$user_id])) {
             $mock_user_meta[$user_id] = [];
         }

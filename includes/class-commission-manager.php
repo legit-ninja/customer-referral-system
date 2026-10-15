@@ -18,6 +18,20 @@ class InterSoccer_Commission_Manager {
      */
     private static $instance = null;
 
+    /**
+     * Nested wpdb transaction depth (START/COMMIT/ROLLBACK issued by this plugin).
+     *
+     * @var int
+     */
+    private static $wpdb_transaction_depth = 0;
+
+    /**
+     * Whether the MyISAM referral-credits warning was logged this request.
+     *
+     * @var bool
+     */
+    private static $referral_credits_myisam_warned = false;
+
     public function __construct() {
         if (self::$instance instanceof self) {
             return;
@@ -1428,7 +1442,17 @@ The InterSoccer Team', 'intersoccer-referral'),
         }
 
         try {
-            $this->sync_paid_rewards_reversal($order_id, false, (int) $refund_id);
+            try {
+                $this->sync_paid_rewards_reversal($order_id, false, (int) $refund_id);
+            } catch (Throwable $e) {
+                intersoccer_referral_log(
+                    'InterSoccer: Commission refund sync failed for order ' . $order_id . ': ' . $e->getMessage()
+                );
+                intersoccer_schedule_order_refund_sync_retry($order_id, 'commission', [
+                    'refund_id' => (int) $refund_id,
+                    'force_full' => false,
+                ]);
+            }
         } finally {
             intersoccer_release_order_refund_lock($order_id);
         }
@@ -1455,7 +1479,17 @@ The InterSoccer Team', 'intersoccer-referral'),
         }
 
         try {
-            $this->sync_paid_rewards_reversal($order_id, true, 0);
+            try {
+                $this->sync_paid_rewards_reversal($order_id, true, 0);
+            } catch (Throwable $e) {
+                intersoccer_referral_log(
+                    'InterSoccer: Commission full reversal failed for order ' . $order_id . ': ' . $e->getMessage()
+                );
+                intersoccer_schedule_order_refund_sync_retry($order_id, 'commission', [
+                    'refund_id' => 0,
+                    'force_full' => true,
+                ]);
+            }
         } finally {
             intersoccer_release_order_refund_lock($order_id);
         }
@@ -1758,16 +1792,13 @@ The InterSoccer Team', 'intersoccer-referral'),
             wp_cache_delete($coach_id, 'user_meta');
         }
 
-        $meta_key = 'intersoccer_credits';
-        $value = $wpdb->get_var($wpdb->prepare(
-            "SELECT meta_value FROM {$wpdb->usermeta} WHERE user_id = %d AND meta_key = %s LIMIT 1",
-            $coach_id,
-            $meta_key
-        ));
-
-        if (function_exists('wp_cache_set')) {
-            wp_cache_set($coach_id, $value, 'user_meta');
-        }
+        $value = function_exists('get_user_meta')
+            ? get_user_meta($coach_id, 'intersoccer_credits', true)
+            : $wpdb->get_var($wpdb->prepare(
+                "SELECT meta_value FROM {$wpdb->usermeta} WHERE user_id = %d AND meta_key = %s LIMIT 1",
+                $coach_id,
+                'intersoccer_credits'
+            ));
 
         return intersoccer_money_floor_to_cents((float) $value);
     }
@@ -1858,15 +1889,56 @@ The InterSoccer Team', 'intersoccer-referral'),
      * @return bool
      */
     private function is_wpdb_transaction_active() {
-        global $wpdb, $mock_wpdb_transaction_depth;
-        if (isset($mock_wpdb_transaction_depth) && (int) $mock_wpdb_transaction_depth > 0) {
-            return true;
-        }
-        if (!is_object($wpdb) || !method_exists($wpdb, 'get_var')) {
+        return self::$wpdb_transaction_depth > 0;
+    }
+
+    /**
+     * @return bool
+     */
+    private function wpdb_start_transaction() {
+        global $wpdb;
+        if (!is_object($wpdb) || !method_exists($wpdb, 'query')) {
             return false;
         }
-        $status = $wpdb->get_var('SELECT @@in_transaction');
-        return (int) $status === 1;
+        if ($wpdb->query('START TRANSACTION') === false) {
+            return false;
+        }
+        self::$wpdb_transaction_depth++;
+        return true;
+    }
+
+    /**
+     * @return bool
+     */
+    private function wpdb_commit_transaction() {
+        global $wpdb;
+        if (!is_object($wpdb) || !method_exists($wpdb, 'query')) {
+            return false;
+        }
+        if ($wpdb->query('COMMIT') === false) {
+            return false;
+        }
+        if (self::$wpdb_transaction_depth > 0) {
+            self::$wpdb_transaction_depth--;
+        }
+        return true;
+    }
+
+    /**
+     * @return bool
+     */
+    private function wpdb_rollback_transaction() {
+        global $wpdb;
+        if (!is_object($wpdb) || !method_exists($wpdb, 'query')) {
+            return false;
+        }
+        if ($wpdb->query('ROLLBACK') === false) {
+            return false;
+        }
+        if (self::$wpdb_transaction_depth > 0) {
+            self::$wpdb_transaction_depth--;
+        }
+        return true;
     }
 
     /**
@@ -1884,9 +1956,12 @@ The InterSoccer Team', 'intersoccer-referral'),
         }
         $engine = strtoupper((string) $status->Engine);
         if ($engine === 'MYISAM') {
-            intersoccer_referral_log(
-                "InterSoccer: referral credits table uses MyISAM; commission claw transactions are not durable"
-            );
+            if (!self::$referral_credits_myisam_warned) {
+                self::$referral_credits_myisam_warned = true;
+                intersoccer_referral_log(
+                    "InterSoccer: referral credits table uses MyISAM; commission claw transactions are not durable"
+                );
+            }
             return false;
         }
         return true;
@@ -1957,7 +2032,7 @@ The InterSoccer Team', 'intersoccer-referral'),
             $tx_started = false;
             $use_transactions = $this->referral_credits_table_supports_transactions();
             if ($use_transactions && !$this->is_wpdb_transaction_active()) {
-                $tx_started = $wpdb->query('START TRANSACTION') !== false;
+                $tx_started = $this->wpdb_start_transaction();
             }
             try {
                 $claw = $this->change_coach_credits_balance($coach_id, $delta, true);
@@ -2005,11 +2080,11 @@ The InterSoccer Team', 'intersoccer-referral'),
                     );
                 }
                 if ($tx_started) {
-                    $wpdb->query('COMMIT');
+                    $this->wpdb_commit_transaction();
                 }
             } catch (Throwable $e) {
                 if ($tx_started) {
-                    $wpdb->query('ROLLBACK');
+                    $this->wpdb_rollback_transaction();
                 }
                 throw $e;
             } finally {
