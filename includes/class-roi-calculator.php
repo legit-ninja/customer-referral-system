@@ -23,6 +23,12 @@ class InterSoccer_ROI_Calculator {
     /** @var array Cached adjustment classification */
     private $adjustment_classification_cache = null;
     
+    /** @var array Per-customer fallback order lookup cache (shared across methods)
+     * Key: customer_id, Value: order_id or null (no fallback found)
+     * Uses array_key_exists to distinguish "not cached" from "cached as null"
+     */
+    private $fallback_order_cache = [];
+    
     /** @var int Transient cache TTL in seconds (1 hour) */
     const CACHE_TTL = 3600;
     
@@ -104,6 +110,7 @@ class InterSoccer_ROI_Calculator {
         ));
         
         $this->adjustment_classification_cache = null;
+        $this->fallback_order_cache = [];
         
         return true;
     }
@@ -843,11 +850,12 @@ class InterSoccer_ROI_Calculator {
         }
         
         // Look for customer's orders after referral date, within the window
+        // No limit: a customer could have many failed/refunded orders before the first valid one
         $orders = wc_get_orders([
             'customer_id' => $customer_id,
             'status' => ['completed', 'processing'],
             'date_created' => $referral_date . '...' . $range['end'] . ' 23:59:59',
-            'limit' => 10, // Check up to 10 orders for the first valid one
+            'limit' => -1,
             'orderby' => 'date',
             'order' => 'ASC',
         ]);
@@ -1239,7 +1247,6 @@ class InterSoccer_ROI_Calculator {
         ", $range['start'], $range['end'] . ' 23:59:59'));
         
         $counted_customers = [];
-        $fallback_cache = []; // Cache per-customer fallback lookup within this calculation
         
         foreach ($referrals as $ref) {
             // Handle both object and array formats (arrays may come from test mocks)
@@ -1258,11 +1265,12 @@ class InterSoccer_ROI_Calculator {
             
             if (!$is_valid) {
                 // Fallback: look up customer's next eligible order after the referral date
-                if (!isset($fallback_cache[$customer_id])) {
-                    $fallback_cache[$customer_id] = $this->find_fallback_first_order($customer_id, $created_at, $range);
+                // Use shared cache with array_key_exists to distinguish "not cached" from "cached as null"
+                if (!array_key_exists($customer_id, $this->fallback_order_cache)) {
+                    $this->fallback_order_cache[$customer_id] = $this->find_fallback_first_order($customer_id, $created_at, $range);
                 }
                 
-                $fallback_order_id = $fallback_cache[$customer_id];
+                $fallback_order_id = $this->fallback_order_cache[$customer_id];
                 if (!$fallback_order_id) continue;
                 
                 $referred_order = wc_get_order($fallback_order_id);
@@ -1359,7 +1367,6 @@ class InterSoccer_ROI_Calculator {
         
         $first_orders = [];
         $seen_customers = [];
-        $fallback_cache = []; // Cache per-customer fallback lookup within this calculation
         
         // Finance ruling: first order = earliest COMPLETED/PROCESSING order (not failed/cancelled/fully-refunded)
         // Skip invalid orders to find the first valid one per customer
@@ -1383,12 +1390,12 @@ class InterSoccer_ROI_Calculator {
                 $first_orders[(int) $order_id] = (int) $customer_id;
             } else {
                 // Fallback: look up customer's next eligible order after the referral date
-                // Cache the lookup to avoid loading the same order multiple times
-                if (!isset($fallback_cache[$customer_id])) {
-                    $fallback_cache[$customer_id] = $this->find_fallback_first_order($customer_id, $created_at, $range);
+                // Use shared cache with array_key_exists to distinguish "not cached" from "cached as null"
+                if (!array_key_exists($customer_id, $this->fallback_order_cache)) {
+                    $this->fallback_order_cache[$customer_id] = $this->find_fallback_first_order($customer_id, $created_at, $range);
                 }
                 
-                $fallback_order_id = $fallback_cache[$customer_id];
+                $fallback_order_id = $this->fallback_order_cache[$customer_id];
                 if ($fallback_order_id) {
                     $seen_customers[$customer_id] = true;
                     $first_orders[(int) $fallback_order_id] = (int) $customer_id;
@@ -1896,7 +1903,6 @@ class InterSoccer_ROI_Calculator {
         $repeat_order_revenue = 0;
         $new_family_count = 0;
         $counted_customers = [];
-        $fallback_cache = []; // Cache per-customer fallback lookup within this calculation
         
         foreach ($referrals as $ref) {
             // Handle both object and array formats (arrays may come from test mocks)
@@ -1915,11 +1921,12 @@ class InterSoccer_ROI_Calculator {
             
             if (!$is_valid) {
                 // Fallback: look up customer's next eligible order after the referral date
-                if (!isset($fallback_cache[$customer_id])) {
-                    $fallback_cache[$customer_id] = $this->find_fallback_first_order($customer_id, $created_at, $range);
+                // Use shared cache with array_key_exists to distinguish "not cached" from "cached as null"
+                if (!array_key_exists($customer_id, $this->fallback_order_cache)) {
+                    $this->fallback_order_cache[$customer_id] = $this->find_fallback_first_order($customer_id, $created_at, $range);
                 }
                 
-                $fallback_order_id = $fallback_cache[$customer_id];
+                $fallback_order_id = $this->fallback_order_cache[$customer_id];
                 if (!$fallback_order_id) continue;
                 
                 $referred_order = wc_get_order($fallback_order_id);
@@ -1929,8 +1936,9 @@ class InterSoccer_ROI_Calculator {
             // This is the first valid order for this customer
             $counted_customers[$customer_id] = true;
             
-            // FIX #10: Apply new-family rule
-            if (!$this->is_new_family($customer_id, $order_id)) continue;
+            // FIX #10: Apply new-family rule (use the actual order we're counting, which may be fallback)
+            $actual_order_id = $referred_order->get_id();
+            if (!$this->is_new_family($customer_id, $actual_order_id)) continue;
             
             $new_family_count++;
             $referred_date = $referred_order->get_date_created();
