@@ -1894,8 +1894,15 @@ if (!function_exists('wc_get_orders')) {
             return $mock_wc_get_orders($args);
         }
 
-        // Default implementation: filter orders by status and date
-        $orders = is_array($mock_wc_orders_by_id) ? $mock_wc_orders_by_id : ($mock_orders ?? []);
+        // Backward compatibility: if only $mock_orders is set (not $mock_wc_orders_by_id),
+        // return it directly without filtering (original behavior for legacy tests)
+        if (!isset($mock_wc_orders_by_id) || !is_array($mock_wc_orders_by_id) || empty($mock_wc_orders_by_id)) {
+            return $mock_orders ?? [];
+        }
+
+        // Advanced implementation: filter orders by status, date, customer_id
+        // Used by ROI calculator tests that set $mock_wc_orders_by_id
+        $orders = $mock_wc_orders_by_id;
         if (empty($orders)) {
             return isset($args['return']) && $args['return'] === 'ids' ? [] : [];
         }

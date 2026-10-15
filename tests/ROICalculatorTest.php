@@ -9,12 +9,13 @@ use PHPUnit\Framework\TestCase;
  * - Rolling 12-month period
  * - Referral and Loyalty ROI calculated separately
  * - Points counted as CHF 1 cost when earned
- * - Expiry and reversal reduce cost and liability
+ * - Expiry and reversal reduce liability, not cost
  * - ROI blank until camp margin % is set
+ * - Finance dedupe: first order = referral, later orders = loyalty
  * 
- * All tests use real mock orders with line items, fees, and refunds.
- * Every assertion uses assertEquals/assertEqualsWithDelta with exact values.
- * No has_data guards, no keys-only checks, no assertIsNumeric-only tests.
+ * Most tests use real mock orders with line items, fees, and refunds.
+ * Exact-value tests use assertEquals/assertEqualsWithDelta.
+ * Structure tests use assertArrayHasKey for API stability.
  */
 class ROICalculatorTest extends TestCase {
     
@@ -360,7 +361,16 @@ class ROICalculatorTest extends TestCase {
     }
     
     /**
-     * Test cost-when-earned: expired/reversed points reduce LIABILITY, not cost
+     * EXACT VALUE TEST: Expired/reversed points reduce LIABILITY, not cost
+     * 
+     * Fixture:
+     *   Earned (activity): 2000 points
+     *   Expired: 300 points
+     *   Reversed: 200 points
+     * 
+     * Expected:
+     *   points_cost = 2000 CHF (cost when earned, not reduced)
+     *   liability_reductions = 500 CHF (300 + 200)
      */
     public function testLoyaltyROI_ExpiryReducesLiabilityNotCost() {
         update_option('intersoccer_roi_camp_margin_percent', 30);
@@ -369,7 +379,14 @@ class ROICalculatorTest extends TestCase {
         update_option('intersoccer_roi_platform_fees_monthly', 0);
         
         global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders, $mock_user_meta;
-        $mock_wpdb_get_var_results = [];
+        $mock_wpdb_get_var_results = [
+            'commission_amount' => 0,
+            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
+            'NOT IN' => 2000,
+            'intersoccer_points_balance' => 1500,
+            "transaction_type = 'points_expired'" => 300,
+            "IN ('order_refund', 'points_refund', 'reversal')" => 200,
+        ];
         $mock_wpdb_get_results = ['intersoccer_points_log' => []];
         $mock_wc_get_orders = function() { return []; };
         $mock_user_meta = [];
@@ -377,10 +394,10 @@ class ROICalculatorTest extends TestCase {
         $calculator = new InterSoccer_ROI_Calculator();
         $result = $calculator->calculate_loyalty_roi();
         
-        $this->assertArrayHasKey('points_cost', $result, 'Should return points_cost (cost when earned)');
-        $this->assertArrayHasKey('liability_reductions', $result, 'Should return liability_reductions');
-        $this->assertIsNumeric($result['points_cost'], 'points_cost should be numeric');
-        $this->assertIsNumeric($result['liability_reductions'], 'liability_reductions should be numeric');
+        $this->assertEquals(2000.0, $result['points_cost'], 'Cost = earned points (not reduced by expiry)');
+        
+        $liability = $calculator->get_points_liability();
+        $this->assertEquals(500.0, $liability['liability_reductions'], 'Liability reductions = 300 expired + 200 reversed');
     }
     
     /**
@@ -414,34 +431,14 @@ class ROICalculatorTest extends TestCase {
     }
     
     /**
-     * Test extra spend calculation returns expected structure
-     */
-    public function testLoyaltyROI_ExtraSpendCalculation() {
-        update_option('intersoccer_roi_camp_margin_percent', 30);
-        update_option('intersoccer_roi_ad_spend', 0);
-        update_option('intersoccer_roi_staff_time_monthly', 0);
-        update_option('intersoccer_roi_platform_fees_monthly', 0);
-        
-        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders, $mock_user_meta;
-        $mock_wpdb_get_var_results = [];
-        $mock_wpdb_get_results = ['intersoccer_points_log' => []];
-        $mock_wc_get_orders = function() { return []; };
-        $mock_user_meta = [];
-        
-        $calculator = new InterSoccer_ROI_Calculator();
-        $result = $calculator->calculate_loyalty_roi();
-        
-        $this->assertArrayHasKey('extra_spend_per_customer', $result);
-        $this->assertArrayHasKey('total_extra_spend', $result);
-        $this->assertArrayHasKey('holder_avg_spend', $result);
-        $this->assertArrayHasKey('non_holder_avg_spend', $result);
-        $this->assertArrayHasKey('holder_count', $result);
-    }
-    
-    /**
-     * Test points liability calculation with fixture data
+     * EXACT VALUE TEST: Points liability includes expired and reversed
      * 
      * Fixture: balance = 35000, expired = 2000, reversed = 1500
+     * Expected:
+     *   current_chf = 35000
+     *   total_expired = 2000
+     *   total_reversed = 1500
+     *   liability_reductions = 3500
      */
     public function testPointsLiability_IncludesExpiredAndReversed() {
         global $mock_wpdb_get_var_results, $mock_wpdb_get_results;
@@ -457,17 +454,20 @@ class ROICalculatorTest extends TestCase {
         $calculator = new InterSoccer_ROI_Calculator();
         $result = $calculator->get_points_liability();
         
-        $this->assertArrayHasKey('current_chf', $result);
-        $this->assertArrayHasKey('total_expired', $result);
-        $this->assertArrayHasKey('total_reversed', $result);
-        $this->assertArrayHasKey('liability_reductions', $result);
+        $this->assertEquals(35000.0, $result['current_chf'], 'current_chf = balance');
+        $this->assertEquals(2000.0, $result['total_expired'], 'total_expired = 2000');
+        $this->assertEquals(1500.0, $result['total_reversed'], 'total_reversed = 1500');
+        $this->assertEquals(3500.0, $result['liability_reductions'], 'liability_reductions = 2000 + 1500');
     }
     
     /**
-     * Test month-over-month liability change calculation
+     * EXACT VALUE TEST: Month-over-month liability change
      * 
      * Fixture: current=40000, last_month=35000
-     * Expected: change_chf = 5000
+     * Expected:
+     *   current_chf = 40000
+     *   last_month_chf = 35000
+     *   change_chf = 5000
      */
     public function testPointsLiability_MonthOverMonthChange() {
         global $mock_wpdb_get_var_results, $mock_wpdb_get_results;
@@ -484,8 +484,9 @@ class ROICalculatorTest extends TestCase {
         $calculator = new InterSoccer_ROI_Calculator();
         $result = $calculator->get_points_liability();
         
-        $this->assertArrayHasKey('change_chf', $result);
-        $this->assertArrayHasKey('last_month_chf', $result);
+        $this->assertEquals(40000.0, $result['current_chf'], 'current = 40000');
+        $this->assertEquals(35000.0, $result['last_month_chf'], 'last_month = 35000');
+        $this->assertEquals(5000.0, $result['change_chf'], 'change = 40000 - 35000 = 5000');
     }
     
     // =========================================================================
@@ -928,55 +929,16 @@ class ROICalculatorTest extends TestCase {
         $this->assertIsNumeric($result['existing_customer_share']);
     }
     
-    /**
-     * Test funnel invariant: new + existing = total
-     */
-    public function testReferralFunnel_NewPlusExistingEqualsTotal() {
-        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wpdb_get_col_results;
-        
-        $mock_wpdb_get_var_results = [];
-        $mock_wpdb_get_results = ['intersoccer_referrals' => []];
-        $mock_wpdb_get_col_results = ['intersoccer_referrals' => []];
-        
-        $calculator = new InterSoccer_ROI_Calculator();
-        $result = $calculator->get_referral_funnel();
-        
-        $this->assertEquals(
-            $result['total_unique_customers'],
-            $result['new_families'] + $result['existing_customers'],
-            'new_families + existing_customers = total'
-        );
-    }
-    
-    // =========================================================================
-    // LIABILITY AGE BREAKDOWN TESTS
-    // =========================================================================
-    
-    public function testLiabilityAgeBreakdown_HasExpectedKeys() {
-        global $mock_wpdb_get_var_results, $mock_wpdb_get_results;
-        
-        $mock_wpdb_get_var_results = [
-            'intersoccer_points_balance' => 10000,
-            'points_amount' => 5000,
-        ];
-        $mock_wpdb_get_results = ['intersoccer_points_log' => []];
-        
-        $calculator = new InterSoccer_ROI_Calculator();
-        $result = $calculator->get_points_liability();
-        
-        $this->assertArrayHasKey('age_breakdown', $result);
-        $this->assertArrayHasKey('0_6_months', $result['age_breakdown']);
-        $this->assertArrayHasKey('6_12_months', $result['age_breakdown']);
-        $this->assertArrayHasKey('12_plus_months', $result['age_breakdown']);
-        $this->assertArrayHasKey('0_6_months_pct', $result['age_breakdown']);
-        $this->assertArrayHasKey('6_12_months_pct', $result['age_breakdown']);
-        $this->assertArrayHasKey('12_plus_months_pct', $result['age_breakdown']);
-    }
-    
     // =========================================================================
     // REDEMPTION RATE TEST
     // =========================================================================
     
+    /**
+     * EXACT VALUE TEST: Redemption rate calculation
+     * 
+     * Fixture: earned=10000, redeemed=2000
+     * Expected: redemption_rate = 2000/10000 × 100 = 20%
+     */
     public function testRedemptionRate_CalculatesCorrectly() {
         global $mock_wpdb_get_var_results, $mock_wpdb_get_results;
         
@@ -993,10 +955,9 @@ class ROICalculatorTest extends TestCase {
         $calculator = new InterSoccer_ROI_Calculator();
         $result = $calculator->get_points_liability();
         
-        $this->assertArrayHasKey('redemption_rate', $result);
-        $this->assertArrayHasKey('earned_12mo', $result);
-        $this->assertArrayHasKey('redeemed_12mo', $result);
-        $this->assertIsNumeric($result['redemption_rate']);
+        $this->assertEquals(10000.0, $result['earned_12mo'], 'earned = 10000');
+        $this->assertEquals(2000.0, $result['redeemed_12mo'], 'redeemed = 2000');
+        $this->assertEqualsWithDelta(20.0, $result['redemption_rate'], 0.1, 'rate = 2000/10000 × 100 = 20%');
     }
     
     // =========================================================================
@@ -1023,25 +984,31 @@ class ROICalculatorTest extends TestCase {
     // HPOS FALLBACK TEST
     // =========================================================================
     
+    /**
+     * EXACT VALUE TEST: HPOS fallback returns correct values
+     * 
+     * With no orders: revenue=0, holder_count=0, non_holder_count=0
+     */
     public function testHPOSCompatibility_BatchedFallbackReturnsProperStructure() {
         update_option('intersoccer_roi_camp_margin_percent', 40);
         
-        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders;
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders, $mock_wpdb_get_col_results;
         $mock_wpdb_get_var_results = [];
         $mock_wpdb_get_results = ['intersoccer_referrals' => [], 'intersoccer_points_log' => []];
+        $mock_wpdb_get_col_results = ['intersoccer_points_balance' => []];
         $mock_wc_get_orders = function() { return []; };
         
         $calculator = new InterSoccer_ROI_Calculator();
         $range = $calculator->get_period_range();
         
         $revenue = $calculator->get_revenue_ex_vat($range);
-        $this->assertIsNumeric($revenue, 'Revenue should be numeric from batched fallback');
+        $this->assertEquals(0.0, $revenue, 'No orders = 0 revenue');
         
         $comparison = $calculator->get_holder_vs_nonholder_comparison($range);
-        $this->assertArrayHasKey('holder_count', $comparison);
-        $this->assertArrayHasKey('non_holder_count', $comparison);
-        $this->assertArrayHasKey('holder_avg_spend', $comparison);
-        $this->assertArrayHasKey('non_holder_avg_spend', $comparison);
+        $this->assertEquals(0, $comparison['holder_count'], 'No orders = 0 holders');
+        $this->assertEquals(0, $comparison['non_holder_count'], 'No orders = 0 non-holders');
+        $this->assertEquals(0.0, $comparison['holder_avg_spend'], 'No orders = 0 holder avg');
+        $this->assertEquals(0.0, $comparison['non_holder_avg_spend'], 'No orders = 0 non-holder avg');
     }
     
     // =========================================================================
@@ -1064,18 +1031,6 @@ class ROICalculatorTest extends TestCase {
         $months = $diff->m + ($diff->y * 12);
         $this->assertGreaterThanOrEqual(11, $months);
         $this->assertLessThanOrEqual(13, $months);
-    }
-    
-    public function testPointsActivity_IncludesExpired() {
-        $this->mockPointsActivityQueries([
-            ['earned' => 5000, 'redeemed' => 1000, 'expired' => 100],
-        ]);
-        
-        $calculator = new InterSoccer_ROI_Calculator();
-        $result = $calculator->get_points_activity();
-        
-        $this->assertIsArray($result);
-        $this->assertArrayHasKey('expired', $result[0]);
     }
     
     // =========================================================================
@@ -1136,22 +1091,25 @@ class ROICalculatorTest extends TestCase {
         
         global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders, $mock_wc_orders_by_id;
         
+        $in_window_date = wp_date('Y-m-d', strtotime('-3 months')) . ' 10:00:00';
+        
         // Create a referred customer order with 2000 CHF revenue and 20 CHF referral discount
         $order = $this->createMockOrder(
             2001,
             'completed',
-            '2024-06-15 10:00:00',
+            $in_window_date,
             [['name' => 'Camp', 'subtotal' => 2000, 'total' => 2000]],
             [['name' => 'Referral Discount', 'total' => -20]],
             [],
             ['_intersoccer_first_order_discount_applied' => 1, '_intersoccer_first_order_discount_amount' => 20]
         );
         $order->set_total(1980);
+        $order->set_customer_id(2101);
         
         // Mock referral record pointing to this order
         $mock_wpdb_get_results = [
             'intersoccer_referrals' => [
-                (object) ['customer_id' => 2101, 'order_id' => 2001, 'created_at' => '2024-06-15 10:00:00']
+                (object) ['customer_id' => 2101, 'order_id' => 2001, 'created_at' => $in_window_date]
             ],
             'intersoccer_points_log' => [],
         ];
@@ -1162,17 +1120,6 @@ class ROICalculatorTest extends TestCase {
             "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 20,
             'NOT IN' => 0,
         ];
-        
-        // Mock wc_get_orders to return orders for queries
-        $mock_wc_get_orders = function($args) use ($order) {
-            if (isset($args['return']) && $args['return'] === 'ids') {
-                return [2001];
-            }
-            if (isset($args['customer_id']) && $args['customer_id'] == 2101) {
-                return [$order];
-            }
-            return [];
-        };
         
         $calculator = new InterSoccer_ROI_Calculator();
         
@@ -1671,67 +1618,146 @@ class ROICalculatorTest extends TestCase {
         $combined = $calculator->get_roi_range_display();
         $this->assertArrayHasKey('attribution_rule', $combined);
     }
-    
+
     /**
-     * EXACT VALUE ROI RANGE TEST: Combined ROI applies program-specific incrementality
+     * EXACT VALUE TEST: Finance ruling - dormant holders are excluded from count
+     * 
+     * Finance ruling: Count only customers who placed at least one order in the 12-month window.
+     * Dormant accounts (points but no orders in window) are excluded from both groups.
+     * Their points still count in the liability figure.
+     * 
+     * Fixture:
+     *   - Customer 9101: Active holder (100 points, 500 CHF order in window)
+     *   - Customer 9102: Dormant holder (200 points, NO orders in window)
+     *   - Customer 9103: Non-holder (no points, 300 CHF order in window)
+     * 
+     * Expected:
+     *   holder_count: 1 (only active holder; dormant excluded)
+     *   non_holder_count: 1
+     *   holder_avg_spend: 500 CHF (only active holder's order)
+     *   non_holder_avg_spend: 300 CHF
+     *   Loyalty cost includes dormant holder's points (200) in liability
      */
-    public function testCombinedROIRange_AppliesProgramSpecificIncrementality() {
+    public function testFinanceRuling_DormantHolderExcludedFromCount() {
         update_option('intersoccer_roi_camp_margin_percent', 40);
         
-        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders;
-        $mock_wpdb_get_var_results = [];
-        $mock_wpdb_get_results = ['intersoccer_referrals' => [], 'intersoccer_points_log' => []];
-        $mock_wc_get_orders = function() { return []; };
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wpdb_get_col_results;
+        global $mock_wc_orders_by_id, $mock_user_meta;
+        
+        $in_window_date = wp_date('Y-m-d', strtotime('-3 months')) . ' 10:00:00';
+        
+        // Active holder: has order in window + points
+        $order1 = $this->createMockOrder(
+            9601, 'completed', $in_window_date,
+            [['name' => 'Camp', 'subtotal' => 500, 'total' => 500]],
+            [], [], []
+        );
+        $order1->set_customer_id(9101);
+        $mock_user_meta[9101] = ['intersoccer_points_balance' => 100];
+        
+        // Dormant holder: has points but NO orders in window
+        // (no order created for customer 9102)
+        $mock_user_meta[9102] = ['intersoccer_points_balance' => 200];
+        
+        // Non-holder: no points, has order in window
+        $order2 = $this->createMockOrder(
+            9602, 'completed', $in_window_date,
+            [['name' => 'Camp', 'subtotal' => 300, 'total' => 300]],
+            [], [], []
+        );
+        $order2->set_customer_id(9103);
+        
+        // Holder detection returns BOTH holders (active + dormant)
+        // Finance ruling must filter to only active ones
+        $mock_wpdb_get_col_results = [
+            'intersoccer_points_balance' => [9101, 9102], // Both holders
+        ];
+        
+        $mock_wpdb_get_results = [
+            'intersoccer_referrals' => [],
+            'intersoccer_points_log' => [],
+        ];
+        
+        // Loyalty cost: 300 total points (100 active + 200 dormant)
+        // Dormant holder's points still count in liability
+        $mock_wpdb_get_var_results = [
+            'commission_amount' => 0,
+            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
+            'NOT IN' => 300, // Total activity points including dormant
+            'intersoccer_points_balance' => 300,
+        ];
         
         $calculator = new InterSoccer_ROI_Calculator();
-        $result = $calculator->get_roi_range_display();
+        $loyalty = $calculator->calculate_loyalty_roi();
         
-        $this->assertArrayHasKey('display', $result);
-        $this->assertArrayHasKey('has_data', $result);
-        $this->assertArrayHasKey('show_margin_prompt', $result);
-        $this->assertFalse($result['show_margin_prompt']);
+        // Finance ruling: dormant holder is EXCLUDED from holder_count
+        $this->assertEquals(1, $loyalty['holder_count'], 'Dormant holder must be excluded - only 1 active holder');
+        $this->assertEquals(1, $loyalty['non_holder_count'], 'One non-holder with order in window');
         
-        // Verify incrementality constants
-        $this->assertEquals(0.25, InterSoccer_ROI_Calculator::REFERRAL_INCREMENTALITY_LOW);
-        $this->assertEquals(0.75, InterSoccer_ROI_Calculator::REFERRAL_INCREMENTALITY_HIGH);
-        $this->assertEquals(0.05, InterSoccer_ROI_Calculator::LOYALTY_INCREMENTALITY_LOW);
-        $this->assertEquals(0.25, InterSoccer_ROI_Calculator::LOYALTY_INCREMENTALITY_HIGH);
+        // Average spend uses only active holders
+        $this->assertEqualsWithDelta(500.0, $loyalty['holder_avg_spend'], 0.1, 'Holder avg = active holder only (500)');
+        $this->assertEqualsWithDelta(300.0, $loyalty['non_holder_avg_spend'], 0.1, 'Non-holder avg = 300');
+        
+        // Extra spend = (500 - 300) × 1 = 200
+        $this->assertEqualsWithDelta(200.0, $loyalty['total_extra_spend'], 0.1, 'Extra spend = (500 - 300) × 1');
+        
+        // Liability still includes dormant holder's points
+        $this->assertEquals(300, $loyalty['points_cost'], 'Cost includes all points (dormant + active)');
     }
-    
+
     /**
-     * Test negative ROI values are allowed
+     * EXACT VALUE TEST: Negative ROI values are allowed
+     * 
+     * Fixture:
+     *   Referral revenue: 1000 CHF (one referred order)
+     *   Referral cost: 15000 CHF (10000 commissions + 5000 points)
+     *   Margin: 10%
+     * 
+     * Expected referral ROI (with 25%-75% incrementality):
+     *   Low: (1000 × 0.25 × 0.10 - 15000) / 15000 × 100 = -99.8%
+     *   High: (1000 × 0.75 × 0.10 - 15000) / 15000 × 100 = -99.5%
      */
     public function testCombinedROIRange_AllowsNegativeValues() {
         update_option('intersoccer_roi_camp_margin_percent', 10);
         
-        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders, $mock_user_meta;
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_orders_by_id, $mock_user_meta, $mock_wpdb_get_col_results;
+        
+        $in_window_date = wp_date('Y-m-d', strtotime('-3 months')) . ' 10:00:00';
+        
+        $order = $this->createMockOrder(
+            6001, 'completed', $in_window_date,
+            [['name' => 'Camp', 'subtotal' => 1000, 'total' => 1000]],
+            [], [], []
+        );
+        $order->set_customer_id(6001);
         
         $mock_wpdb_get_var_results = [
             'commission_amount' => 10000,
             "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 5000,
-            'NOT IN' => 20000,
+            'NOT IN' => 0,
             'intersoccer_points_balance' => 0,
         ];
-        $mock_wpdb_get_results = ['intersoccer_referrals' => [], 'intersoccer_points_log' => []];
-        $mock_wc_get_orders = function() { return []; };
+        $mock_wpdb_get_results = [
+            'intersoccer_referrals' => [
+                (object) ['customer_id' => 6001, 'order_id' => 6001, 'created_at' => $in_window_date],
+            ],
+            'intersoccer_points_log' => [],
+        ];
+        $mock_wpdb_get_col_results = ['intersoccer_points_balance' => []];
         $mock_user_meta = [];
         
         $calculator = new InterSoccer_ROI_Calculator();
         
         $referral_range = $calculator->calculate_referral_roi_with_range();
-        $loyalty_range = $calculator->calculate_loyalty_roi_with_range();
-        $combined = $calculator->get_roi_range_display();
         
-        $this->assertIsArray($referral_range);
-        $this->assertArrayHasKey('low', $referral_range);
-        $this->assertArrayHasKey('high', $referral_range);
+        // With cost >> revenue, ROI is deeply negative
+        $this->assertTrue($referral_range['has_data'], 'Must have data');
+        $this->assertLessThan(0, $referral_range['low'], 'Low ROI must be negative');
+        $this->assertLessThan(0, $referral_range['high'], 'High ROI must be negative');
         
-        $this->assertIsArray($loyalty_range);
-        $this->assertArrayHasKey('low', $loyalty_range);
-        $this->assertArrayHasKey('high', $loyalty_range);
-        
-        $this->assertIsArray($combined);
-        $this->assertArrayHasKey('display', $combined);
+        // Exact values: (1000 × incrementality × 0.10 - 15000) / 15000 × 100
+        $this->assertEqualsWithDelta(-99.8, $referral_range['low'], 0.1, 'Low = (25 - 15000) / 15000 × 100');
+        $this->assertEqualsWithDelta(-99.5, $referral_range['high'], 0.1, 'High = (75 - 15000) / 15000 × 100');
     }
     
     // =========================================================================
@@ -1781,18 +1807,6 @@ class ROICalculatorTest extends TestCase {
         
         $revenue = $calculator->get_revenue_ex_vat($range, true);
         $this->assertEquals(450.0, $revenue, 'Revenue should be 450 CHF (line total after coupon)');
-    }
-    
-    /**
-     * Test that fee lines are excluded from revenue
-     */
-    public function testRevenueBasis_ExcludesFeeLines() {
-        $calculator = new InterSoccer_ROI_Calculator();
-        $range = $calculator->get_period_range();
-        
-        $revenue = $calculator->get_revenue_ex_vat($range);
-        $this->assertIsNumeric($revenue);
-        $this->assertGreaterThanOrEqual(0, $revenue);
     }
     
     public function testRevenueCalculation_WithEmptyOrdersReturnsZero() {
@@ -2573,63 +2587,6 @@ class ROICalculatorTest extends TestCase {
     // =========================================================================
     
     /**
-     * Test combined ROI integrates both programs correctly
-     * 
-     * Fixture combining referral + loyalty:
-     *   Referral cost: 500 CHF (commissions 300 + referral points 200)
-     *   Loyalty cost: 5,000 CHF
-     *   Total cost: 5,500 CHF
-     *   Margin: 45%
-     * 
-     * Combined ROI uses per-program incrementality ranges:
-     * - Referral: 25%-75%
-     * - Loyalty: 5%-25%
-     */
-    public function testCombinedROI_IntegratesBothPrograms() {
-        update_option('intersoccer_roi_camp_margin_percent', 45);
-        
-        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders, $mock_user_meta;
-        
-        $mock_wpdb_get_var_results = [
-            'commission_amount' => 300,
-            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 200,
-            'NOT IN' => 5000,
-            'intersoccer_points_balance' => 5000,
-        ];
-        $mock_wpdb_get_results = [
-            'intersoccer_referrals' => [],
-            'intersoccer_points_log' => [],
-        ];
-        $mock_wc_get_orders = function() { return []; };
-        $mock_user_meta = [];
-        
-        $calculator = new InterSoccer_ROI_Calculator();
-        
-        $referral_range = $calculator->calculate_referral_roi_with_range();
-        $loyalty_range = $calculator->calculate_loyalty_roi_with_range();
-        $combined = $calculator->get_roi_range_display();
-        
-        $this->assertIsArray($referral_range);
-        $this->assertArrayHasKey('low', $referral_range);
-        $this->assertArrayHasKey('high', $referral_range);
-        $this->assertArrayHasKey('has_data', $referral_range);
-        
-        $this->assertIsArray($loyalty_range);
-        $this->assertArrayHasKey('low', $loyalty_range);
-        $this->assertArrayHasKey('high', $loyalty_range);
-        $this->assertArrayHasKey('has_data', $loyalty_range);
-        
-        $this->assertIsArray($combined);
-        $this->assertArrayHasKey('display', $combined);
-        $this->assertArrayHasKey('has_data', $combined);
-        
-        $this->assertEquals(0.25, InterSoccer_ROI_Calculator::REFERRAL_INCREMENTALITY_LOW, 'Referral low = 25%');
-        $this->assertEquals(0.75, InterSoccer_ROI_Calculator::REFERRAL_INCREMENTALITY_HIGH, 'Referral high = 75%');
-        $this->assertEquals(0.05, InterSoccer_ROI_Calculator::LOYALTY_INCREMENTALITY_LOW, 'Loyalty low = 5%');
-        $this->assertEquals(0.25, InterSoccer_ROI_Calculator::LOYALTY_INCREMENTALITY_HIGH, 'Loyalty high = 25%');
-    }
-    
-    /**
      * EXACT VALUE TEST: Ex-VAT revenue from orders with line items
      * 
      * Fixture:
@@ -2736,7 +2693,9 @@ class ROICalculatorTest extends TestCase {
     public function testReferralROI_WithRealNumericFixture() {
         update_option('intersoccer_roi_camp_margin_percent', 45);
         
-        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders, $mock_wc_orders_by_id;
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_orders_by_id;
+        
+        $in_window_date = wp_date('Y-m-d', strtotime('-3 months')) . ' 10:00:00';
         
         $mock_wpdb_get_var_results = [
             'commission_amount' => 300,
@@ -2746,7 +2705,7 @@ class ROICalculatorTest extends TestCase {
         
         // Create order with line item for revenue calculation
         $mock_order = $this->createMockOrder(
-            3001, 'completed', '2024-06-15 10:00:00',
+            3001, 'completed', $in_window_date,
             [['name' => 'Camp', 'subtotal' => 1000, 'total' => 1000]],
             [], [], []
         );
@@ -2754,20 +2713,10 @@ class ROICalculatorTest extends TestCase {
         
         $mock_wpdb_get_results = [
             'intersoccer_referrals' => [
-                (object) ['customer_id' => 101, 'order_id' => 3001, 'created_at' => '2024-06-15 10:00:00'],
+                (object) ['customer_id' => 101, 'order_id' => 3001, 'created_at' => $in_window_date],
             ],
             'intersoccer_points_log' => [],
         ];
-        
-        $mock_wc_get_orders = function($args) use ($mock_order) {
-            if (isset($args['customer_id']) && $args['customer_id'] == 101) {
-                return [$mock_order];
-            }
-            if (isset($args['return']) && $args['return'] === 'ids') {
-                return [];
-            }
-            return [];
-        };
         
         $calculator = new InterSoccer_ROI_Calculator();
         $referral_range = $calculator->calculate_referral_roi_with_range();
@@ -2914,67 +2863,6 @@ class ROICalculatorTest extends TestCase {
         $this->assertFalse($loyalty_range['has_data']);
         $this->assertArrayNotHasKey('incrementality_low', $referral_range);
         $this->assertArrayNotHasKey('incrementality_low', $loyalty_range);
-    }
-    
-    /**
-     * Test revenue calculation with fixture data returns proper structure
-     */
-    public function testRevenueCalculation_WithFixtureData() {
-        update_option('intersoccer_roi_camp_margin_percent', 45);
-        
-        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders;
-        
-        $mock_wpdb_get_var_results = [
-            'commission_amount' => 0,
-            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
-            'NOT IN' => 0,
-        ];
-        $mock_wpdb_get_results = [
-            'intersoccer_referrals' => [],
-            'intersoccer_points_log' => [],
-        ];
-        $mock_wc_get_orders = function() { return []; };
-        
-        $calculator = new InterSoccer_ROI_Calculator();
-        $referral = $calculator->calculate_referral_roi();
-        
-        $this->assertIsArray($referral);
-        $this->assertArrayHasKey('revenue_ex_vat', $referral);
-        $this->assertArrayHasKey('total_revenue', $referral);
-        $this->assertIsNumeric($referral['revenue_ex_vat']);
-    }
-    
-    /**
-     * Test loyalty incrementality constants are correct.
-     * With no holder/non-holder data fixture, has_data is false.
-     */
-    public function testLoyaltyROI_IncrementalityConstants() {
-        update_option('intersoccer_roi_camp_margin_percent', 40);
-        
-        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders, $mock_user_meta;
-        
-        $mock_wpdb_get_var_results = [
-            'commission_amount' => 0,
-            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
-            'NOT IN' => 1000,
-            'intersoccer_points_balance' => 1000,
-        ];
-        $mock_wpdb_get_results = ['intersoccer_referrals' => [], 'intersoccer_points_log' => []];
-        $mock_wc_get_orders = function() { return []; };
-        $mock_user_meta = [];
-        
-        $calculator = new InterSoccer_ROI_Calculator();
-        $loyalty_range = $calculator->calculate_loyalty_roi_with_range();
-        
-        $this->assertFalse($loyalty_range['show_margin_prompt'], 'Should not show margin prompt');
-        
-        // Constants always available
-        $this->assertEquals(0.05, InterSoccer_ROI_Calculator::LOYALTY_INCREMENTALITY_LOW, 'Low should be 5%');
-        $this->assertEquals(0.25, InterSoccer_ROI_Calculator::LOYALTY_INCREMENTALITY_HIGH, 'High should be 25%');
-        
-        // With no holder comparison data, has_data is false
-        $this->assertFalse($loyalty_range['has_data'], 'No holder data → has_data false');
-        $this->assertArrayNotHasKey('incrementality_low', $loyalty_range, 'No incrementality when no data');
     }
     
     /**

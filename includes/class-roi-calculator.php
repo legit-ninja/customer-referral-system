@@ -4,7 +4,7 @@
  * 
  * Implements the approved ROI spec (v4):
  * - Rolling 12-month window using WordPress timezone consistently
- * - Ex-VAT revenue: line subtotals net of partial refunds, excluding shipping/fees/tax
+ * - Ex-VAT revenue: line totals after discounts, net of refunds, excluding shipping/fees/tax
  * - Points counted as CHF 1 cost WHEN EARNED (not when redeemed)
  * - Adjustments split: goodwill/bonus (cost) vs correction (not cost)
  * - HPOS-compatible via wc_get_orders()
@@ -1168,6 +1168,7 @@ class InterSoccer_ROI_Calculator {
             FROM {$referrals_table}
             WHERE created_at BETWEEN %s AND %s
               AND order_id IS NOT NULL
+            ORDER BY created_at ASC
         ", $range['start'], $range['end'] . ' 23:59:59'));
         
         $counted_customers = [];
@@ -1189,9 +1190,11 @@ class InterSoccer_ROI_Calculator {
             $order_status = $referred_order->get_status();
             if (!in_array($order_status, ['completed', 'processing'])) continue;
             
-            // Only count if order is within the period
+            // Only count if order is within the period (both start and end)
             $order_date = $referred_order->get_date_created();
-            if (!$order_date || $order_date->format('Y-m-d') > $range['end']) continue;
+            if (!$order_date) continue;
+            $order_date_str = $order_date->format('Y-m-d');
+            if ($order_date_str < $range['start'] || $order_date_str > $range['end']) continue;
             
             // Line totals AFTER discounts (coupons/promos reduce revenue)
             foreach ($referred_order->get_items() as $item) {
@@ -1467,12 +1470,25 @@ class InterSoccer_ROI_Calculator {
             ", $start_gmt, $end_gmt));
             
             // Calculate repeat rates using aggregate query
-            $holder_repeat = $this->calculate_repeat_rate_sql($holder_ids_sql, $range, true);
+            // Finance dedupe: exclude first referred orders from holder repeat rate
+            $holder_repeat = $this->calculate_repeat_rate_sql($holder_ids_sql, $range, true, $excluded_ids_sql);
             $non_holder_repeat = $this->calculate_repeat_rate_sql($holder_ids_sql, $range, false);
             
-            // Finance dedupe: holder count = all users with points > 0
-            // This includes referred holders with 0 spend (their first order is excluded)
-            $holder_count = count($holders);
+            // Finance ruling: count only customers with at least one order in window
+            // Dormant accounts (points but no orders in window) are excluded
+            // A referred holder whose only order is their first counts as holder with 0 spend
+            // First orders ARE included for counting holders (just excluded from revenue)
+            $active_holders = $this->wpdb->get_var($this->wpdb->prepare("
+                SELECT COUNT(DISTINCT o.customer_id)
+                FROM {$orders_table} o
+                WHERE o.type = 'shop_order'
+                  AND o.status IN ('wc-completed', 'wc-processing')
+                  AND o.date_created_gmt >= %s
+                  AND o.date_created_gmt <= %s
+                  AND o.customer_id IN ({$holder_ids_sql})
+                  AND o.customer_id > 0
+            ", $start_gmt, $end_gmt));
+            $holder_count = (int) $active_holders;
             $non_holder_count = (int) ($non_holder_stats->customer_count ?? 0);
             
             // Revenue = line totals + refunds (refunds are negative)
@@ -1497,8 +1513,13 @@ class InterSoccer_ROI_Calculator {
     
     /**
      * Calculate repeat rate using aggregate SQL
+     * 
+     * @param string $holder_ids_sql Comma-separated holder IDs
+     * @param array $range Date range with 'start' and 'end'
+     * @param bool $is_holder Whether calculating for holders (true) or non-holders (false)
+     * @param string|null $excluded_order_ids_sql Optional: first referred order IDs to exclude (Finance dedupe)
      */
-    private function calculate_repeat_rate_sql($holder_ids_sql, $range, $is_holder) {
+    private function calculate_repeat_rate_sql($holder_ids_sql, $range, $is_holder, $excluded_order_ids_sql = null) {
         $orders_table = $this->wpdb->prefix . 'wc_orders';
         
         // Convert local dates to GMT for consistent bounds
@@ -1507,7 +1528,13 @@ class InterSoccer_ROI_Calculator {
         
         $operator = $is_holder ? 'IN' : 'NOT IN';
         
-        // Count customers with 2+ orders
+        // Finance dedupe: exclude first referred orders from holder repeat rate
+        $exclusion_clause = '';
+        if ($is_holder && $excluded_order_ids_sql && $excluded_order_ids_sql !== '0') {
+            $exclusion_clause = " AND id NOT IN ({$excluded_order_ids_sql})";
+        }
+        
+        // Count customers with 2+ orders (after excluding first referred orders for holders)
         $result = $this->wpdb->get_row($this->wpdb->prepare("
             SELECT 
                 COUNT(DISTINCT customer_id) as total_customers,
@@ -1521,6 +1548,7 @@ class InterSoccer_ROI_Calculator {
                   AND date_created_gmt <= %s
                   AND customer_id {$operator} ({$holder_ids_sql})
                   AND customer_id > 0
+                  {$exclusion_clause}
                 GROUP BY customer_id
             ) as customer_orders
         ", $start_gmt, $end_gmt));
@@ -1546,11 +1574,21 @@ class InterSoccer_ROI_Calculator {
         // Finance dedupe: get first referred orders to exclude from holder spend
         $first_referred = $this->get_first_referred_orders($range);
         
-        // Finance dedupe: pre-register referred holders (they count even with 0 spend)
-        // A referred holder with no later orders = holder with 0 spend
+        // Finance ruling: referred holders count if they have at least one order in window
+        // Their first order IS an order in window, so they count as holders even with 0 later spend
+        // But we must verify the order is valid (completed/processing, in date range)
         foreach ($first_referred as $order_id => $customer_id) {
             if (isset($holder_set[$customer_id])) {
-                $holder_stats['customers'][$customer_id] = true;
+                $order = wc_get_order($order_id);
+                if ($order && in_array($order->get_status(), ['completed', 'processing'])) {
+                    $order_date = $order->get_date_created();
+                    if ($order_date) {
+                        $date_str = $order_date->format('Y-m-d');
+                        if ($date_str >= $range['start'] && $date_str <= $range['end']) {
+                            $holder_stats['customers'][$customer_id] = true;
+                        }
+                    }
+                }
             }
         }
         
@@ -1610,9 +1648,11 @@ class InterSoccer_ROI_Calculator {
             $page++;
         } while (count($orders) === self::BATCH_SIZE);
         
-        // Finance dedupe: holder count = all users with points > 0
-        // This includes referred holders with 0 spend (their first order is excluded)
-        $holder_count = count($holder_set);
+        // Finance ruling: count only holders with at least one order in window
+        // Dormant accounts (points but no orders in window) are excluded
+        // The holder_stats['customers'] set includes all holders who had any order in window
+        // (including referred holders whose first order was skipped from revenue but counted for presence)
+        $holder_count = count($holder_stats['customers']);
         $non_holder_count = count($non_holder_stats['customers']);
         
         // Calculate repeat rates (customers with 2+ orders)
@@ -1739,6 +1779,7 @@ class InterSoccer_ROI_Calculator {
             FROM {$referrals_table}
             WHERE created_at BETWEEN %s AND %s
               AND order_id IS NOT NULL
+            ORDER BY created_at ASC
         ", $range['start'], $range['end'] . ' 23:59:59'));
         
         $first_order_revenue = 0;
