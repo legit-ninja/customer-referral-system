@@ -612,7 +612,8 @@ class RefundPointsRulesTest extends TestCase {
         $order->add_refund($refund);
         InterSoccer_Commission_Manager::get_instance()->handle_order_refunded_rewards(931091, 9310911);
 
-        $this->assertGreaterThan(0.0, (float) $order->get_meta('_intersoccer_commission_amount_reversed_total', true));
+        $this->assertSame(10.0, (float) $order->get_meta('_intersoccer_commission_amount_reversed_total', true));
+        $this->assertSame(10.0, (float) ($mock_user_meta[93191]['intersoccer_credits'] ?? 0));
     }
 
     public function testRule7CommissionReversedProportionallyWhenOptionYes() {
@@ -639,7 +640,8 @@ class RefundPointsRulesTest extends TestCase {
         $order->add_refund($refund);
         InterSoccer_Commission_Manager::get_instance()->handle_order_refunded_rewards(93109, 931091);
 
-        $this->assertGreaterThan(0.0, (float) $order->get_meta('_intersoccer_commission_amount_reversed_total', true));
+        $this->assertSame(10.0, (float) $order->get_meta('_intersoccer_commission_amount_reversed_total', true));
+        $this->assertSame(10.0, (float) ($mock_user_meta[93190]['intersoccer_credits'] ?? 0));
     }
 
     public function testRule7PartialThenFullRefundDoesNotDoubleReverseReferralReward() {

@@ -78,6 +78,7 @@ if (!file_exists(INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.ph
 }
 // Include necessary files
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/intersoccer-refund-helpers.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-commission-manager.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-dashboard.php';
 // Include modular admin dashboard classes

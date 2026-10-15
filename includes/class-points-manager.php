@@ -1,6 +1,8 @@
 <?php
 // includes/class-points-manager.php
 
+require_once dirname(__FILE__) . '/intersoccer-refund-helpers.php';
+
 /**
  * Points ledger transaction types (customer-referral-system).
  *
@@ -171,6 +173,20 @@ class InterSoccer_Points_Manager {
 
             // Log the allocation
             intersoccer_referral_log("InterSoccer: Allocated {$points_to_allocate} points to customer {$customer_id} for order {$order_id}");
+
+            $netted_refund_ids = [];
+            if (method_exists($order, 'get_refunds')) {
+                foreach ((array) $order->get_refunds() as $refund) {
+                    if (is_object($refund) && method_exists($refund, 'get_id')) {
+                        $netted_refund_ids[] = (int) $refund->get_id();
+                    }
+                }
+            }
+            $order->update_meta_data('_intersoccer_award_netted_refund_ids', $netted_refund_ids);
+            $order->update_meta_data('_intersoccer_award_net_total', $order_total);
+            if (method_exists($order, 'save')) {
+                $order->save();
+            }
         }
     }
 
@@ -459,9 +475,15 @@ class InterSoccer_Points_Manager {
         } elseif (
             in_array($new, ['processing', 'completed'], true)
             && (int) $order->get_meta('_intersoccer_credits_deducted_on_completion', true) === 1
-            && (int) $order->get_meta('_intersoccer_unpaid_redeemed_released', true) === 1
         ) {
-            $this->maybe_retake_redeemed_points_after_payment($order);
+            if ((int) $order->get_meta('_intersoccer_unpaid_redeemed_released', true) === 1) {
+                $this->maybe_retake_redeemed_points_after_payment($order);
+            } elseif (
+                $old === 'failed'
+                && (int) $order->get_meta('_intersoccer_redeemed_points_returned_total', true) > 0
+            ) {
+                $this->maybe_retake_redeemed_points_after_payment($order);
+            }
         }
     }
 
@@ -511,24 +533,91 @@ class InterSoccer_Points_Manager {
      * @param array  $context  refund_id, force_fraction_one, skip_earned_reversal, earned_only
      */
     public function sync_refund_reversals($order_id, $reason, $context = []) {
-        $order = wc_get_order($order_id);
-        if (!$order || !method_exists($order, 'get_customer_id')) {
+        $order_id = (int) $order_id;
+        if ($order_id <= 0) {
             return;
         }
 
-        $fraction = !empty($context['force_fraction_one'])
-            ? 1.0
-            : $this->get_cumulative_refunded_fraction($order);
-
-        $refund_id = isset($context['refund_id']) ? (int) $context['refund_id'] : null;
-        $earned_only = !empty($context['earned_only']);
-
-        if (empty($context['skip_earned_reversal'])) {
-            $this->sync_earned_points_reversal_for_order($order, $fraction, $reason, $refund_id);
+        if (!intersoccer_acquire_order_refund_lock($order_id)) {
+            return;
         }
 
-        if (!$earned_only) {
-            $this->sync_redeemed_points_return_for_order($order, $fraction, $reason, $refund_id);
+        try {
+            $order = wc_get_order($order_id);
+            if (!$order || !method_exists($order, 'get_customer_id')) {
+                return;
+            }
+
+            $refund_id = isset($context['refund_id']) ? (int) $context['refund_id'] : 0;
+            if ($refund_id > 0 && $this->is_refund_id_processed_for_points($order, $refund_id)) {
+                return;
+            }
+
+            $force_fraction_one = !empty($context['force_fraction_one']);
+            $earned_fraction = $force_fraction_one
+                ? 1.0
+                : $this->get_post_award_refunded_fraction($order);
+            $redeemed_fraction = $force_fraction_one
+                ? 1.0
+                : $this->get_cumulative_refunded_fraction($order);
+
+            $earned_only = !empty($context['earned_only']);
+
+            if (empty($context['skip_earned_reversal'])) {
+                $this->sync_earned_points_reversal_for_order($order, $earned_fraction, $reason, $refund_id ?: null);
+            }
+
+            if (!$earned_only) {
+                $this->sync_redeemed_points_return_for_order($order, $redeemed_fraction, $reason, $refund_id ?: null);
+            }
+
+            if ($refund_id > 0) {
+                $this->mark_refund_id_processed_for_points($order, $refund_id);
+            }
+        } finally {
+            intersoccer_release_order_refund_lock($order_id);
+        }
+    }
+
+    /**
+     * @param WC_Order $order
+     * @param int      $refund_id
+     * @return bool
+     */
+    private function is_refund_id_processed_for_points($order, $refund_id) {
+        $refund_id = (int) $refund_id;
+        if ($refund_id <= 0) {
+            return false;
+        }
+
+        $processed = $order->get_meta('_intersoccer_points_refund_processed_ids', true);
+        if (!is_array($processed)) {
+            return false;
+        }
+
+        return in_array($refund_id, array_map('intval', $processed), true);
+    }
+
+    /**
+     * @param WC_Order $order
+     * @param int      $refund_id
+     */
+    private function mark_refund_id_processed_for_points($order, $refund_id) {
+        $refund_id = (int) $refund_id;
+        if ($refund_id <= 0) {
+            return;
+        }
+
+        $processed = $order->get_meta('_intersoccer_points_refund_processed_ids', true);
+        if (!is_array($processed)) {
+            $processed = [];
+        }
+        if (!in_array($refund_id, array_map('intval', $processed), true)) {
+            $processed[] = $refund_id;
+            $order->update_meta_data('_intersoccer_points_refund_processed_ids', $processed);
+            if (method_exists($order, 'save')) {
+                $order->save();
+            }
         }
     }
 
@@ -569,33 +658,112 @@ class InterSoccer_Points_Manager {
                 continue;
             }
 
-            $line_items = method_exists($refund, 'get_items') ? $refund->get_items('line_item') : [];
-            $line_refund_total = 0.0;
-            if (is_array($line_items)) {
-                foreach ($line_items as $item) {
-                    if (is_object($item) && method_exists($item, 'get_total')) {
-                        $line_refund_total += abs((float) $item->get_total());
-                    }
-                }
-            }
-
-            if ($line_refund_total > 0) {
-                $denominator = $product_subtotal > 0 ? $product_subtotal : 0.0;
-                $share = $denominator > 0 ? ($line_refund_total / $denominator) : 0.0;
-            } else {
-                $refund_amount = 0.0;
-                if (method_exists($refund, 'get_amount')) {
-                    $refund_amount = abs((float) $refund->get_amount());
-                }
-                $denominator = $order_total_paid > 0 ? $order_total_paid : 0.0;
-                $share = $denominator > 0 ? ($refund_amount / $denominator) : 0.0;
-            }
-
-            $share = max(0.0, min(1.0, (float) $share));
-            $cumulative += $share;
+            $cumulative += $this->get_refund_share_for_denominator(
+                $refund,
+                $order,
+                $product_subtotal,
+                $order_total_paid
+            );
         }
 
         return max(0.0, min(1.0, $cumulative));
+    }
+
+    /**
+     * Cumulative refunded fraction for earned reversal after points were awarded on a net total.
+     * Pre-award refunds (netted at allocation) are excluded; later shares use the award net base.
+     *
+     * @param WC_Order $order
+     * @return float
+     */
+    public function get_post_award_refunded_fraction($order) {
+        if (!method_exists($order, 'get_status')) {
+            return 0.0;
+        }
+
+        $status = (string) $order->get_status();
+        if (strpos($status, 'wc-') === 0) {
+            $status = substr($status, 3);
+        }
+        if (in_array($status, ['cancelled', 'refunded'], true)) {
+            return 1.0;
+        }
+
+        $net_base = (float) $order->get_meta('_intersoccer_award_net_total', true);
+        if ($net_base <= 0) {
+            return $this->get_cumulative_refunded_fraction($order);
+        }
+
+        $netted = $order->get_meta('_intersoccer_award_netted_refund_ids', true);
+        if (!is_array($netted)) {
+            $netted = [];
+        }
+        $netted = array_map('intval', $netted);
+
+        if (!method_exists($order, 'get_refunds')) {
+            return 0.0;
+        }
+
+        $refunds = $order->get_refunds();
+        if (!is_array($refunds) || empty($refunds)) {
+            return 0.0;
+        }
+
+        $product_subtotal = $this->get_order_product_subtotal($order);
+        $cumulative = 0.0;
+
+        foreach ($refunds as $refund) {
+            if (!is_object($refund)) {
+                continue;
+            }
+
+            $refund_id = method_exists($refund, 'get_id') ? (int) $refund->get_id() : 0;
+            if ($refund_id > 0 && in_array($refund_id, $netted, true)) {
+                continue;
+            }
+
+            $cumulative += $this->get_refund_share_for_denominator(
+                $refund,
+                $order,
+                $product_subtotal,
+                $net_base
+            );
+        }
+
+        return max(0.0, min(1.0, $cumulative));
+    }
+
+    /**
+     * @param object   $refund
+     * @param WC_Order $order
+     * @param float    $product_subtotal
+     * @param float    $cash_denominator
+     * @return float
+     */
+    private function get_refund_share_for_denominator($refund, $order, $product_subtotal, $cash_denominator) {
+        $line_items = method_exists($refund, 'get_items') ? $refund->get_items('line_item') : [];
+        $line_refund_total = 0.0;
+        if (is_array($line_items)) {
+            foreach ($line_items as $item) {
+                if (is_object($item) && method_exists($item, 'get_total')) {
+                    $line_refund_total += abs((float) $item->get_total());
+                }
+            }
+        }
+
+        if ($line_refund_total > 0) {
+            $denominator = $product_subtotal > 0 ? $product_subtotal : 0.0;
+            $share = $denominator > 0 ? ($line_refund_total / $denominator) : 0.0;
+        } else {
+            $refund_amount = 0.0;
+            if (method_exists($refund, 'get_amount')) {
+                $refund_amount = abs((float) $refund->get_amount());
+            }
+            $denominator = $cash_denominator > 0 ? $cash_denominator : 0.0;
+            $share = $denominator > 0 ? ($refund_amount / $denominator) : 0.0;
+        }
+
+        return max(0.0, min(1.0, (float) $share));
     }
 
     /**
@@ -909,7 +1077,7 @@ class InterSoccer_Points_Manager {
             $already_reversed = (int) min($earned, max(0, $ledger_reversed));
         }
 
-        $target_reversed = (int) min($earned, floor($earned * $fraction));
+        $target_reversed = intersoccer_proportional_floor_int($earned, $fraction);
         $delta = $target_reversed - $already_reversed;
         if ($delta <= 0) {
             if ($target_reversed >= $earned) {
@@ -1012,7 +1180,7 @@ class InterSoccer_Points_Manager {
             $already_returned = (int) min($redeemed, max(0, $ledger_returned));
         }
 
-        $target_returned = (int) min($redeemed, floor($redeemed * $fraction));
+        $target_returned = intersoccer_proportional_floor_int($redeemed, $fraction);
         $delta = $target_returned - $already_returned;
         if ($delta <= 0) {
             if ($target_returned >= $redeemed) {
@@ -1995,7 +2163,10 @@ class InterSoccer_Points_Manager {
      * @param WC_Order $order
      */
     public function maybe_retake_redeemed_points_after_payment($order) {
-        if ((int) $order->get_meta('_intersoccer_unpaid_redeemed_released', true) !== 1) {
+        $unpaid_released = (int) $order->get_meta('_intersoccer_unpaid_redeemed_released', true) === 1;
+        $returned_on_failure = (int) $order->get_meta('_intersoccer_redeemed_points_returned_total', true) > 0;
+
+        if (!$unpaid_released && !$returned_on_failure) {
             return;
         }
 
@@ -2033,7 +2204,9 @@ class InterSoccer_Points_Manager {
             $this->record_reversal_write_off($order, $customer_id, $shortfall, 'reinstated_retake_shortfall', 1.0);
         }
 
-        $order->delete_meta_data('_intersoccer_unpaid_redeemed_released');
+        if ($unpaid_released) {
+            $order->delete_meta_data('_intersoccer_unpaid_redeemed_released');
+        }
         if (method_exists($order, 'save')) {
             $order->save();
         }

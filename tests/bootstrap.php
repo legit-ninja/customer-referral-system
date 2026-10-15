@@ -359,6 +359,23 @@ if (!function_exists('get_option')) {
     }
 }
 
+if (!function_exists('add_option')) {
+    function add_option($key, $value, $deprecated = '', $autoload = 'yes') {
+        global $mock_options, $mock_option_autoload;
+        if (array_key_exists($key, $mock_options)) {
+            return false;
+        }
+        $mock_options[$key] = $value;
+        if ($autoload !== null) {
+            if (!is_array($mock_option_autoload)) {
+                $mock_option_autoload = [];
+            }
+            $mock_option_autoload[$key] = $autoload;
+        }
+        return true;
+    }
+}
+
 if (!function_exists('update_option')) {
     function update_option($key, $value, $autoload = null) {
         global $mock_options, $mock_option_autoload;
@@ -383,6 +400,8 @@ if (!function_exists('delete_option')) {
         return true;
     }
 }
+
+require_once dirname(__DIR__) . '/includes/intersoccer-refund-helpers.php';
 
 global $mock_transients;
 if (!isset($mock_transients)) {
@@ -790,6 +809,7 @@ if (!class_exists('WC_Order')) {
         }
 
         private $meta_data = [];
+        private $persisted_meta = [];
 
         public function get_meta($key, $single = true) {
             return $this->meta_data[$key] ?? ($single ? '' : []);
@@ -1124,6 +1144,23 @@ if (!class_exists('Mock_WPDB')) {
                     return 1;
                 }
                 return 0;
+            }
+
+            $is_coach_credits_update = is_string($query)
+                && stripos($query, 'UPDATE') !== false
+                && strpos($query, 'usermeta') !== false
+                && strpos($query, 'intersoccer_credits') !== false
+                && preg_match('/user_id\s*=\s*(\d+)/', $query, $user_match)
+                && preg_match('/GREATEST\(0,\s*CAST\(meta_value\s+AS\s+DECIMAL\([^)]+\)\)\s*-\s*([0-9.]+)/i', $query, $credit_amount_match);
+            if ($is_coach_credits_update) {
+                $user_id = (int) $user_match[1];
+                $amount = (float) $credit_amount_match[1];
+                if (!isset($mock_user_meta[$user_id]) || !is_array($mock_user_meta[$user_id])) {
+                    $mock_user_meta[$user_id] = [];
+                }
+                $current = (float) ($mock_user_meta[$user_id]['intersoccer_credits'] ?? 0);
+                $mock_user_meta[$user_id]['intersoccer_credits'] = max(0.0, $current - $amount);
+                return 1;
             }
 
             $is_points_balance_update = is_string($query)

@@ -36,21 +36,33 @@ class InterSoccer_CLI_Redeemed_Backfill {
             return [];
         }
 
-        $orders = wc_get_orders([
-            'status' => ['cancelled', 'refunded'],
-            'limit' => 500,
-            'return' => 'objects',
-        ]);
+        $page = 1;
+        do {
+            $orders = wc_get_orders([
+                'status' => ['cancelled', 'refunded'],
+                'limit' => 200,
+                'page' => $page,
+                'return' => 'objects',
+            ]);
+            if (!is_array($orders) || empty($orders)) {
+                break;
+            }
 
-        foreach ((array) $orders as $order) {
-            if (!is_object($order)) {
-                continue;
+            foreach ($orders as $order) {
+                if (!is_object($order)) {
+                    continue;
+                }
+                $row = self::compute_row_for_order($order);
+                if ($row !== null) {
+                    $rows[] = $row;
+                }
             }
-            $row = self::compute_row_for_order($order);
-            if ($row !== null) {
-                $rows[] = $row;
+
+            if (count($orders) < 200) {
+                break;
             }
-        }
+            $page++;
+        } while (true);
 
         return $rows;
     }
