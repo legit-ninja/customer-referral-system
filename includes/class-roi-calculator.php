@@ -1272,6 +1272,7 @@ class InterSoccer_ROI_Calculator {
             FROM {$referrals_table}
             WHERE created_at BETWEEN %s AND %s
               AND order_id IS NOT NULL
+            ORDER BY created_at ASC
         ", $range['start'], $range['end'] . ' 23:59:59'));
         
         $first_orders = [];
@@ -1474,10 +1475,11 @@ class InterSoccer_ROI_Calculator {
             $holder_repeat = $this->calculate_repeat_rate_sql($holder_ids_sql, $range, true, $excluded_ids_sql);
             $non_holder_repeat = $this->calculate_repeat_rate_sql($holder_ids_sql, $range, false);
             
-            // Finance ruling: count only customers with at least one order in window
-            // Dormant accounts (points but no orders in window) are excluded
-            // A referred holder whose only order is their first counts as holder with 0 spend
-            // First orders ARE included for counting holders (just excluded from revenue)
+            // Finance ruling: "first orders included" decides who counts as holder or non-holder.
+            // A customer with any order in the window (including their first referred order) is counted.
+            // Dormant accounts (points but no orders in window) are excluded from holder count.
+            // However, holder SPEND excludes first referred orders (those go to referral revenue).
+            // Example: referred customer with 400 first + 300 later = holder count 1, spend 300.
             $active_holders = $this->wpdb->get_var($this->wpdb->prepare("
                 SELECT COUNT(DISTINCT o.customer_id)
                 FROM {$orders_table} o
@@ -1648,10 +1650,11 @@ class InterSoccer_ROI_Calculator {
             $page++;
         } while (count($orders) === self::BATCH_SIZE);
         
-        // Finance ruling: count only holders with at least one order in window
-        // Dormant accounts (points but no orders in window) are excluded
-        // The holder_stats['customers'] set includes all holders who had any order in window
-        // (including referred holders whose first order was skipped from revenue but counted for presence)
+        // Finance ruling: "first orders included" decides who counts as holder or non-holder.
+        // holder_stats['customers'] includes all holders with any order in window (first or later).
+        // Dormant accounts (points but no orders in window) are excluded from holder count.
+        // holder SPEND excludes first referred orders (those go to referral revenue).
+        // Example: referred customer with 400 first + 300 later = holder count 1, spend 300.
         $holder_count = count($holder_stats['customers']);
         $non_holder_count = count($non_holder_stats['customers']);
         
