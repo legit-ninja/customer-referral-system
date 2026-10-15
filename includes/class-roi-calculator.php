@@ -301,6 +301,46 @@ class InterSoccer_ROI_Calculator {
         
         return $has_data;
     }
+
+    /**
+     * Query orders without WPML (or similar) language filters hiding other locales.
+     *
+     * @param array $args wc_get_orders arguments
+     * @return array
+     */
+    private function wc_get_orders_all_languages($args) {
+        $args['suppress_filters'] = true;
+        return wc_get_orders($args);
+    }
+
+    /**
+     * Net product revenue on an order against refunds, including refunds with no line items.
+     *
+     * @param WC_Order $order
+     * @return float
+     */
+    private function get_order_product_revenue_net_refunds($order) {
+        $revenue = 0.0;
+        foreach ($order->get_items() as $item) {
+            $revenue += (float) $item->get_total();
+        }
+
+        if (method_exists($order, 'get_refunds')) {
+            foreach ($order->get_refunds() as $refund) {
+                $line_total = 0.0;
+                foreach ($refund->get_items() as $refund_item) {
+                    $line_total += (float) $refund_item->get_total();
+                }
+                if ($line_total !== 0.0) {
+                    $revenue += $line_total;
+                    continue;
+                }
+                $revenue += (float) $refund->get_total();
+            }
+        }
+
+        return $revenue;
+    }
     
     /**
      * Compute revenue using aggregate SQL (memory-efficient)
@@ -348,8 +388,20 @@ class InterSoccer_ROI_Calculator {
                   AND o.date_created_gmt >= %s
                   AND o.date_created_gmt <= %s
             ", $start_gmt, $end_gmt));
+
+            $refunds_without_lines = (float) $this->wpdb->get_var($this->wpdb->prepare("
+                SELECT COALESCE(SUM(r.total_amount), 0)
+                FROM {$orders_table} o
+                INNER JOIN {$orders_table} r ON r.parent_order_id = o.id AND r.type = 'shop_order_refund'
+                LEFT JOIN {$items_table} oi ON r.id = oi.order_id AND oi.order_item_type = 'line_item'
+                WHERE o.type = 'shop_order'
+                  AND o.status IN ('wc-completed', 'wc-processing')
+                  AND o.date_created_gmt >= %s
+                  AND o.date_created_gmt <= %s
+                  AND oi.order_item_id IS NULL
+            ", $start_gmt, $end_gmt));
             
-            return $total + $refunds; // refunds are negative, so adding subtracts
+            return $total + $refunds + $refunds_without_lines; // refunds are negative, so adding subtracts
         }
         
         // Fallback: batched processing for non-HPOS installations
@@ -367,7 +419,7 @@ class InterSoccer_ROI_Calculator {
         $page = 1;
         
         do {
-            $orders = wc_get_orders([
+            $orders = $this->wc_get_orders_all_languages([
                 'status' => ['completed', 'processing'],
                 'date_created' => $range['start'] . '...' . $range['end'],
                 'limit' => self::BATCH_SIZE,
@@ -379,19 +431,7 @@ class InterSoccer_ROI_Calculator {
                 $order = wc_get_order($order_id);
                 if (!$order || $order->get_type() === 'shop_order_refund') continue;
                 
-                // Line totals AFTER discounts (coupons reduce revenue)
-                foreach ($order->get_items() as $item) {
-                    $total += (float) $item->get_total();
-                }
-                
-                // Subtract refunded amounts
-                if (method_exists($order, 'get_refunds')) {
-                    foreach ($order->get_refunds() as $refund) {
-                        foreach ($refund->get_items() as $refund_item) {
-                            $total += (float) $refund_item->get_total();
-                        }
-                    }
-                }
+                $total += $this->get_order_product_revenue_net_refunds($order);
                 
                 // Free memory
                 unset($order);
@@ -427,7 +467,7 @@ class InterSoccer_ROI_Calculator {
             }
             
             // Fallback for non-HPOS
-            return count(wc_get_orders([
+            return count($this->wc_get_orders_all_languages([
                 'status' => ['completed', 'processing'],
                 'date_created' => $range['start'] . '...' . $range['end'],
                 'limit' => -1,
@@ -447,7 +487,7 @@ class InterSoccer_ROI_Calculator {
         $referred_date = $referred_order->get_date_created();
         if (!$referred_date) return true;
         
-        $prior_orders = wc_get_orders([
+        $prior_orders = $this->wc_get_orders_all_languages([
             'customer_id' => $customer_id,
             'status' => ['completed', 'processing'],
             'date_created' => '<' . $referred_date->format('Y-m-d H:i:s'),
@@ -494,7 +534,7 @@ class InterSoccer_ROI_Calculator {
               AND transaction_type NOT IN (
                   'customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward',
                   'admin_adjustment', 'manual_adjustment', 'admin_balance_set', 'points_refund', 'admin_reset',
-                  'gift_sent', 'gift_received', 'gift_returned'
+                  'gift_sent', 'gift_received', 'gift_returned', 'reversal_reinstated'
               )
               AND created_at BETWEEN %s AND %s
         ", $range['start'], $range['end'] . ' 23:59:59'));
@@ -516,6 +556,7 @@ class InterSoccer_ROI_Calculator {
             SELECT COALESCE(SUM(commission_amount), 0)
             FROM {$commissions_table}
             WHERE created_at BETWEEN %s AND %s
+              AND status NOT IN ('reversed', 'refunded')
         ", $range['start'], $range['end'] . ' 23:59:59'));
         
         // First-order referral discount (ex-VAT, net of refunds)
@@ -603,7 +644,7 @@ class InterSoccer_ROI_Calculator {
         $page = 1;
         
         do {
-            $orders = wc_get_orders([
+            $orders = $this->wc_get_orders_all_languages([
                 'status' => ['completed', 'processing'],
                 'date_created' => $range['start'] . '...' . $range['end'],
                 'limit' => self::BATCH_SIZE,
@@ -826,7 +867,7 @@ class InterSoccer_ROI_Calculator {
         
         // Look for customer's orders after referral date, within the window
         // No limit: a customer could have many failed/refunded orders before the first valid one
-        $orders = wc_get_orders([
+        $orders = $this->wc_get_orders_all_languages([
             'customer_id' => $customer_id,
             'status' => ['completed', 'processing'],
             'date_created' => $referral_date . '...' . $range['end'] . ' 23:59:59',
@@ -1685,7 +1726,7 @@ class InterSoccer_ROI_Calculator {
         
         $page = 1;
         do {
-            $orders = wc_get_orders([
+            $orders = $this->wc_get_orders_all_languages([
                 'status' => ['completed', 'processing'],
                 'date_created' => $range['start'] . '...' . $range['end'],
                 'limit' => self::BATCH_SIZE,
@@ -1706,20 +1747,7 @@ class InterSoccer_ROI_Calculator {
                     continue;
                 }
                 
-                // Line totals AFTER discounts (coupons reduce revenue)
-                $revenue = 0;
-                foreach ($order->get_items() as $item) {
-                    $revenue += (float) $item->get_total();
-                }
-                
-                // Subtract refunds
-                if (method_exists($order, 'get_refunds')) {
-                    foreach ($order->get_refunds() as $refund) {
-                        foreach ($refund->get_items() as $refund_item) {
-                            $revenue += (float) $refund_item->get_total();
-                        }
-                    }
-                }
+                $revenue = $this->get_order_product_revenue_net_refunds($order);
                 
                 if (isset($holder_set[$customer_id])) {
                     $holder_stats['customers'][$customer_id] = true;
@@ -1920,7 +1948,7 @@ class InterSoccer_ROI_Calculator {
             $end_date = $referred_date ? wp_date('Y-m-d', strtotime($referred_date->format('Y-m-d') . ' +12 months')) : $range['end'];
             
             // Get all orders for this customer within 12 months of referral
-            $customer_orders = wc_get_orders([
+            $customer_orders = $this->wc_get_orders_all_languages([
                 'customer_id' => $customer_id,
                 'status' => ['completed', 'processing'],
                 'date_created' => $referred_date->format('Y-m-d H:i:s') . '...' . $end_date,

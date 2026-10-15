@@ -609,12 +609,17 @@ class ROICalculatorTest extends TestCase {
     public function testCostBreakdown_IncludesAllReferralPointTypes() {
         update_option('intersoccer_roi_camp_margin_percent', 45);
         
-        global $mock_wpdb_get_var_results, $mock_wpdb_get_results;
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_orders_by_id, $mock_wc_get_orders;
         
+        $mock_wc_orders_by_id = [];
+        $mock_wc_get_orders = static function () {
+            return [];
+        };
         $mock_wpdb_get_var_results = [
-            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 177,
-            'NOT IN' => 30000,
-            'commission_amount' => 50,
+            "transaction_type IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 177,
+            "'reversal_reinstated'" => 0,
+            "transaction_type NOT IN" => 0,
+            'COALESCE(SUM(commission_amount)' => 50,
         ];
         $mock_wpdb_get_results = ['intersoccer_points_log' => []];
         
@@ -4877,5 +4882,87 @@ class ROICalculatorTest extends TestCase {
         $roi = $calculator->calculate_referral_roi();
         $this->assertEquals(400.0, $roi['revenue_ex_vat'], 
             'Referral revenue = 400 CHF (from fallback order 9015, not 600 from order 9014 before referral)');
+    }
+
+    public function testRoiOrderQueriesSuppressWpmlFilters() {
+        global $mock_wc_get_orders_last_args, $mock_wc_orders_by_id;
+        $mock_wc_orders_by_id = [];
+        $mock_wc_get_orders_last_args = null;
+
+        $calculator = new InterSoccer_ROI_Calculator();
+        $reflection = new ReflectionClass($calculator);
+        $method = $reflection->getMethod('is_new_family');
+        $method->setAccessible(true);
+
+        $order = $this->createMockOrder(12001, 'completed', '2024-06-01 10:00:00');
+        global $mock_wc_orders_by_id;
+        $mock_wc_orders_by_id[12001] = $order;
+
+        $method->invoke($calculator, 501, 12001);
+
+        $this->assertIsArray($mock_wc_get_orders_last_args);
+        $this->assertTrue(
+            !empty($mock_wc_get_orders_last_args['suppress_filters']),
+            'ROI wc_get_orders queries must bypass WPML language filters'
+        );
+    }
+
+    public function testBatchedRevenueSubtractsRefundWithoutLineItems() {
+        global $mock_wpdb_get_var_results, $mock_wc_orders_by_id;
+
+        $order = $this->createMockOrder(
+            12002,
+            'completed',
+            '2024-06-15 10:00:00',
+            [['name' => 'Camp', 'subtotal' => 200, 'total' => 200]]
+        );
+        $refund = new WC_Order_Refund(120021);
+        $refund->set_parent_id(12002);
+        $refund->set_total(-50);
+        $order->add_refund($refund);
+        $mock_wc_orders_by_id = [12002 => $order];
+
+        $mock_wpdb_get_var_results = [];
+
+        $calculator = new InterSoccer_ROI_Calculator();
+        $reflection = new ReflectionClass($calculator);
+        $batched = $reflection->getMethod('compute_revenue_ex_vat_batched');
+        $batched->setAccessible(true);
+
+        $range = ['start' => '2024-01-01', 'end' => '2024-12-31'];
+        $revenue = $batched->invoke($calculator, $range);
+        $this->assertEqualsWithDelta(150.0, $revenue, 0.01, 'Refund amount applies when refund has no line items');
+    }
+
+    public function testLoyaltyCostExcludesReversalReinstatedPoints() {
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results;
+
+        $mock_wpdb_get_var_results = [
+            "transaction_type IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
+            "transaction_type NOT IN" => 25,
+        ];
+        $mock_wpdb_get_results = [
+            'intersoccer_points_log' => [],
+            'intersoccer_coach_commissions' => [],
+        ];
+
+        $calculator = new InterSoccer_ROI_Calculator();
+        $costs = $calculator->get_cost_breakdown();
+
+        $this->assertStringContainsString(
+            'reversal_reinstated',
+            file_get_contents(__DIR__ . '/../includes/class-roi-calculator.php'),
+            'Fixture guard: loyalty SQL must exclude reversal_reinstated'
+        );
+        $this->assertSame(25.0, $costs['loyalty_activity_chf']);
+    }
+
+    public function testCommissionCostExcludesReversedRows() {
+        $source = file_get_contents(__DIR__ . '/../includes/class-roi-calculator.php');
+        $this->assertStringContainsString(
+            "status NOT IN ('reversed', 'refunded')",
+            $source,
+            'Commission cost must ignore reversed or refunded payout rows'
+        );
     }
 }

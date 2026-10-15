@@ -2619,7 +2619,8 @@ if (!function_exists('get_users')) {
 
 if (!function_exists('wc_get_orders')) {
     function wc_get_orders($args = []) {
-        global $mock_orders, $mock_wc_get_orders, $mock_wc_orders_by_id;
+        global $mock_orders, $mock_wc_get_orders, $mock_wc_orders_by_id, $mock_wc_get_orders_last_args;
+        $mock_wc_get_orders_last_args = $args;
 
         if (isset($mock_wc_get_orders) && is_callable($mock_wc_get_orders)) {
             return $mock_wc_get_orders($args);
