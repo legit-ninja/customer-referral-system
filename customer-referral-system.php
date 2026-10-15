@@ -22,6 +22,7 @@ if (!defined('ABSPATH')) {
 
 // Define plugin constants
 define('INTERSOCCER_REFERRAL_VERSION', '1.10.13');
+define('INTERSOCCER_REFERRAL_CREDITS_DB_VERSION', 2);
 define('INTERSOCCER_REFERRAL_PATH', plugin_dir_path(__FILE__));
 define('INTERSOCCER_REFERRAL_URL', plugin_dir_url(__FILE__));
 define('INTERSOCCER_REFERRAL_BASENAME', plugin_basename(__FILE__));
@@ -78,6 +79,7 @@ if (!file_exists(INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.ph
 }
 // Include necessary files
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-referral-handler.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/intersoccer-refund-helpers.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-commission-manager.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-dashboard.php';
 // Include modular admin dashboard classes
@@ -92,6 +94,7 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-coach-assignments
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-events-manager.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-coach-events.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-points-manager.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-cli-redeemed-backfill.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-audit-logger.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-audit.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-dashboard.php';
@@ -177,6 +180,7 @@ class InterSoccer_Referral_System {
     public function init() {
         $this->load_referral_textdomain();
         $this->maybe_upgrade_referral_reward_unique_key();
+        $this->maybe_upgrade_referral_credits_order_id();
 
         // Initialize core classes
         new InterSoccer_Referral_Handler();
@@ -199,6 +203,7 @@ class InterSoccer_Referral_System {
 
         if (class_exists('WooCommerce')) {
             intersoccer_referral_log('InterSoccer: WooCommerce detected, version: ' . WC()->version);
+            InterSoccer_Commission_Manager::register_woocommerce_hooks();
         }
 
         // Enqueue assets
@@ -445,6 +450,7 @@ class InterSoccer_Referral_System {
             referral_id int(11),
             customer_id bigint(20) unsigned NOT NULL,
             coach_id bigint(20) unsigned,
+            order_id bigint(20) unsigned NULL DEFAULT NULL,
             credit_amount decimal(10,2) NOT NULL DEFAULT '0.00',
             credit_type varchar(50) DEFAULT 'referral',
             status varchar(20) DEFAULT 'active',
@@ -455,6 +461,7 @@ class InterSoccer_Referral_System {
             KEY idx_customer_id (customer_id),
             KEY idx_coach_id (coach_id),
             KEY idx_referral_id (referral_id),
+            KEY idx_order_id (order_id),
             KEY idx_status (status),
             KEY idx_created_at (created_at)
         ) $charset_collate;";
@@ -595,8 +602,61 @@ class InterSoccer_Referral_System {
         dbDelta($assignments_sql);
         // Update version
         update_option('intersoccer_version', INTERSOCCER_REFERRAL_VERSION);
+        update_option('intersoccer_referral_credits_db_version', INTERSOCCER_REFERRAL_CREDITS_DB_VERSION, true);
     }
     
+
+    /**
+     * Add order_id to referral credits on existing installs (commission ledger is per order).
+     *
+     * @return void
+     */
+    private function maybe_upgrade_referral_credits_order_id() {
+        $option = 'intersoccer_referral_credits_db_version';
+        $target = (int) INTERSOCCER_REFERRAL_CREDITS_DB_VERSION;
+        $current = (int) get_option($option, 1);
+        if ($current >= $target) {
+            return;
+        }
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'intersoccer_referral_credits';
+        if (!$this->referral_rewards_table_exists($table)) {
+            return;
+        }
+
+        $column = $wpdb->get_var("SHOW COLUMNS FROM {$table} LIKE 'order_id'");
+        if (empty($column)) {
+            require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+            $charset_collate = $wpdb->get_charset_collate();
+            $credits_sql = "CREATE TABLE {$table} (
+                id int(11) NOT NULL AUTO_INCREMENT,
+                referral_id int(11),
+                customer_id bigint(20) unsigned NOT NULL,
+                coach_id bigint(20) unsigned,
+                order_id bigint(20) unsigned NULL DEFAULT NULL,
+                credit_amount decimal(10,2) NOT NULL DEFAULT '0.00',
+                credit_type varchar(50) DEFAULT 'referral',
+                status varchar(20) DEFAULT 'active',
+                expires_at datetime NULL,
+                created_at datetime DEFAULT CURRENT_TIMESTAMP,
+                updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                KEY idx_customer_id (customer_id),
+                KEY idx_coach_id (coach_id),
+                KEY idx_referral_id (referral_id),
+                KEY idx_order_id (order_id),
+                KEY idx_status (status),
+                KEY idx_created_at (created_at)
+            ) {$charset_collate};";
+            dbDelta($credits_sql);
+        }
+
+        if (get_option($option, '') === (string) $target) {
+            delete_option($option);
+        }
+        update_option($option, $target, true);
+    }
 
     /**
      * Create or update referral rewards, including one row per coach, customer, and order.
@@ -1738,6 +1798,8 @@ function intersoccer_send_weekly_report($coach_id) {
     }
 
 if (defined('WP_CLI') && WP_CLI) {
+    InterSoccer_CLI_Redeemed_Backfill::register_cli_commands();
+
     WP_CLI::add_command('intersoccer sync-commissions', function($args, $assoc_args) {
         $manager = InterSoccer_Commission_Manager::get_instance();
 

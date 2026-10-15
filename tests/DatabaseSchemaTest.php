@@ -295,5 +295,77 @@ class DatabaseSchemaTest extends TestCase {
             'The referral reward upgrade must not drop the table'
         );
     }
+
+    /**
+     * Production installs lacked order_id; fresh CREATE and upgrade must define it.
+     */
+    public function testReferralCreditsSchemaIncludesOrderIdColumn() {
+        $plugin_file = __DIR__ . '/../customer-referral-system.php';
+        $content = file_get_contents($plugin_file);
+
+        $this->assertStringContainsString(
+            'intersoccer_referral_credits_db_version',
+            $content,
+            'Referral credits schema version option must be bumped for order_id migration'
+        );
+        $this->assertStringContainsString(
+            'order_id bigint(20) unsigned NULL DEFAULT NULL',
+            $content,
+            'Referral credits CREATE TABLE must include order_id for per-order commission ledger rows'
+        );
+        $this->assertStringContainsString(
+            'KEY idx_order_id (order_id)',
+            $content,
+            'Referral credits must index order_id for clawback and reinstatement queries'
+        );
+    }
+
+    /**
+     * Commission ledger inserts must only use columns present in the plugin CREATE TABLE (not test mocks).
+     */
+    public function testCommissionCreditInsertColumnsMatchInstallSchema() {
+        $plugin_file = __DIR__ . '/../customer-referral-system.php';
+        $content = file_get_contents($plugin_file);
+
+        if (!preg_match(
+            '/\$credits_table = \$wpdb->prefix \. \'intersoccer_referral_credits\';[\s\S]*?\$credits_sql = "CREATE TABLE \$credits_table \(([\s\S]*?)\) \$charset_collate;/',
+            $content,
+            $matches
+        )) {
+            $this->fail('Could not parse intersoccer_referral_credits CREATE TABLE from install code');
+        }
+
+        $schema_body = $matches[1];
+        preg_match_all('/^\s*([a-z_]+)\s+/m', $schema_body, $column_matches);
+        $schema_columns = array_map('strtolower', $column_matches[1]);
+
+        $commission_file = __DIR__ . '/../includes/class-commission-manager.php';
+        $commission_content = file_get_contents($commission_file);
+
+        $insert_keys = [];
+        if (preg_match_all(
+            "/\\\$wpdb->insert\(\s*\\\$wpdb->prefix \. 'intersoccer_referral_credits',\s*\[([\s\S]*?)\]\s*\)/",
+            $commission_content,
+            $insert_blocks
+        )) {
+            foreach ($insert_blocks[1] as $block) {
+                if (preg_match_all("/'([a-z_]+)'\s*=>/", $block, $key_matches)) {
+                    foreach ($key_matches[1] as $key) {
+                        $insert_keys[$key] = true;
+                    }
+                }
+            }
+        }
+
+        $this->assertNotEmpty($insert_keys, 'Expected commission manager referral_credits inserts in source');
+
+        foreach (array_keys($insert_keys) as $key) {
+            $this->assertContains(
+                $key,
+                $schema_columns,
+                "Commission credit insert uses column '{$key}' missing from install CREATE TABLE"
+            );
+        }
+    }
 }
 

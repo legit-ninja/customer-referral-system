@@ -242,8 +242,17 @@ class InterSoccer_Admin_Points {
                                 <small style="color: #666; font-style: italic;">Integer values only (no decimals)</small>
                             </div>
                             <div class="form-row">
-                                <label for="adjustment-reason">Reason:</label>
-                                <textarea id="adjustment-reason" name="reason" rows="3" placeholder="Enter reason for adjustment..." required></textarea>
+                                <label for="adjustment-category">Category:</label>
+                                <select id="adjustment-category" name="adjustment_reason" required>
+                                    <option value="goodwill">Goodwill</option>
+                                    <option value="bonus">Bonus</option>
+                                    <option value="correction">Correction</option>
+                                </select>
+                                <small style="color: #666; font-style: italic;">Goodwill and bonus are gifts (not clawed back on refund). Corrections can be clawed back.</small>
+                            </div>
+                            <div class="form-row">
+                                <label for="adjustment-reason">Notes:</label>
+                                <textarea id="adjustment-reason" name="reason" rows="3" placeholder="Enter notes for this adjustment..." required></textarea>
                             </div>
                             <div class="form-actions">
                                 <button type="submit" class="button button-primary">Apply Adjustment</button>
@@ -487,6 +496,7 @@ class InterSoccer_Admin_Points {
         $adjustment_type = sanitize_text_field($_POST['adjustment_type']);
         $points_amount_raw = sanitize_text_field($_POST['points_amount']);
         $reason = sanitize_textarea_field($_POST['reason']);
+        $adjustment_reason = sanitize_key($_POST['adjustment_reason'] ?? '');
 
         // Phase 0: Validate integer-only points (reject fractional values)
         if (strpos($points_amount_raw, '.') !== false || strpos($points_amount_raw, ',') !== false) {
@@ -503,14 +513,24 @@ class InterSoccer_Admin_Points {
             wp_send_json_error(['message' => 'Points amount must be a positive integer']);
         }
 
+        $allowed_reasons = ['goodwill', 'bonus', 'correction'];
+        if (in_array($adjustment_type, ['add', 'subtract'], true)
+            && !in_array($adjustment_reason, $allowed_reasons, true)
+        ) {
+            wp_send_json_error(['message' => 'Select goodwill, bonus, or correction']);
+        }
+
         $points_manager = new InterSoccer_Points_Manager();
+        $adjustment_meta = in_array($adjustment_type, ['add', 'subtract'], true)
+            ? ['adjustment_reason' => $adjustment_reason]
+            : [];
 
         switch ($adjustment_type) {
             case 'add':
-                $result = $points_manager->add_points_transaction($user_id, 'admin_adjustment', $points_amount, null, $reason);
+                $result = $points_manager->add_points_transaction($user_id, 'admin_adjustment', $points_amount, null, $reason, $adjustment_meta);
                 break;
             case 'subtract':
-                $result = $points_manager->add_points_transaction($user_id, 'admin_adjustment', -$points_amount, null, $reason);
+                $result = $points_manager->add_points_transaction($user_id, 'admin_adjustment', -$points_amount, null, $reason, $adjustment_meta);
                 break;
             case 'set':
                 // For setting balance, we need to calculate the difference

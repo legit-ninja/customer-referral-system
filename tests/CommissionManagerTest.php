@@ -12,6 +12,29 @@ class CommissionManagerTest extends TestCase {
         require_once __DIR__ . '/../includes/class-commission-manager.php';
         require_once __DIR__ . '/../includes/class-points-manager.php';
 
+        global $mock_fail_wpdb_insert_tables, $mock_fail_wpdb_commit, $mock_wpdb_get_row_results, $mock_wpdb_get_results, $mock_wpdb_updates, $mock_wpdb_inserts, $mock_wpdb_last_insert, $mock_wpdb_last_delete, $mock_wpdb_last_insert_by_table, $mock_user_meta, $mock_wc_orders_by_id, $mock_wc_order_override, $mock_scheduled_single_events;
+        $mock_fail_wpdb_insert_tables = [];
+        $mock_fail_wpdb_commit = false;
+        $mock_wpdb_get_row_results = [];
+        $mock_wpdb_get_results = [];
+        $mock_wpdb_updates = [];
+        $mock_wpdb_inserts = [];
+        $mock_wpdb_last_insert = null;
+        $mock_wpdb_last_delete = null;
+        $mock_wpdb_last_insert_by_table = [];
+        $mock_user_meta = [];
+        $mock_wc_orders_by_id = [];
+        $mock_wc_order_override = null;
+        $mock_scheduled_single_events = [];
+
+        $reflection = new ReflectionClass(InterSoccer_Commission_Manager::class);
+        $instance = $reflection->getProperty('instance');
+        $instance->setAccessible(true);
+        $instance->setValue(null, null);
+        $hooks = $reflection->getProperty('woocommerce_hooks_registered');
+        $hooks->setAccessible(true);
+        $hooks->setValue(null, false);
+
         $default_tiers = [
             ['min_customers' => 1, 'max_customers' => 10, 'rate' => 10],
             ['min_customers' => 11, 'max_customers' => 24, 'rate' => 15],

@@ -323,6 +323,12 @@ In deferred mode, points are not allocated immediately when an order is complete
 1. Set `IS_SANDBOX=true` in your `deploy.local.sh`
 2. The deploy script will automatically set `intersoccer_points_allocation_method=instant` post-deploy
 
+**Sandbox re-check list (after Ledger rulings / refund merges):**
+- Reinstate a cancelled-then-completed order: purchase points, referrer reward, coach first-order points, and coach commission all restore once; a second status flip does not double-pay.
+- Partial refund on a processing order, then complete: referrer reward and coach commission base match net paid ex-VAT (not the pre-refund gross).
+- Admin points adjustment: tag **goodwill** / **bonus** (protected on refund) vs **correction** (clawable); legacy untagged positive adjustments still behave as gifts.
+- ROI dashboard goodwill vs correction split still matches tagged adjustments and untagged goodwill defaults.
+
 **Manual one-shot fix:**
 ```bash
 wp option update intersoccer_points_allocation_method instant

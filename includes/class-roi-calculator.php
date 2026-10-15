@@ -204,7 +204,7 @@ class InterSoccer_ROI_Calculator {
         $points_log = $this->table_prefix . 'intersoccer_points_log';
         
         $adjustments = $this->wpdb->get_results($this->wpdb->prepare("
-            SELECT points_amount, description, transaction_type
+            SELECT points_amount, description, transaction_type, metadata
             FROM {$points_log}
             WHERE points_amount > 0
               AND transaction_type IN ('admin_adjustment', 'manual_adjustment', 'admin_balance_set', 'points_refund', 'admin_reset')
@@ -217,59 +217,34 @@ class InterSoccer_ROI_Calculator {
         
         // Correction keywords: fix errors, don't create new value
         // Note: 'refund' type text is a correction (reversing a mistake), not goodwill
-        $correction_keywords = ['cancel', 'error', 'incorrect', 'fix', 'return', 'refund', 'mistake', 'wrong', 'changed', 'test', 'testing', 'example', 'e2e', 'classic test'];
-        
-        // Goodwill keywords: intentional value given to customer
-        // Note: 'credit' removed - too generic; 'refund credit' should match correction first
-        $goodwill_keywords = ['goodwill', 'bonus', 'survey', 'reward', 'compensation', 'apolog', 'gesture', 'exceptional', 'not mature', 'mature enough', 'referral', 'referal', 'informed us'];
-        
         foreach ($adjustments as $adj) {
             // Handle both object and array formats (arrays may come from test mocks)
             if (is_array($adj)) {
                 $desc = strtolower($adj['description'] ?? '');
                 $amount = (float) ($adj['points_amount'] ?? 0);
                 $type = $adj['transaction_type'] ?? '';
+                $metadata_raw = $adj['metadata'] ?? '';
             } else {
                 $desc = strtolower($adj->description ?? '');
                 $amount = (float) ($adj->points_amount ?? 0);
                 $type = $adj->transaction_type ?? '';
+                $metadata_raw = $adj->metadata ?? '';
             }
-            
-            // admin_reset and admin_balance_set are always corrections
-            if ($type === 'admin_reset' || $type === 'admin_balance_set') {
-                $correction_points += $amount;
-                continue;
-            }
-            
-            $is_correction = false;
-            $is_goodwill = false;
-            
-            // Check correction keywords FIRST (e.g. 'refund credit' should be correction)
-            foreach ($correction_keywords as $kw) {
-                if (strpos($desc, $kw) !== false) {
-                    $is_correction = true;
-                    break;
+
+            $adjustment_reason = '';
+            if (is_string($metadata_raw) && $metadata_raw !== '') {
+                $decoded = json_decode($metadata_raw, true);
+                if (is_array($decoded) && isset($decoded['adjustment_reason'])) {
+                    $adjustment_reason = (string) $decoded['adjustment_reason'];
                 }
             }
             
-            // Then check goodwill keywords (only if not already correction)
-            if (!$is_correction) {
-                foreach ($goodwill_keywords as $kw) {
-                    if (strpos($desc, $kw) !== false) {
-                        $is_goodwill = true;
-                        break;
-                    }
-                }
-            }
-            
-            if ($is_correction) {
+            $bucket = intersoccer_classify_adjustment_cost_bucket($type, $desc, $metadata_raw);
+            if ($bucket === 'correction') {
                 $correction_points += $amount;
-            } elseif ($is_goodwill) {
-                $goodwill_points += $amount;
             } else {
-                // Unclassified defaults to correction (conservative - don't overcount cost)
-                $correction_points += $amount;
-                if (!empty($desc)) {
+                $goodwill_points += $amount;
+                if (intersoccer_adjustment_row_is_untagged_default($type, $desc, $metadata_raw) && !empty($desc)) {
                     $unclassified_count++;
                 }
             }
