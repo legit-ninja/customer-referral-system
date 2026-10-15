@@ -52,6 +52,31 @@ class InterSoccer_Admin_Settings {
         // Initialize simulator instance to register its AJAX handlers
         // The simulator class will delegate back to these methods
         InterSoccer_Simulator::get_instance();
+        
+        // Clear ROI cache when any ROI setting is updated or first set
+        add_action('update_option_intersoccer_roi_camp_margin_percent', [$this, 'clear_roi_cache_on_settings_change'], 10, 0);
+        add_action('update_option_intersoccer_roi_ad_spend', [$this, 'clear_roi_cache_on_settings_change'], 10, 0);
+        add_action('update_option_intersoccer_roi_ad_families', [$this, 'clear_roi_cache_on_settings_change'], 10, 0);
+        add_action('update_option_intersoccer_roi_staff_time_monthly', [$this, 'clear_roi_cache_on_settings_change'], 10, 0);
+        add_action('update_option_intersoccer_roi_platform_fees_monthly', [$this, 'clear_roi_cache_on_settings_change'], 10, 0);
+        
+        // Also clear cache on first save (add_option fires when option doesn't exist yet)
+        add_action('add_option_intersoccer_roi_camp_margin_percent', [$this, 'clear_roi_cache_on_settings_change'], 10, 0);
+        add_action('add_option_intersoccer_roi_ad_spend', [$this, 'clear_roi_cache_on_settings_change'], 10, 0);
+        add_action('add_option_intersoccer_roi_ad_families', [$this, 'clear_roi_cache_on_settings_change'], 10, 0);
+        add_action('add_option_intersoccer_roi_staff_time_monthly', [$this, 'clear_roi_cache_on_settings_change'], 10, 0);
+        add_action('add_option_intersoccer_roi_platform_fees_monthly', [$this, 'clear_roi_cache_on_settings_change'], 10, 0);
+    }
+    
+    /**
+     * Clear ROI calculator cache when ROI settings are changed.
+     * This ensures the dashboard shows fresh data with the new settings.
+     */
+    public function clear_roi_cache_on_settings_change() {
+        if (class_exists('InterSoccer_ROI_Calculator')) {
+            $calculator = new InterSoccer_ROI_Calculator();
+            $calculator->clear_cache();
+        }
     }
 
     public function render_settings_page() {
@@ -78,6 +103,9 @@ class InterSoccer_Admin_Settings {
                 </a>
                 <a href="?page=intersoccer-settings&tab=points" class="nav-tab <?php echo $current_tab === 'points' ? 'nav-tab-active' : ''; ?>">
                     <?php esc_html_e('Points Configuration', 'intersoccer-referral'); ?>
+                </a>
+                <a href="?page=intersoccer-settings&tab=roi" class="nav-tab <?php echo $current_tab === 'roi' ? 'nav-tab-active' : ''; ?>">
+                    <?php esc_html_e('ROI Settings', 'intersoccer-referral'); ?>
                 </a>
             </nav>
 
@@ -1029,6 +1057,89 @@ class InterSoccer_Admin_Settings {
                     </table>
 
                     <?php submit_button(__('Save Commission Bonuses', 'intersoccer-referral')); ?>
+                </form>
+            </div>
+            <?php endif; ?>
+            
+            <?php if ($current_tab === 'roi'): ?>
+            <!-- ROI Settings -->
+            <div class="intersoccer-settings-section">
+                <h2><?php esc_html_e('📊 ROI Calculation Settings', 'intersoccer-referral'); ?></h2>
+                <p class="description">
+                    <?php esc_html_e('Configure the camp margin percentage required for ROI calculations on the dashboard. Without this setting, ROI displays will show "—".', 'intersoccer-referral'); ?>
+                </p>
+                
+                <form method="post" action="options.php">
+                    <?php settings_fields('intersoccer_roi_settings'); ?>
+                    
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row">
+                                <label for="intersoccer_roi_camp_margin_percent"><?php esc_html_e('Camp Margin %', 'intersoccer-referral'); ?></label>
+                            </th>
+                            <td>
+                                <input type="number" id="intersoccer_roi_camp_margin_percent" name="intersoccer_roi_camp_margin_percent" 
+                                    value="<?php echo esc_attr(get_option('intersoccer_roi_camp_margin_percent', '')); ?>" 
+                                    min="0" max="100" step="0.1" class="small-text" />
+                                <span>%</span>
+                                <p class="description">
+                                    <?php esc_html_e('The gross margin percentage on camp/course bookings (revenue minus direct costs). Required to calculate ROI.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                    
+                    <h3><?php esc_html_e('Estimated Costs (Optional)', 'intersoccer-referral'); ?></h3>
+                    <p class="description"><?php esc_html_e('These estimates are used for the "fully loaded" ROI calculation only.', 'intersoccer-referral'); ?></p>
+                    
+                    <table class="form-table">
+                        <tr>
+                            <th scope="row">
+                                <label for="intersoccer_roi_ad_spend"><?php esc_html_e('Ad Spend (CHF)', 'intersoccer-referral'); ?></label>
+                            </th>
+                            <td>
+                                <input type="number" id="intersoccer_roi_ad_spend" name="intersoccer_roi_ad_spend" 
+                                    value="<?php echo esc_attr(get_option('intersoccer_roi_ad_spend', '')); ?>" 
+                                    min="0" step="1" class="regular-text" />
+                                <p class="description"><?php esc_html_e('Total ad spend for the 12-month period.', 'intersoccer-referral'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="intersoccer_roi_ad_families"><?php esc_html_e('Ad-Attributed Families', 'intersoccer-referral'); ?></label>
+                            </th>
+                            <td>
+                                <input type="number" id="intersoccer_roi_ad_families" name="intersoccer_roi_ad_families" 
+                                    value="<?php echo esc_attr(get_option('intersoccer_roi_ad_families', '')); ?>" 
+                                    min="0" step="1" class="small-text" />
+                                <p class="description"><?php esc_html_e('Estimated new families attributed to ads (for cost-per-family comparison).', 'intersoccer-referral'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="intersoccer_roi_staff_time_monthly"><?php esc_html_e('Staff Time (CHF/month)', 'intersoccer-referral'); ?></label>
+                            </th>
+                            <td>
+                                <input type="number" id="intersoccer_roi_staff_time_monthly" name="intersoccer_roi_staff_time_monthly" 
+                                    value="<?php echo esc_attr(get_option('intersoccer_roi_staff_time_monthly', '')); ?>" 
+                                    min="0" step="1" class="regular-text" />
+                                <p class="description"><?php esc_html_e('Estimated monthly staff time cost for managing the loyalty program.', 'intersoccer-referral'); ?></p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row">
+                                <label for="intersoccer_roi_platform_fees_monthly"><?php esc_html_e('Platform Fees (CHF/month)', 'intersoccer-referral'); ?></label>
+                            </th>
+                            <td>
+                                <input type="number" id="intersoccer_roi_platform_fees_monthly" name="intersoccer_roi_platform_fees_monthly" 
+                                    value="<?php echo esc_attr(get_option('intersoccer_roi_platform_fees_monthly', '')); ?>" 
+                                    min="0" step="1" class="regular-text" />
+                                <p class="description"><?php esc_html_e('Monthly platform/software fees related to the loyalty program.', 'intersoccer-referral'); ?></p>
+                            </td>
+                        </tr>
+                    </table>
+                    
+                    <?php submit_button(__('Save ROI Settings', 'intersoccer-referral')); ?>
                 </form>
             </div>
             <?php endif; ?>
@@ -4139,6 +4250,37 @@ class InterSoccer_Admin_Settings {
             'type' => 'number',
             'default' => 10,
             'sanitize_callback' => [$this, 'sanitize_percentage_option']
+        ]);
+        
+        // ROI Settings (Issue #113)
+        register_setting('intersoccer_roi_settings', 'intersoccer_roi_camp_margin_percent', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => [$this, 'sanitize_percentage_option']
+        ]);
+        
+        register_setting('intersoccer_roi_settings', 'intersoccer_roi_ad_spend', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => [$this, 'sanitize_non_negative_int_option']
+        ]);
+        
+        register_setting('intersoccer_roi_settings', 'intersoccer_roi_ad_families', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => [$this, 'sanitize_non_negative_int_option']
+        ]);
+        
+        register_setting('intersoccer_roi_settings', 'intersoccer_roi_staff_time_monthly', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => [$this, 'sanitize_non_negative_int_option']
+        ]);
+        
+        register_setting('intersoccer_roi_settings', 'intersoccer_roi_platform_fees_monthly', [
+            'type' => 'number',
+            'default' => 0,
+            'sanitize_callback' => [$this, 'sanitize_non_negative_int_option']
         ]);
     }
 

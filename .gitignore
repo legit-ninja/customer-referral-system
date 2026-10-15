@@ -18,3 +18,11 @@ node_modules/
 
 # Documentation (keep in repo, exclude from deployment)
 # docs/ folder will be excluded by deploy.sh but kept in git
+
+# Screenshots with business data - only in agent store
+crs-overview-screens/
+
+# Helper scripts with credentials - only in agent store
+screenshot-*.mjs
+package.json
+package-lock.json

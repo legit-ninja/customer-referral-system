@@ -573,6 +573,113 @@ if (!function_exists('current_time')) {
     }
 }
 
+if (!function_exists('wp_date')) {
+    function wp_date($format, $timestamp = null, $timezone = null) {
+        if ($timestamp === null) {
+            $timestamp = time();
+        }
+        return date($format, $timestamp);
+    }
+}
+
+// Mock WC_Order_Item for line items
+if (!class_exists('WC_Order_Item')) {
+    class WC_Order_Item {
+        protected $id = 0;
+        protected $name = '';
+        protected $total = 0;
+        protected $subtotal = 0;
+        protected $quantity = 1;
+        protected $meta_data = [];
+        protected $type = 'line_item';
+
+        public function __construct($id = 0) {
+            $this->id = (int) $id;
+        }
+
+        public function get_id() {
+            return $this->id;
+        }
+
+        public function get_name() {
+            return $this->name;
+        }
+
+        public function set_name($name) {
+            $this->name = $name;
+        }
+
+        public function get_total() {
+            return $this->total;
+        }
+
+        public function set_total($total) {
+            $this->total = (float) $total;
+        }
+
+        public function get_subtotal() {
+            return $this->subtotal;
+        }
+
+        public function set_subtotal($subtotal) {
+            $this->subtotal = (float) $subtotal;
+        }
+
+        public function get_quantity() {
+            return $this->quantity;
+        }
+
+        public function set_quantity($qty) {
+            $this->quantity = (int) $qty;
+        }
+
+        public function get_type() {
+            return $this->type;
+        }
+
+        public function get_meta($key, $single = true) {
+            return $this->meta_data[$key] ?? ($single ? '' : []);
+        }
+
+        public function add_meta_data($key, $value, $unique = false) {
+            $this->meta_data[$key] = $value;
+        }
+    }
+}
+
+// Mock WC_Order_Item_Product for product line items
+if (!class_exists('WC_Order_Item_Product')) {
+    class WC_Order_Item_Product extends WC_Order_Item {
+        protected $type = 'line_item';
+        protected $product_id = 0;
+
+        public function get_product_id() {
+            return $this->product_id;
+        }
+
+        public function set_product_id($id) {
+            $this->product_id = (int) $id;
+        }
+    }
+}
+
+// Mock WC_Order_Item_Fee for fee handling
+if (!class_exists('WC_Order_Item_Fee')) {
+    class WC_Order_Item_Fee extends WC_Order_Item {
+        protected $type = 'fee';
+
+        public function __construct($name = '', $total = 0) {
+            parent::__construct();
+            $this->name = $name;
+            $this->total = (float) $total;
+        }
+
+        public function save_meta_data() {
+            // Mock - no-op in test environment
+        }
+    }
+}
+
 // Mock WooCommerce order class
 if (!class_exists('WC_Order')) {
     class WC_Order {
@@ -581,11 +688,16 @@ if (!class_exists('WC_Order')) {
         private $subtotal = 90;
         private $shipping_total = 10;
         private $total_discount = 0;
+        private $line_items = [];
         private $fees = [];
         private $created_at = '2025-01-01 12:00:00';
         private $status = 'pending';
         private $id = 0;
         private $customer_id = 1;
+        private $persisted_meta = [];
+        private $type = 'shop_order';
+        private $meta_data = [];
+        private $refunds = [];
 
         public function __construct($id = 0) {
             $this->id = (int) $id;
@@ -620,18 +732,35 @@ if (!class_exists('WC_Order')) {
         }
 
         public function get_date_created() {
-            return $this->created_at;
+            if (!$this->created_at) {
+                return null;
+            }
+            return new class($this->created_at) {
+                private $timestamp;
+                private $date_string;
+                public function __construct($date_string) {
+                    $this->date_string = $date_string;
+                    $this->timestamp = strtotime($date_string);
+                }
+                public function format($format) {
+                    return date($format, $this->timestamp);
+                }
+                public function getTimestamp() {
+                    return $this->timestamp;
+                }
+                public function __toString() {
+                    return $this->date_string;
+                }
+            };
         }
 
         public function set_total($total) {
             $this->total = $total;
-            // By default, set subtotal to total - tax for backward compatibility
             $this->subtotal = $total - $this->tax;
         }
 
         public function set_tax_total($tax) {
             $this->tax = $tax;
-            // Update subtotal when tax changes
             $this->subtotal = $this->total - $tax;
         }
 
@@ -645,6 +774,14 @@ if (!class_exists('WC_Order')) {
 
         public function set_total_discount($discount) {
             $this->total_discount = $discount;
+        }
+
+        public function add_item($item) {
+            if ($item instanceof WC_Order_Item_Fee) {
+                $this->fees[] = $item;
+            } elseif ($item instanceof WC_Order_Item) {
+                $this->line_items[] = $item;
+            }
         }
 
         public function add_fee($fee) {
@@ -706,7 +843,13 @@ if (!class_exists('WC_Order')) {
             return $this->id ?: 123;
         }
 
-        private $meta_data = [];
+        public function get_type() {
+            return $this->type;
+        }
+
+        public function set_type($type) {
+            $this->type = $type;
+        }
 
         public function get_meta($key, $single = true) {
             return $this->meta_data[$key] ?? ($single ? '' : []);
@@ -732,11 +875,30 @@ if (!class_exists('WC_Order')) {
             return 'CHF';
         }
 
+        /**
+         * Get order items by type
+         * @param string $type 'line_item', 'fee', or empty for line items
+         */
         public function get_items($type = '') {
-            if ($type === 'fee' || $type === '') {
+            if ($type === 'fee') {
                 return $this->fees;
             }
+            if ($type === '' || $type === 'line_item') {
+                return $this->line_items;
+            }
             return [];
+        }
+
+        public function get_refunds() {
+            return $this->refunds;
+        }
+
+        public function set_refunds($refunds) {
+            $this->refunds = $refunds;
+        }
+
+        public function add_refund($refund) {
+            $this->refunds[] = $refund;
         }
 
         public function save() {
@@ -752,44 +914,22 @@ if (!class_exists('WC_Order')) {
     }
 }
 
-// Mock WC_Order_Item_Fee for fee handling
-if (!class_exists('WC_Order_Item_Fee')) {
-    class WC_Order_Item_Fee {
-        private $name = '';
-        private $total = 0;
-        private $meta_data = [];
+// Mock WC_Order_Refund for refund orders
+if (!class_exists('WC_Order_Refund')) {
+    class WC_Order_Refund extends WC_Order {
+        private $parent_id = 0;
 
-        public function __construct($name = '', $total = 0) {
-            $this->name = $name;
-            $this->total = $total;
+        public function __construct($id = 0) {
+            parent::__construct($id);
+            $this->set_type('shop_order_refund');
         }
 
-        public function get_name() {
-            return $this->name;
+        public function get_parent_id() {
+            return $this->parent_id;
         }
 
-        public function get_total() {
-            return $this->total;
-        }
-
-        public function set_name($name) {
-            $this->name = $name;
-        }
-
-        public function set_total($total) {
-            $this->total = $total;
-        }
-
-        public function add_meta_data($key, $value, $unique = false) {
-            $this->meta_data[$key] = $value;
-        }
-
-        public function get_meta($key, $single = true) {
-            return $this->meta_data[$key] ?? ($single ? '' : []);
-        }
-
-        public function save_meta_data() {
-            // Mock - no-op in test environment
+        public function set_parent_id($id) {
+            $this->parent_id = (int) $id;
         }
     }
 }
@@ -829,15 +969,34 @@ if (!function_exists('intersoccer_mock_excluded_transaction_types')) {
     }
 }
 
+if (!function_exists('intersoccer_mock_included_transaction_types')) {
+    function intersoccer_mock_included_transaction_types($query) {
+        $included = [];
+        if (is_string($query) && preg_match('/transaction_type\s+IN\s*\(([^)]*)\)/i', $query, $matches)) {
+            if (strpos(strtoupper($query), 'NOT IN') === false || 
+                strpos($query, $matches[0]) < strpos(strtoupper($query), 'NOT IN')) {
+                if (preg_match_all("/'([^']+)'/", $matches[1], $types)) {
+                    $included = $types[1];
+                }
+            }
+        }
+        return $included;
+    }
+}
+
 if (!function_exists('intersoccer_mock_points_sums')) {
     function intersoccer_mock_points_sums($query) {
         global $mock_points_log_rows;
         $excluded = intersoccer_mock_excluded_transaction_types($query);
+        $included = intersoccer_mock_included_transaction_types($query);
         $positive = 0;
         $negative = 0;
         foreach ((array) $mock_points_log_rows as $row) {
             $type = (string) ($row['transaction_type'] ?? '');
             if (in_array($type, $excluded, true)) {
+                continue;
+            }
+            if (!empty($included) && !in_array($type, $included, true)) {
                 continue;
             }
             $amount = (float) ($row['points_amount'] ?? 0);
@@ -1079,6 +1238,20 @@ $mock_referral_reward_unique_key_present = true;
             }
 
             return 0;
+        }
+
+        public function get_col($query) {
+            global $mock_wpdb_get_col_results;
+            
+            if (!empty($mock_wpdb_get_col_results)) {
+                foreach ($mock_wpdb_get_col_results as $needle => $result) {
+                    if ($needle !== '' && strpos($query, $needle) !== false) {
+                        return is_callable($result) ? $result($query) : $result;
+                    }
+                }
+            }
+            
+            return [];
         }
 
         public function get_row($query) {
@@ -1715,13 +1888,80 @@ if (!function_exists('get_users')) {
 
 if (!function_exists('wc_get_orders')) {
     function wc_get_orders($args = []) {
-        global $mock_orders, $mock_wc_get_orders;
+        global $mock_orders, $mock_wc_get_orders, $mock_wc_orders_by_id;
 
         if (isset($mock_wc_get_orders) && is_callable($mock_wc_get_orders)) {
             return $mock_wc_get_orders($args);
         }
 
-        return $mock_orders ?? [];
+        // Default implementation: filter orders by status and date
+        $orders = is_array($mock_wc_orders_by_id) ? $mock_wc_orders_by_id : ($mock_orders ?? []);
+        if (empty($orders)) {
+            return isset($args['return']) && $args['return'] === 'ids' ? [] : [];
+        }
+        
+        $statuses = isset($args['status']) ? (array) $args['status'] : ['completed', 'processing'];
+        
+        // Parse date_created filter (supports >=date, <date, date...date formats)
+        $date_filter = $args['date_created'] ?? null;
+        $start_date = null;
+        $end_date = null;
+        if ($date_filter) {
+            if (strpos($date_filter, '...') !== false) {
+                list($start_date, $end_date) = explode('...', $date_filter);
+            } elseif (strpos($date_filter, '>=') === 0) {
+                $start_date = substr($date_filter, 2);
+            } elseif (strpos($date_filter, '<') === 0) {
+                $end_date = substr($date_filter, 1);
+            }
+        }
+        
+        $filtered = [];
+        foreach ($orders as $oid => $order) {
+            if (!$order instanceof WC_Order) continue;
+            
+            // Filter by status
+            $status = $order->get_status();
+            $status_match = false;
+            foreach ($statuses as $allowed) {
+                $allowed_clean = str_replace('wc-', '', $allowed);
+                $status_clean = str_replace('wc-', '', $status);
+                if ($allowed_clean === $status_clean) {
+                    $status_match = true;
+                    break;
+                }
+            }
+            if (!$status_match) continue;
+            
+            // Filter by customer_id if specified
+            if (isset($args['customer_id'])) {
+                if ($order->get_customer_id() !== (int) $args['customer_id']) continue;
+            }
+            
+            // Filter by date range
+            $order_date = $order->get_date_created();
+            if ($order_date) {
+                $order_ts = $order_date->getTimestamp();
+                if ($start_date && $order_ts < strtotime($start_date)) continue;
+                if ($end_date && $order_ts > strtotime($end_date . ' 23:59:59')) continue;
+            }
+            
+            $filtered[$oid] = $order;
+        }
+        
+        // Apply pagination (limit and page)
+        $limit = isset($args['limit']) ? (int) $args['limit'] : -1;
+        $page = isset($args['page']) ? max(1, (int) $args['page']) : 1;
+        
+        if ($limit > 0) {
+            $offset = ($page - 1) * $limit;
+            $filtered = array_slice($filtered, $offset, $limit, true);
+        }
+        
+        if (isset($args['return']) && $args['return'] === 'ids') {
+            return array_keys($filtered);
+        }
+        return array_values($filtered);
     }
 }
 
@@ -1750,6 +1990,7 @@ $mock_get_posts_results = [];
 $mock_wpdb_get_row_results = [];
 $mock_wpdb_get_results = [];
 $mock_wpdb_get_var_results = [];
+$mock_wpdb_get_col_results = [];
 $mock_wpdb_last_insert = null;
 $mock_referral_reward_inserts = [];
 $mock_wpdb_last_update = null;
