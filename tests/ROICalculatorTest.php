@@ -1331,31 +1331,37 @@ class ROICalculatorTest extends TestCase {
     }
     
     /**
-     * EXACT VALUE ROI RANGE TEST: Combined ROI with both referral and loyalty
+     * EXACT VALUE ROI RANGE TEST: Combined ROI with Finance dedupe
      * 
-     * This test builds a complete fixture for combined ROI with:
-     * - Referral: 3 referred orders (in-window), 1 on-hold (excluded), 1 out-of-window (excluded)
-     * - Loyalty: 5 additional holders (600 CHF each), 5 non-holders (100 CHF each)
-     * - Referred customers also hold points (new_customer_bonus), so they appear in both programs
-     * - Both programs contribute to combined ROI
+     * Finance dedupe rule: A referred customer's first order counts as referral revenue ONLY.
+     * Their later orders (as a holder) count toward loyalty. Each order is counted once.
+     * A referred holder with no later orders counts as a holder with 0 spend.
      * 
      * Fixture:
-     *   Referral revenue: 1500 CHF (3 × 500)
+     * - Referral: 3 referred customers with first orders (500 CHF each, in-window)
+     * - 1 on-hold (excluded), 1 out-of-window (excluded)
+     * - Loyalty: 5 additional holders (600 CHF each), 5 non-holders (100 CHF each)
+     * - Referred customers also hold points (new_customer_bonus) but have NO later orders
+     * 
+     * With Finance dedupe:
+     *   Referral revenue: 1500 CHF (3 × 500) — first orders only
      *   Referral cost: 137 CHF (77 commissions + 40 points + 20 first-order discount)
-     *   Holders: 8 (3 referred + 5 additional) with avg 562.5 CHF
+     *   Holders: 8 (3 referred with 0 spend + 5 additional with 600 each)
+     *   Holder total spend: 3000 CHF (5 × 600, referred first orders excluded)
+     *   Holder avg: 375 CHF (3000 / 8)
      *   Non-holders: 5 with avg 100 CHF
-     *   Loyalty extra spend: 3700 CHF ((562.5-100) × 8)
+     *   Loyalty extra spend: 2200 CHF ((375-100) × 8)
      *   Loyalty cost: 100 CHF
      *   Total cost: 237 CHF
      *   Margin: 40%
      * 
-     * Combined ROI formula (per-program incrementality):
-     *   Low: ((1500×0.25 + 3700×0.05) × 0.40 - 237) / 237 × 100
-     *       = ((375 + 185) × 0.40 - 237) / 237 × 100
-     *       = (224 - 237) / 237 × 100 = -5.5%
-     *   High: ((1500×0.75 + 3700×0.25) × 0.40 - 237) / 237 × 100
-     *        = ((1125 + 925) × 0.40 - 237) / 237 × 100
-     *        = (820 - 237) / 237 × 100 = 246.0%
+     * Combined ROI formula (Finance dedupe):
+     *   Low: ((1500×0.25 + 2200×0.05) × 0.40 - 237) / 237 × 100
+     *       = ((375 + 110) × 0.40 - 237) / 237 × 100
+     *       = (194 - 237) / 237 × 100 = -18.1%
+     *   High: ((1500×0.75 + 2200×0.25) × 0.40 - 237) / 237 × 100
+     *        = ((1125 + 550) × 0.40 - 237) / 237 × 100
+     *        = (670 - 237) / 237 × 100 = 182.7%
      */
     public function testCombinedROIRange_ExactValues_MultiOrderFixture() {
         update_option('intersoccer_roi_camp_margin_percent', 40);
@@ -1530,17 +1536,20 @@ class ROICalculatorTest extends TestCase {
         $this->assertEquals(100.0, $costs['loyalty_cost_chf']);
         $this->assertEquals(237.0, $costs['total_real_cost']);
         
-        // Verify loyalty comparison
-        // Holders: 8 (3 referred + 5 loyalty) = (1500 + 3000) / 8 = 562.5 avg
-        // Non-holders: 5 = 500 / 5 = 100 avg
-        // Extra spend = (562.5 - 100) × 8 = 3700
+        // Verify loyalty comparison (Finance dedupe)
+        // Holders: 8 (3 referred + 5 loyalty)
+        // Referred holders have 0 spend (first orders excluded)
+        // Non-referred holders: 5 × 600 = 3000
+        // Holder avg: 3000 / 8 = 375
+        // Non-holders: 5 × 100 = 500, avg = 100
+        // Extra spend = (375 - 100) × 8 = 2200
         $loyalty = $calculator->calculate_loyalty_roi();
         $this->assertEquals(8, $loyalty['holder_count']);
-        $this->assertEqualsWithDelta(562.5, $loyalty['holder_avg_spend'], 0.1);
+        $this->assertEqualsWithDelta(375.0, $loyalty['holder_avg_spend'], 0.1);
         $this->assertEqualsWithDelta(100.0, $loyalty['non_holder_avg_spend'], 0.1);
-        $this->assertEqualsWithDelta(3700.0, $loyalty['total_extra_spend'], 0.1);
+        $this->assertEqualsWithDelta(2200.0, $loyalty['total_extra_spend'], 0.1);
         
-        // Verify referral revenue
+        // Verify referral revenue (Finance dedupe: first orders only)
         $referral = $calculator->calculate_referral_roi();
         $this->assertEquals(1500, $referral['revenue_ex_vat']);
         
@@ -1551,15 +1560,17 @@ class ROICalculatorTest extends TestCase {
         $this->assertTrue($combined['has_data'], 'Must have data for this test to be valid');
         $this->assertFalse($combined['show_margin_prompt']);
         
-        // These EXACT VALUES break if incrementality constants change.
-        // Referral revenue: 1500, Loyalty extra spend: 3700, Total cost: 237
-        // Combined low: ((1500×0.25 + 3700×0.05) × 0.40 - 237) / 237 × 100 = -5.5%
-        // Combined high: ((1500×0.75 + 3700×0.25) × 0.40 - 237) / 237 × 100 = 246.0%
-        $this->assertEqualsWithDelta(-5.5, $combined['min'], 0.1,
-            'Combined ROI low: ((1500×0.25 + 3700×0.05) × 0.40 - 237) / 237 × 100'
+        // Finance dedupe EXACT VALUES (user requirement: -18.1% / 182.7%)
+        // Referral revenue: 1500, Loyalty extra spend: 2200, Total cost: 237
+        // Combined low: ((1500×0.25 + 2200×0.05) × 0.40 - 237) / 237 × 100
+        //             = ((375 + 110) × 0.40 - 237) / 237 × 100 = (194 - 237) / 237 × 100 = -18.1%
+        // Combined high: ((1500×0.75 + 2200×0.25) × 0.40 - 237) / 237 × 100
+        //              = ((1125 + 550) × 0.40 - 237) / 237 × 100 = (670 - 237) / 237 × 100 = 182.7%
+        $this->assertEqualsWithDelta(-18.1, $combined['min'], 0.1,
+            'Combined ROI low: ((1500×0.25 + 2200×0.05) × 0.40 - 237) / 237 × 100'
         );
-        $this->assertEqualsWithDelta(246.0, $combined['max'], 0.1,
-            'Combined ROI high: ((1500×0.75 + 3700×0.25) × 0.40 - 237) / 237 × 100'
+        $this->assertEqualsWithDelta(182.7, $combined['max'], 0.1,
+            'Combined ROI high: ((1500×0.75 + 2200×0.25) × 0.40 - 237) / 237 × 100'
         );
         
         // Finance ruling: attribution_rule must be present in combined tooltip
@@ -1568,24 +1579,24 @@ class ROICalculatorTest extends TestCase {
     }
     
     /**
-     * EXACT VALUE TEST: Referred customer who also holds points
+     * EXACT VALUE TEST: Referred customer who also holds points (Finance dedupe)
      * 
-     * Finance ruling: A referred customer's first order counts as referral revenue.
+     * Finance ruling: A referred customer's first order counts as referral revenue ONLY.
      * Their later orders (as a points holder) count toward loyalty extra spend.
-     * This test verifies a single referred customer appears correctly in both programs.
+     * Each order is counted once: first order → referral, later orders → loyalty.
      * 
      * Fixture:
      *   Customer 9001: Referred, got 25 points (new_customer_bonus)
-     *   Order 1 (referred): 400 CHF → referral revenue
-     *   Order 2 (later): 300 CHF → counted in holder avg spend
+     *   Order 1 (referred): 400 CHF → referral revenue (NOT in loyalty)
+     *   Order 2 (later): 300 CHF → holder avg spend (loyalty)
      *   
      *   Customer 9002: Non-holder, 200 CHF → non-holder avg spend
      * 
-     * Expected:
+     * Expected (Finance dedupe):
      *   Referral revenue: 400 CHF (first order only)
-     *   Holder avg spend: (400 + 300) = 700 CHF / 1 holder = 700 CHF
+     *   Holder avg spend: 300 CHF (later order only, first excluded)
      *   Non-holder avg: 200 CHF
-     *   Extra spend: (700 - 200) × 1 = 500 CHF
+     *   Extra spend: (300 - 200) × 1 = 100 CHF
      */
     public function testCombinedROI_ReferredCustomerAlsoHoldsPoints() {
         update_option('intersoccer_roi_camp_margin_percent', 40);
@@ -1596,7 +1607,7 @@ class ROICalculatorTest extends TestCase {
         $in_window_date = wp_date('Y-m-d', strtotime('-3 months')) . ' 10:00:00';
         $later_date = wp_date('Y-m-d', strtotime('-2 months')) . ' 10:00:00';
         
-        // Referred customer's FIRST order (counts as referral revenue)
+        // Referred customer's FIRST order (counts as referral revenue ONLY)
         $order1 = $this->createMockOrder(
             9501, 'completed', $in_window_date,
             [['name' => 'Camp', 'subtotal' => 400, 'total' => 400]],
@@ -1645,18 +1656,16 @@ class ROICalculatorTest extends TestCase {
         
         $calculator = new InterSoccer_ROI_Calculator();
         
-        // Verify referral sees 400 CHF (first order only in referral logic)
-        // Note: calculate_referral_roi counts ALL orders from referred customers from referral date onward
-        // This is the current behavior - the test documents it
+        // Finance dedupe: referral revenue = first order only (400)
         $referral = $calculator->calculate_referral_roi();
-        $this->assertEquals(700, $referral['revenue_ex_vat'], 'Referral revenue = all orders from referred customer (400 + 300)');
+        $this->assertEquals(400, $referral['revenue_ex_vat'], 'Referral revenue = first order only (400)');
         
-        // Verify holder comparison
+        // Finance dedupe: holder spend excludes first referred order
         $loyalty = $calculator->calculate_loyalty_roi();
         $this->assertEquals(1, $loyalty['holder_count'], 'One holder (referred customer with points)');
-        $this->assertEqualsWithDelta(700.0, $loyalty['holder_avg_spend'], 0.1, 'Holder avg = (400 + 300) / 1');
+        $this->assertEqualsWithDelta(300.0, $loyalty['holder_avg_spend'], 0.1, 'Holder avg = later order only (300)');
         $this->assertEqualsWithDelta(200.0, $loyalty['non_holder_avg_spend'], 0.1, 'Non-holder avg = 200');
-        $this->assertEqualsWithDelta(500.0, $loyalty['total_extra_spend'], 0.1, 'Extra spend = (700 - 200) × 1');
+        $this->assertEqualsWithDelta(100.0, $loyalty['total_extra_spend'], 0.1, 'Extra spend = (300 - 200) × 1 = 100');
         
         // Verify combined includes attribution rule
         $combined = $calculator->get_roi_range_display();

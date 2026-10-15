@@ -1180,38 +1180,28 @@ class InterSoccer_ROI_Calculator {
             if (isset($counted_customers[$customer_id])) continue;
             $counted_customers[$customer_id] = true;
             
+            // Finance dedupe: referral revenue = ONLY the first (referred) order
+            // Later orders from this customer count toward loyalty if they hold points
             $referred_order = wc_get_order($order_id);
             if (!$referred_order) continue;
             
-            $referred_date = $referred_order->get_date_created();
-            if (!$referred_date) continue;
+            // Skip if status is not completed/processing
+            $order_status = $referred_order->get_status();
+            if (!in_array($order_status, ['completed', 'processing'])) continue;
             
-            // Get all orders from this customer from the referred order date onward
-            $customer_orders = wc_get_orders([
-                'customer_id' => $customer_id,
-                'status' => ['completed', 'processing'],
-                'date_created' => '>=' . $referred_date->format('Y-m-d H:i:s'),
-                'limit' => -1,
-            ]);
+            // Only count if order is within the period
+            $order_date = $referred_order->get_date_created();
+            if (!$order_date || $order_date->format('Y-m-d') > $range['end']) continue;
             
-            foreach ($customer_orders as $order) {
-                // Skip refund orders
-                if ($order->get_type() === 'shop_order_refund') continue;
-                
-                // Only count orders within the period
-                $order_date = $order->get_date_created();
-                if ($order_date && $order_date->format('Y-m-d') <= $range['end']) {
-                    // Line totals AFTER discounts (coupons/promos reduce revenue)
-                    foreach ($order->get_items() as $item) {
-                        $referred_revenue += (float) $item->get_total();
-                    }
-                    // Subtract refunds
-                    if (method_exists($order, 'get_refunds')) {
-                        foreach ($order->get_refunds() as $refund) {
-                            foreach ($refund->get_items() as $refund_item) {
-                                $referred_revenue += (float) $refund_item->get_total();
-                            }
-                        }
+            // Line totals AFTER discounts (coupons/promos reduce revenue)
+            foreach ($referred_order->get_items() as $item) {
+                $referred_revenue += (float) $item->get_total();
+            }
+            // Subtract refunds
+            if (method_exists($referred_order, 'get_refunds')) {
+                foreach ($referred_order->get_refunds() as $refund) {
+                    foreach ($refund->get_items() as $refund_item) {
+                        $referred_revenue += (float) $refund_item->get_total();
                     }
                 }
             }
@@ -1259,6 +1249,43 @@ class InterSoccer_ROI_Calculator {
             'show_margin_prompt' => $show_prompt ?? false,
             'period_label' => __('Rolling 12 Months', 'intersoccer-referral'),
         ];
+    }
+    
+    /**
+     * Get first referred order IDs for Finance dedupe
+     * 
+     * Returns array of order_id => customer_id for orders that should be
+     * excluded from loyalty holder spend (they're counted in referral revenue).
+     */
+    public function get_first_referred_orders($range = null) {
+        if ($range === null) {
+            $range = $this->get_period_range();
+        }
+        
+        $referrals_table = $this->table_prefix . 'intersoccer_referrals';
+        
+        $referrals = $this->wpdb->get_results($this->wpdb->prepare("
+            SELECT DISTINCT customer_id, order_id
+            FROM {$referrals_table}
+            WHERE created_at BETWEEN %s AND %s
+              AND order_id IS NOT NULL
+        ", $range['start'], $range['end'] . ' 23:59:59'));
+        
+        $first_orders = [];
+        $seen_customers = [];
+        
+        foreach ($referrals as $ref) {
+            $customer_id = is_object($ref) ? ($ref->customer_id ?? null) : ($ref['customer_id'] ?? null);
+            $order_id = is_object($ref) ? ($ref->order_id ?? null) : ($ref['order_id'] ?? null);
+            
+            if (!$customer_id || !$order_id) continue;
+            if (isset($seen_customers[$customer_id])) continue;
+            
+            $seen_customers[$customer_id] = true;
+            $first_orders[(int) $order_id] = (int) $customer_id;
+        }
+        
+        return $first_orders;
     }
     
     /**
@@ -1362,12 +1389,18 @@ class InterSoccer_ROI_Calculator {
         
         $hpos_enabled = $this->is_hpos_active();
         
+        // Finance dedupe: get first referred orders to exclude from holder spend
+        $first_referred = $this->get_first_referred_orders($range);
+        $excluded_order_ids = array_keys($first_referred);
+        $excluded_ids_sql = !empty($excluded_order_ids) ? implode(',', array_map('intval', $excluded_order_ids)) : '0';
+        
         if ($hpos_enabled) {
             // Convert local dates to GMT for HPOS date_created_gmt column comparison
             $start_gmt = get_gmt_from_date($range['start'] . ' 00:00:00', 'Y-m-d H:i:s');
             $end_gmt = get_gmt_from_date($range['end'] . ' 23:59:59', 'Y-m-d H:i:s');
             
             // HPOS aggregate query for holders - uses _line_total (after discounts)
+            // Finance dedupe: excludes first referred orders (they're counted in referral revenue)
             $holder_stats = $this->wpdb->get_row($this->wpdb->prepare("
                 SELECT 
                     COUNT(DISTINCT o.customer_id) as customer_count,
@@ -1382,9 +1415,10 @@ class InterSoccer_ROI_Calculator {
                   AND o.date_created_gmt <= %s
                   AND o.customer_id IN ({$holder_ids_sql})
                   AND o.customer_id > 0
+                  AND o.id NOT IN ({$excluded_ids_sql})
             ", $start_gmt, $end_gmt));
             
-            // Subtract refunds for holders
+            // Subtract refunds for holders (also excluding refunds on first referred orders)
             $holder_refunds = (float) $this->wpdb->get_var($this->wpdb->prepare("
                 SELECT COALESCE(SUM(im.meta_value), 0)
                 FROM {$orders_table} o
@@ -1397,6 +1431,7 @@ class InterSoccer_ROI_Calculator {
                   AND o.date_created_gmt <= %s
                   AND o.customer_id IN ({$holder_ids_sql})
                   AND o.customer_id > 0
+                  AND o.id NOT IN ({$excluded_ids_sql})
             ", $start_gmt, $end_gmt));
             
             // Non-holders - uses _line_total (after discounts)
@@ -1435,7 +1470,9 @@ class InterSoccer_ROI_Calculator {
             $holder_repeat = $this->calculate_repeat_rate_sql($holder_ids_sql, $range, true);
             $non_holder_repeat = $this->calculate_repeat_rate_sql($holder_ids_sql, $range, false);
             
-            $holder_count = (int) ($holder_stats->customer_count ?? 0);
+            // Finance dedupe: holder count = all users with points > 0
+            // This includes referred holders with 0 spend (their first order is excluded)
+            $holder_count = count($holders);
             $non_holder_count = (int) ($non_holder_stats->customer_count ?? 0);
             
             // Revenue = line totals + refunds (refunds are negative)
@@ -1506,6 +1543,17 @@ class InterSoccer_ROI_Calculator {
         $holder_order_counts = [];
         $non_holder_order_counts = [];
         
+        // Finance dedupe: get first referred orders to exclude from holder spend
+        $first_referred = $this->get_first_referred_orders($range);
+        
+        // Finance dedupe: pre-register referred holders (they count even with 0 spend)
+        // A referred holder with no later orders = holder with 0 spend
+        foreach ($first_referred as $order_id => $customer_id) {
+            if (isset($holder_set[$customer_id])) {
+                $holder_stats['customers'][$customer_id] = true;
+            }
+        }
+        
         $page = 1;
         do {
             $orders = wc_get_orders([
@@ -1522,6 +1570,12 @@ class InterSoccer_ROI_Calculator {
                 
                 $customer_id = $order->get_customer_id();
                 if (!$customer_id) continue;
+                
+                // Finance dedupe: skip first referred orders for holders (counted in referral)
+                // But still track the customer as a holder (done above)
+                if (isset($holder_set[$customer_id]) && isset($first_referred[$order_id])) {
+                    continue;
+                }
                 
                 // Line totals AFTER discounts (coupons reduce revenue)
                 $revenue = 0;
@@ -1556,7 +1610,9 @@ class InterSoccer_ROI_Calculator {
             $page++;
         } while (count($orders) === self::BATCH_SIZE);
         
-        $holder_count = count($holder_stats['customers']);
+        // Finance dedupe: holder count = all users with points > 0
+        // This includes referred holders with 0 spend (their first order is excluded)
+        $holder_count = count($holder_set);
         $non_holder_count = count($non_holder_stats['customers']);
         
         // Calculate repeat rates (customers with 2+ orders)
