@@ -98,11 +98,22 @@ class InterSoccer_Points_Manager {
             return;
         }
 
+        $status = (string) $order->get_status();
+        if (strpos($status, 'wc-') === 0) {
+            $status = substr($status, 3);
+        }
+        if (in_array($status, ['cancelled', 'refunded', 'failed'], true)) {
+            intersoccer_referral_log("InterSoccer: Skipped points allocation for order {$order_id} (status: {$status})");
+            return;
+        }
+
         // Check if points already allocated for this order
         if ($this->order_has_points_allocated($order_id)) {
             return;
         }
 
+        // Partial refunds while status stays completed/processing: allocate on full total;
+        // refund reversal may have already adjusted earned (open question).
         $order_total = max(0, $order->get_total());
         $allocation_mode = $this->get_allocation_mode();
         $allocation_meta = [
@@ -186,10 +197,21 @@ class InterSoccer_Points_Manager {
             return 0;
         }
 
+        $status = (string) $order->get_status();
+        if (strpos($status, 'wc-') === 0) {
+            $status = substr($status, 3);
+        }
+        if (in_array($status, ['cancelled', 'refunded', 'failed'], true)) {
+            intersoccer_referral_log("InterSoccer: Skipped points allocation for order {$order_id} (status: {$status})");
+            return 0;
+        }
+
         if ($this->order_has_points_allocated($order_id)) {
             return 0;
         }
 
+        // Partial refunds while status stays completed/processing: allocate on full total;
+        // refund reversal may have already adjusted earned (open question).
         $order_total = max(0, $order->get_total());
         $allocation_mode = $this->get_allocation_mode();
         $allocation_meta = [

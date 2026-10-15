@@ -289,6 +289,44 @@ class RefundPointsReversalTest extends TestCase {
      * taken at checkout come back once, and no purchase points are reversed
      * because none were earned.
      */
+    public function testDeferredAllocationSkipsRefundedOrder() {
+        global $mock_referral_log_messages;
+
+        $points = $this->manager();
+        $this->make_order(92030, 9230, 100, 'refunded');
+        $this->seed_balance(9230, 0);
+
+        $points->allocate_points_for_order(92030);
+
+        $this->assertSame(0, $points->get_points_balance(9230));
+        $this->assertSame([], $this->ledger_amounts_for_order(92030, 'order_purchase'));
+        $logged = implode("\n", (array) $mock_referral_log_messages);
+        $this->assertStringContainsString('Skipped points allocation for order 92030', $logged);
+        $this->assertStringContainsString('status: refunded', $logged);
+    }
+
+    public function testDeferredAllocationSkipsCancelledOrder() {
+        $points = $this->manager();
+        $this->make_order(92031, 9231, 100, 'cancelled');
+        $this->seed_balance(9231, 0);
+
+        $points->allocate_points_for_order(92031);
+
+        $this->assertSame(0, $points->get_points_balance(9231));
+        $this->assertSame([], $this->ledger_amounts_for_order(92031, 'order_purchase'));
+    }
+
+    public function testDeferredAllocationStillAllocatesCompletedOrder() {
+        $points = $this->manager();
+        $this->make_order(92032, 9232, 100, 'completed');
+        $this->seed_balance(9232, 0);
+
+        $points->allocate_points_for_order(92032);
+
+        $this->assertSame(10, $points->get_points_balance(9232));
+        $this->assertSame([10], $this->ledger_amounts_for_order(92032, 'order_purchase'));
+    }
+
     public function testUnpaidPendingOrderAutoCancelReturnsRedeemedPointsOnce() {
         $points = $this->manager();
         $order = $this->make_order(92020, 9220, 50, 'pending');
