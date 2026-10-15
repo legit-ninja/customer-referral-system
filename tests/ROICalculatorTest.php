@@ -3087,4 +3087,162 @@ class ROICalculatorTest extends TestCase {
             'points_expired' => -$month_data['expired'],
         ];
     }
+    
+    // =========================================================================
+    // REGRESSION GUARDS: completed order, out-of-window, status filter
+    // =========================================================================
+    
+    /**
+     * POSITIVE CONTROL: Completed order counts toward ROI
+     * 
+     * Verifies that a 'completed' order is included in revenue calculations.
+     * If this fails, the status filter is broken or the order mock is wrong.
+     */
+    public function testReferralROI_CompletedOrderCounts() {
+        update_option('intersoccer_roi_camp_margin_percent', 40);
+        
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_orders_by_id;
+        
+        $in_window_date = wp_date('Y-m-d', strtotime('-3 months')) . ' 10:00:00';
+        
+        // Completed order from referred customer
+        $order = $this->createMockOrder(
+            7001, 'completed', $in_window_date,
+            [['name' => 'Camp', 'subtotal' => 500, 'total' => 500]],
+            [], [], []
+        );
+        $order->set_customer_id(7001);
+        
+        $mock_wpdb_get_results = [
+            'intersoccer_referrals' => [
+                (object) ['customer_id' => 7001, 'order_id' => 7001, 'created_at' => $in_window_date],
+            ],
+            'intersoccer_points_log' => [],
+        ];
+        
+        $mock_wpdb_get_var_results = [
+            'commission_amount' => 10,
+            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 5,
+            'NOT IN' => 0,
+        ];
+        
+        $calculator = new InterSoccer_ROI_Calculator();
+        $referral = $calculator->calculate_referral_roi();
+        
+        // Completed order MUST be counted
+        $this->assertEquals(500, $referral['revenue_ex_vat'], 
+            'Completed order revenue must be included');
+        $this->assertTrue($referral['has_data'], 
+            'Must have data with completed order');
+    }
+    
+    /**
+     * OUT-OF-WINDOW: Order date past window end is excluded from ROI
+     * 
+     * Verifies that orders with dates beyond the rolling window end are excluded.
+     * The SQL query filters referrals by created_at; this tests the PHP-side filter.
+     * If this fails, the date boundary check in calculate_referral_roi is broken.
+     */
+    public function testReferralROI_OutOfWindowOrderExcluded() {
+        update_option('intersoccer_roi_camp_margin_percent', 40);
+        
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_orders_by_id;
+        
+        // In-window referral but order dated in the future (past window end)
+        // This simulates an edge case: referral created now but order hasn't happened yet
+        $in_window_date = wp_date('Y-m-d', strtotime('-3 months')) . ' 10:00:00';
+        $future_date = wp_date('Y-m-d', strtotime('+1 year')) . ' 10:00:00';
+        
+        $order = $this->createMockOrder(
+            7002, 'completed', $future_date,
+            [['name' => 'Camp', 'subtotal' => 999, 'total' => 999]],
+            [], [], []
+        );
+        $order->set_customer_id(7002);
+        
+        // Referral record in window, but order is dated in the future
+        $mock_wpdb_get_results = [
+            'intersoccer_referrals' => [
+                (object) ['customer_id' => 7002, 'order_id' => 7002, 'created_at' => $in_window_date],
+            ],
+            'intersoccer_points_log' => [],
+        ];
+        
+        $mock_wpdb_get_var_results = [
+            'commission_amount' => 0,
+            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
+            'NOT IN' => 0,
+        ];
+        
+        $calculator = new InterSoccer_ROI_Calculator();
+        $referral = $calculator->calculate_referral_roi();
+        
+        // Order dated past window end MUST be excluded
+        $this->assertEquals(0, $referral['revenue_ex_vat'], 
+            'Order dated past window end must be excluded from revenue');
+    }
+    
+    /**
+     * STATUS FILTER GUARD: Non-completed/processing orders excluded
+     * 
+     * This test FAILS if the status filter is removed from calculate_referral_roi.
+     * It verifies that on-hold, pending, and failed orders are excluded.
+     */
+    public function testReferralROI_StatusFilterExcludesNonCompleted() {
+        update_option('intersoccer_roi_camp_margin_percent', 40);
+        
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_orders_by_id;
+        
+        $in_window_date = wp_date('Y-m-d', strtotime('-3 months')) . ' 10:00:00';
+        
+        // Order with on-hold status (should be EXCLUDED)
+        $order_onhold = $this->createMockOrder(
+            7003, 'on-hold', $in_window_date,
+            [['name' => 'Camp', 'subtotal' => 777, 'total' => 777]],
+            [], [], []
+        );
+        $order_onhold->set_customer_id(7003);
+        
+        // Order with pending status (should be EXCLUDED)
+        $order_pending = $this->createMockOrder(
+            7004, 'pending', $in_window_date,
+            [['name' => 'Camp', 'subtotal' => 888, 'total' => 888]],
+            [], [], []
+        );
+        $order_pending->set_customer_id(7004);
+        
+        // Order with failed status (should be EXCLUDED)
+        $order_failed = $this->createMockOrder(
+            7005, 'failed', $in_window_date,
+            [['name' => 'Camp', 'subtotal' => 999, 'total' => 999]],
+            [], [], []
+        );
+        $order_failed->set_customer_id(7005);
+        
+        // Referral records for all three orders
+        $mock_wpdb_get_results = [
+            'intersoccer_referrals' => [
+                (object) ['customer_id' => 7003, 'order_id' => 7003, 'created_at' => $in_window_date],
+                (object) ['customer_id' => 7004, 'order_id' => 7004, 'created_at' => $in_window_date],
+                (object) ['customer_id' => 7005, 'order_id' => 7005, 'created_at' => $in_window_date],
+            ],
+            'intersoccer_points_log' => [],
+        ];
+        
+        $mock_wpdb_get_var_results = [
+            'commission_amount' => 0,
+            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
+            'NOT IN' => 0,
+        ];
+        
+        $calculator = new InterSoccer_ROI_Calculator();
+        $referral = $calculator->calculate_referral_roi();
+        
+        // Status filter MUST exclude non-completed/processing orders
+        // If this assertion fails: (777 + 888 + 999) = 2664, the status filter is broken
+        $this->assertEquals(0, $referral['revenue_ex_vat'], 
+            'Non-completed/processing orders must be excluded by status filter');
+        $this->assertFalse($referral['has_data'] && $referral['revenue_ex_vat'] > 0,
+            'Should not have revenue data from excluded statuses');
+    }
 }
