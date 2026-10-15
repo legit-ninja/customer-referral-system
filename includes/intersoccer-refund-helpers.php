@@ -134,3 +134,45 @@ if (!function_exists('intersoccer_release_order_refund_lock')) {
         delete_option(intersoccer_refund_order_lock_option_name((int) $order_id));
     }
 }
+
+if (!function_exists('intersoccer_refund_sync_retry_hook')) {
+    /**
+     * Cron hook for deferred per-order refund sync when the mutex is busy.
+     *
+     * @return string
+     */
+    function intersoccer_refund_sync_retry_hook() {
+        return 'intersoccer_order_refund_sync_retry';
+    }
+}
+
+if (!function_exists('intersoccer_schedule_order_refund_sync_retry')) {
+    /**
+     * Schedule a single retry for points or commission refund sync (deduped per order + channel).
+     *
+     * @param int    $order_id
+     * @param string $channel points|commission
+     * @param array  $payload reason, refund_id, force_full, etc.
+     * @param int    $delay_seconds
+     * @return bool Whether a new event was scheduled.
+     */
+    function intersoccer_schedule_order_refund_sync_retry($order_id, $channel, array $payload = [], $delay_seconds = 60) {
+        $order_id = (int) $order_id;
+        $channel = (string) $channel;
+        if ($order_id <= 0 || $channel === '') {
+            return false;
+        }
+
+        $hook = intersoccer_refund_sync_retry_hook();
+        $args = [$order_id, $channel, $payload];
+        if (function_exists('wp_next_scheduled') && wp_next_scheduled($hook, $args)) {
+            return false;
+        }
+
+        if (!function_exists('wp_schedule_single_event')) {
+            return false;
+        }
+
+        return (bool) wp_schedule_single_event(time() + max(1, (int) $delay_seconds), $hook, $args);
+    }
+}

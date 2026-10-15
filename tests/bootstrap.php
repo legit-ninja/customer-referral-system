@@ -434,15 +434,40 @@ if (!function_exists('delete_transient')) {
     }
 }
 
-global $mock_cron;
+global $mock_cron, $mock_scheduled_single_events;
 if (!isset($mock_cron)) {
     $mock_cron = [];
+}
+if (!isset($mock_scheduled_single_events)) {
+    $mock_scheduled_single_events = [];
 }
 
 if (!function_exists('wp_next_scheduled')) {
     function wp_next_scheduled($hook, $args = []) {
-        global $mock_cron;
+        global $mock_cron, $mock_scheduled_single_events;
+        foreach ((array) $mock_scheduled_single_events as $event) {
+            if (($event['hook'] ?? '') === $hook && ($args === [] || ($event['args'] ?? []) == $args)) {
+                return $event['timestamp'] ?? false;
+            }
+        }
         return $mock_cron[$hook] ?? false;
+    }
+}
+
+if (!function_exists('wp_schedule_single_event')) {
+    function wp_schedule_single_event($timestamp, $hook, $args = []) {
+        global $mock_scheduled_single_events;
+        foreach ((array) $mock_scheduled_single_events as $event) {
+            if (($event['hook'] ?? '') === $hook && ($event['args'] ?? []) == $args) {
+                return false;
+            }
+        }
+        $mock_scheduled_single_events[] = [
+            'timestamp' => $timestamp,
+            'hook' => $hook,
+            'args' => $args,
+        ];
+        return true;
     }
 }
 
@@ -451,6 +476,40 @@ if (!function_exists('wp_schedule_event')) {
         global $mock_cron;
         $mock_cron[$hook] = $timestamp;
         return true;
+    }
+}
+
+if (!function_exists('wp_cache_delete')) {
+    function wp_cache_delete($key, $group = '') {
+        return true;
+    }
+}
+
+if (!function_exists('intersoccer_mock_sum_commission_reversal_credits')) {
+    function intersoccer_mock_sum_commission_reversal_credits($order_id, $referral_id) {
+        global $mock_wpdb_inserts;
+        $sum = 0.0;
+        foreach ((array) $mock_wpdb_inserts as $row) {
+            $table = (string) ($row['table'] ?? '');
+            if (strpos($table, 'intersoccer_referral_credits') === false) {
+                continue;
+            }
+            $data = $row['data'] ?? [];
+            if ((int) ($data['order_id'] ?? 0) !== (int) $order_id) {
+                continue;
+            }
+            if ((int) ($data['referral_id'] ?? 0) !== (int) $referral_id) {
+                continue;
+            }
+            $type = (string) ($data['credit_type'] ?? '');
+            $amount = (float) ($data['credit_amount'] ?? 0);
+            if ($type === 'commission_reversal') {
+                $sum += abs($amount);
+            } elseif ($type === 'commission_write_off') {
+                $sum += $amount;
+            }
+        }
+        return $sum;
     }
 }
 
@@ -1357,6 +1416,29 @@ $mock_referral_reward_unique_key_present = true;
                 $user_id = (int) $matches[1];
                 if (isset($mock_user_meta[$user_id]['intersoccer_points_balance'])) {
                     return $mock_user_meta[$user_id]['intersoccer_points_balance'];
+                }
+                return 0;
+            }
+
+            if (strpos($query, 'intersoccer_referral_credits') !== false
+                && strpos($query, 'commission_reversal') !== false
+                && preg_match('/order_id\s*=\s*(\d+)/', $query, $order_match)
+                && preg_match('/referral_id\s*=\s*(\d+)/', $query, $referral_match)
+            ) {
+                return intersoccer_mock_sum_commission_reversal_credits(
+                    (int) $order_match[1],
+                    (int) $referral_match[1]
+                );
+            }
+
+            if (strpos($query, 'usermeta') !== false
+                && strpos($query, 'intersoccer_credits') !== false
+                && preg_match('/user_id\s*=\s*(\d+)/', $query, $matches)
+            ) {
+                global $mock_user_meta;
+                $user_id = (int) $matches[1];
+                if (isset($mock_user_meta[$user_id]['intersoccer_credits'])) {
+                    return $mock_user_meta[$user_id]['intersoccer_credits'];
                 }
                 return 0;
             }

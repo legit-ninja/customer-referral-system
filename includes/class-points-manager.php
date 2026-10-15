@@ -77,6 +77,7 @@ class InterSoccer_Points_Manager {
             wp_schedule_event(time(), 'daily', 'intersoccer_release_unpaid_redeemed_points');
         }
         add_action('intersoccer_release_unpaid_redeemed_points', [$this, 'release_unpaid_redeemed_points_for_stale_orders']);
+        add_action(intersoccer_refund_sync_retry_hook(), [$this, 'handle_order_refund_sync_retry'], 10, 3);
     }
 
     /**
@@ -539,6 +540,10 @@ class InterSoccer_Points_Manager {
         }
 
         if (!intersoccer_acquire_order_refund_lock($order_id)) {
+            intersoccer_schedule_order_refund_sync_retry($order_id, 'points', [
+                'reason' => (string) $reason,
+                'context' => $context,
+            ]);
             return;
         }
 
@@ -2214,6 +2219,40 @@ class InterSoccer_Points_Manager {
         if ($unpaid_released) {
             $order->delete_meta_data('_intersoccer_unpaid_redeemed_released');
         }
+
+        if ($debit > 0 || $shortfall > 0) {
+            $this->reset_redeemed_refund_running_totals($order);
+        }
+
+        if (method_exists($order, 'save')) {
+            $order->save();
+        }
+    }
+
+    /**
+     * Deferred retry when the per-order refund lock was held by another request.
+     *
+     * @param int    $order_id
+     * @param string $channel
+     * @param array  $payload
+     */
+    public function handle_order_refund_sync_retry($order_id, $channel, $payload = []) {
+        if ((string) $channel !== 'points') {
+            return;
+        }
+        $reason = isset($payload['reason']) ? (string) $payload['reason'] : 'order_refunded';
+        $context = isset($payload['context']) && is_array($payload['context']) ? $payload['context'] : [];
+        $this->sync_refund_reversals((int) $order_id, $reason, $context);
+    }
+
+    /**
+     * Clear redeemed return counters so a later refund can return redeemed points again.
+     *
+     * @param WC_Order $order
+     */
+    public function reset_redeemed_refund_running_totals($order) {
+        $order->update_meta_data('_intersoccer_redeemed_points_returned_total', 0);
+        $order->update_meta_data('_intersoccer_redeemed_points_returned', 0);
         if (method_exists($order, 'save')) {
             $order->save();
         }

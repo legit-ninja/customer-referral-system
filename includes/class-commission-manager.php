@@ -33,6 +33,7 @@ class InterSoccer_Commission_Manager {
         add_action('woocommerce_order_status_cancelled', [$this, 'reverse_paid_rewards']);
         add_action('woocommerce_order_status_refunded', [$this, 'reverse_paid_rewards']);
         add_action('woocommerce_order_refunded', [$this, 'handle_order_refunded_rewards'], 10, 2);
+        add_action(intersoccer_refund_sync_retry_hook(), [$this, 'handle_order_refund_sync_retry'], 10, 3);
     }
 
     /**
@@ -1419,6 +1420,10 @@ The InterSoccer Team', 'intersoccer-referral'),
         }
 
         if (!intersoccer_acquire_order_refund_lock($order_id)) {
+            intersoccer_schedule_order_refund_sync_retry($order_id, 'commission', [
+                'refund_id' => (int) $refund_id,
+                'force_full' => false,
+            ]);
             return;
         }
 
@@ -1442,6 +1447,10 @@ The InterSoccer Team', 'intersoccer-referral'),
         }
 
         if (!intersoccer_acquire_order_refund_lock($order_id)) {
+            intersoccer_schedule_order_refund_sync_retry($order_id, 'commission', [
+                'refund_id' => 0,
+                'force_full' => true,
+            ]);
             return;
         }
 
@@ -1450,6 +1459,26 @@ The InterSoccer Team', 'intersoccer-referral'),
         } finally {
             intersoccer_release_order_refund_lock($order_id);
         }
+    }
+
+    /**
+     * Deferred retry when the per-order refund lock was held by another request.
+     *
+     * @param int    $order_id
+     * @param string $channel
+     * @param array  $payload
+     */
+    public function handle_order_refund_sync_retry($order_id, $channel, $payload = []) {
+        if ((string) $channel !== 'commission') {
+            return;
+        }
+        $force_full = !empty($payload['force_full']);
+        $refund_id = isset($payload['refund_id']) ? (int) $payload['refund_id'] : 0;
+        if ($force_full) {
+            $this->reverse_paid_rewards((int) $order_id);
+            return;
+        }
+        $this->handle_order_refunded_rewards((int) $order_id, $refund_id);
     }
 
     /**
@@ -1717,6 +1746,63 @@ The InterSoccer Team', 'intersoccer-referral'),
      * @param bool  $floor_at_zero Apply GREATEST(0, balance - amount).
      * @return float Amount actually debited.
      */
+    private function get_coach_credits_balance_from_db($coach_id) {
+        global $wpdb;
+
+        $coach_id = (int) $coach_id;
+        if ($coach_id <= 0) {
+            return 0.0;
+        }
+
+        if (function_exists('wp_cache_delete')) {
+            wp_cache_delete($coach_id, 'user_meta');
+        }
+
+        $meta_key = 'intersoccer_credits';
+        $value = $wpdb->get_var($wpdb->prepare(
+            "SELECT meta_value FROM {$wpdb->usermeta} WHERE user_id = %d AND meta_key = %s LIMIT 1",
+            $coach_id,
+            $meta_key
+        ));
+
+        return intersoccer_money_floor_to_cents((float) $value);
+    }
+
+    /**
+     * Sum claw + write-off already recorded for one referral row on an order (durable idempotency).
+     *
+     * @param int $order_id
+     * @param int $referral_row_id
+     * @return float
+     */
+    private function get_commission_reversal_recorded_for_referral_row($order_id, $referral_row_id) {
+        global $wpdb;
+
+        $order_id = (int) $order_id;
+        $referral_row_id = (int) $referral_row_id;
+        if ($order_id <= 0 || $referral_row_id <= 0) {
+            return 0.0;
+        }
+
+        $table = $wpdb->prefix . 'intersoccer_referral_credits';
+        $sum = $wpdb->get_var($wpdb->prepare(
+            "SELECT COALESCE(SUM(
+                CASE
+                    WHEN credit_type = 'commission_reversal' THEN ABS(credit_amount)
+                    WHEN credit_type = 'commission_write_off' THEN credit_amount
+                    ELSE 0
+                END
+            ), 0)
+            FROM {$table}
+            WHERE order_id = %d AND referral_id = %d
+              AND credit_type IN ('commission_reversal', 'commission_write_off')",
+            $order_id,
+            $referral_row_id
+        ));
+
+        return intersoccer_money_floor_to_cents((float) $sum);
+    }
+
     private function change_coach_credits_balance($coach_id, $amount, $floor_at_zero = true) {
         global $wpdb;
 
@@ -1727,7 +1813,7 @@ The InterSoccer Team', 'intersoccer-referral'),
         }
 
         $meta_key = 'intersoccer_credits';
-        $before = (float) get_user_meta($coach_id, $meta_key, true);
+        $before = $this->get_coach_credits_balance_from_db($coach_id);
 
         if ($floor_at_zero) {
             $sql = $wpdb->prepare(
@@ -1757,11 +1843,9 @@ The InterSoccer Team', 'intersoccer-referral'),
             return 0.0;
         }
 
-        $after = (float) get_user_meta($coach_id, $meta_key, true);
+        $after = $this->get_coach_credits_balance_from_db($coach_id);
         $debited = intersoccer_money_floor_to_cents(max(0.0, $before - $after));
-        if ($debited <= 0 && $before > 0) {
-            $debited = intersoccer_money_floor_to_cents(min($amount, $before));
-        }
+        $debited = intersoccer_money_floor_to_cents(min($debited, $amount));
 
         return $debited;
     }
@@ -1806,7 +1890,10 @@ The InterSoccer Team', 'intersoccer-referral'),
 
             $row_id = (int) $row->id;
             $row_meta_key = '_intersoccer_commission_row_' . $row_id . '_reversed_total';
-            $already_row = (float) $order->get_meta($row_meta_key, true);
+            $already_row = $this->get_commission_reversal_recorded_for_referral_row($order_id, $row_id);
+            if ($already_row <= 0) {
+                $already_row = intersoccer_money_floor_to_cents((float) $order->get_meta($row_meta_key, true));
+            }
 
             $target = intersoccer_proportional_floor_money($total, $fraction);
             $delta = intersoccer_money_floor_to_cents($target - $already_row);
@@ -1815,6 +1902,7 @@ The InterSoccer Team', 'intersoccer-referral'),
             }
 
             $claw = $this->change_coach_credits_balance($coach_id, $delta, true);
+            $claw = intersoccer_money_floor_to_cents(min($claw, $delta));
             $writeoff = intersoccer_money_floor_to_cents($delta - $claw);
             if ($claw > 0) {
                 $wpdb->insert(
@@ -1852,7 +1940,8 @@ The InterSoccer Team', 'intersoccer-referral'),
                 );
             }
 
-            $order->update_meta_data($row_meta_key, intersoccer_money_floor_to_cents($already_row + $delta));
+            $recorded_after = $this->get_commission_reversal_recorded_for_referral_row($order_id, $row_id);
+            $order->update_meta_data($row_meta_key, $recorded_after);
             $order_reversed_total = intersoccer_money_floor_to_cents($order_reversed_total + $delta);
             if ($fraction >= 1.0) {
                 $wpdb->update($referrals, ['status' => 'reversed'], ['id' => $row_id]);
