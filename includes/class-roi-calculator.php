@@ -827,6 +827,46 @@ class InterSoccer_ROI_Calculator {
     }
     
     /**
+     * Find fallback first order when referral row's order is invalid (failed/refunded)
+     * 
+     * Finance ruling: Look up customer's next eligible completed/processing order
+     * after the referral date, even if it has no referral row of its own.
+     * 
+     * @param int $customer_id Customer ID
+     * @param string $referral_date Referral created_at date
+     * @param array $range Period range
+     * @return int|null Order ID or null if no eligible order found
+     */
+    private function find_fallback_first_order($customer_id, $referral_date, $range) {
+        if (!$customer_id || !$referral_date) {
+            return null;
+        }
+        
+        // Look for customer's orders after referral date, within the window
+        $orders = wc_get_orders([
+            'customer_id' => $customer_id,
+            'status' => ['completed', 'processing'],
+            'date_created' => $referral_date . '...' . $range['end'] . ' 23:59:59',
+            'limit' => 10, // Check up to 10 orders for the first valid one
+            'orderby' => 'date',
+            'order' => 'ASC',
+        ]);
+        
+        foreach ($orders as $order) {
+            // Skip refund orders
+            if ($order->get_type() === 'shop_order_refund') continue;
+            
+            // Skip fully refunded orders
+            if ($this->is_fully_refunded($order)) continue;
+            
+            // Found the first valid order
+            return $order->get_id();
+        }
+        
+        return null;
+    }
+    
+    /**
      * Get points liability with redemption rate, age breakdown, and expiry policy
      * FIX #6: Compare like with like for month-over-month
      * FIX #7: Add age buckets
@@ -1199,25 +1239,35 @@ class InterSoccer_ROI_Calculator {
         ", $range['start'], $range['end'] . ' 23:59:59'));
         
         $counted_customers = [];
+        $fallback_cache = []; // Cache per-customer fallback lookup within this calculation
+        
         foreach ($referrals as $ref) {
             // Handle both object and array formats (arrays may come from test mocks)
             $customer_id = is_object($ref) ? ($ref->customer_id ?? null) : ($ref['customer_id'] ?? null);
             $order_id = is_object($ref) ? ($ref->order_id ?? null) : ($ref['order_id'] ?? null);
+            $created_at = is_object($ref) ? ($ref->created_at ?? null) : ($ref['created_at'] ?? null);
             
             if (!$customer_id || !$order_id) continue;
             if (isset($counted_customers[$customer_id])) continue;
             
             // Finance ruling: first order = earliest COMPLETED/PROCESSING order (not failed/cancelled/fully-refunded)
-            // Skip invalid orders to find the first valid one per customer
             $referred_order = wc_get_order($order_id);
-            if (!$referred_order) continue;
+            $is_valid = $referred_order 
+                && in_array($referred_order->get_status(), ['completed', 'processing'])
+                && !$this->is_fully_refunded($referred_order);
             
-            // Skip if status is not completed/processing
-            $order_status = $referred_order->get_status();
-            if (!in_array($order_status, ['completed', 'processing'])) continue;
-            
-            // Skip fully refunded orders (treat like cancelled)
-            if ($this->is_fully_refunded($referred_order)) continue;
+            if (!$is_valid) {
+                // Fallback: look up customer's next eligible order after the referral date
+                if (!isset($fallback_cache[$customer_id])) {
+                    $fallback_cache[$customer_id] = $this->find_fallback_first_order($customer_id, $created_at, $range);
+                }
+                
+                $fallback_order_id = $fallback_cache[$customer_id];
+                if (!$fallback_order_id) continue;
+                
+                $referred_order = wc_get_order($fallback_order_id);
+                if (!$referred_order) continue;
+            }
             
             // This is the first valid order for this customer
             $counted_customers[$customer_id] = true;
@@ -1309,29 +1359,41 @@ class InterSoccer_ROI_Calculator {
         
         $first_orders = [];
         $seen_customers = [];
+        $fallback_cache = []; // Cache per-customer fallback lookup within this calculation
         
         // Finance ruling: first order = earliest COMPLETED/PROCESSING order (not failed/cancelled/fully-refunded)
         // Skip invalid orders to find the first valid one per customer
         foreach ($referrals as $ref) {
             $customer_id = is_object($ref) ? ($ref->customer_id ?? null) : ($ref['customer_id'] ?? null);
             $order_id = is_object($ref) ? ($ref->order_id ?? null) : ($ref['order_id'] ?? null);
+            $created_at = is_object($ref) ? ($ref->created_at ?? null) : ($ref['created_at'] ?? null);
             
             if (!$customer_id || !$order_id) continue;
             if (isset($seen_customers[$customer_id])) continue;
             
             // Check if order is valid (completed/processing and not fully refunded)
             $order = wc_get_order($order_id);
-            if (!$order) continue;
+            $is_valid = $order 
+                && in_array($order->get_status(), ['completed', 'processing'])
+                && !$this->is_fully_refunded($order);
             
-            $status = $order->get_status();
-            if (!in_array($status, ['completed', 'processing'])) continue;
-            
-            // Skip fully refunded orders (treat like cancelled)
-            if ($this->is_fully_refunded($order)) continue;
-            
-            // This is the first valid order for this customer
-            $seen_customers[$customer_id] = true;
-            $first_orders[(int) $order_id] = (int) $customer_id;
+            if ($is_valid) {
+                // This referral row's order is valid
+                $seen_customers[$customer_id] = true;
+                $first_orders[(int) $order_id] = (int) $customer_id;
+            } else {
+                // Fallback: look up customer's next eligible order after the referral date
+                // Cache the lookup to avoid loading the same order multiple times
+                if (!isset($fallback_cache[$customer_id])) {
+                    $fallback_cache[$customer_id] = $this->find_fallback_first_order($customer_id, $created_at, $range);
+                }
+                
+                $fallback_order_id = $fallback_cache[$customer_id];
+                if ($fallback_order_id) {
+                    $seen_customers[$customer_id] = true;
+                    $first_orders[(int) $fallback_order_id] = (int) $customer_id;
+                }
+            }
         }
         
         return $first_orders;
@@ -1834,20 +1896,35 @@ class InterSoccer_ROI_Calculator {
         $repeat_order_revenue = 0;
         $new_family_count = 0;
         $counted_customers = [];
+        $fallback_cache = []; // Cache per-customer fallback lookup within this calculation
         
         foreach ($referrals as $ref) {
             // Handle both object and array formats (arrays may come from test mocks)
             $customer_id = is_object($ref) ? ($ref->customer_id ?? null) : ($ref['customer_id'] ?? null);
             $order_id = is_object($ref) ? ($ref->order_id ?? null) : ($ref['order_id'] ?? null);
+            $created_at = is_object($ref) ? ($ref->created_at ?? null) : ($ref['created_at'] ?? null);
             
             if (!$customer_id || !$order_id) continue;
             if (isset($counted_customers[$customer_id])) continue;
             
             // Finance ruling: first order = earliest COMPLETED/PROCESSING order (not failed/cancelled/fully-refunded)
             $referred_order = wc_get_order($order_id);
-            if (!$referred_order) continue;
-            if (!in_array($referred_order->get_status(), ['completed', 'processing'])) continue;
-            if ($this->is_fully_refunded($referred_order)) continue;
+            $is_valid = $referred_order 
+                && in_array($referred_order->get_status(), ['completed', 'processing'])
+                && !$this->is_fully_refunded($referred_order);
+            
+            if (!$is_valid) {
+                // Fallback: look up customer's next eligible order after the referral date
+                if (!isset($fallback_cache[$customer_id])) {
+                    $fallback_cache[$customer_id] = $this->find_fallback_first_order($customer_id, $created_at, $range);
+                }
+                
+                $fallback_order_id = $fallback_cache[$customer_id];
+                if (!$fallback_order_id) continue;
+                
+                $referred_order = wc_get_order($fallback_order_id);
+                if (!$referred_order) continue;
+            }
             
             // This is the first valid order for this customer
             $counted_customers[$customer_id] = true;
