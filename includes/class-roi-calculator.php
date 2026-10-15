@@ -217,12 +217,6 @@ class InterSoccer_ROI_Calculator {
         
         // Correction keywords: fix errors, don't create new value
         // Note: 'refund' type text is a correction (reversing a mistake), not goodwill
-        $correction_keywords = ['cancel', 'error', 'incorrect', 'fix', 'return', 'refund', 'mistake', 'wrong', 'changed', 'test', 'testing', 'example', 'e2e', 'classic test'];
-        
-        // Goodwill keywords: intentional value given to customer
-        // Note: 'credit' removed - too generic; 'refund credit' should match correction first
-        $goodwill_keywords = ['goodwill', 'bonus', 'survey', 'reward', 'compensation', 'apolog', 'gesture', 'exceptional', 'not mature', 'mature enough', 'referral', 'referal', 'informed us'];
-        
         foreach ($adjustments as $adj) {
             // Handle both object and array formats (arrays may come from test mocks)
             if (is_array($adj)) {
@@ -245,50 +239,12 @@ class InterSoccer_ROI_Calculator {
                 }
             }
             
-            // admin_reset and admin_balance_set are always corrections
-            if ($type === 'admin_reset' || $type === 'admin_balance_set') {
+            $bucket = intersoccer_classify_adjustment_cost_bucket($type, $desc, $metadata_raw);
+            if ($bucket === 'correction') {
                 $correction_points += $amount;
-                continue;
-            }
-
-            if ($adjustment_reason === 'correction') {
-                $correction_points += $amount;
-                continue;
-            }
-            if ($adjustment_reason === 'goodwill' || $adjustment_reason === 'bonus') {
-                $goodwill_points += $amount;
-                continue;
-            }
-            
-            $is_correction = false;
-            $is_goodwill = false;
-            
-            // Check correction keywords FIRST (e.g. 'refund credit' should be correction)
-            foreach ($correction_keywords as $kw) {
-                if (strpos($desc, $kw) !== false) {
-                    $is_correction = true;
-                    break;
-                }
-            }
-            
-            // Then check goodwill keywords (only if not already correction)
-            if (!$is_correction) {
-                foreach ($goodwill_keywords as $kw) {
-                    if (strpos($desc, $kw) !== false) {
-                        $is_goodwill = true;
-                        break;
-                    }
-                }
-            }
-            
-            if ($is_correction) {
-                $correction_points += $amount;
-            } elseif ($is_goodwill) {
-                $goodwill_points += $amount;
             } else {
-                // Untagged positive adjustments are treated as goodwill gifts (Ledger ruling).
                 $goodwill_points += $amount;
-                if (!empty($desc)) {
+                if (intersoccer_adjustment_row_is_untagged_default($type, $desc, $metadata_raw) && !empty($desc)) {
                     $unclassified_count++;
                 }
             }

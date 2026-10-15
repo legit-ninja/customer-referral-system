@@ -477,10 +477,11 @@ class RefundPointsRulesTest extends TestCase {
 
         $this->seed_ledger_row([
             'customer_id' => 93102,
-            'order_id' => 88888,
-            'transaction_type' => 'order_purchase',
+            'order_id' => 0,
+            'transaction_type' => 'points_redemption',
             'points_amount' => -8,
             'points_balance' => 2,
+            'created_at' => '2030-01-02 10:00:00',
         ]);
         $this->seed_balance(93102, 2);
         $this->seed_ledger_row([
@@ -489,6 +490,7 @@ class RefundPointsRulesTest extends TestCase {
             'transaction_type' => 'gift_received',
             'points_amount' => 100,
             'points_balance' => 102,
+            'created_at' => '2030-01-03 10:00:00',
         ]);
         $this->seed_balance(93102, 102);
 

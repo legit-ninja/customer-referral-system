@@ -2495,29 +2495,7 @@ The InterSoccer Team', 'intersoccer-referral'),
         $commission_reinstated = $this->get_commission_reinstatement_total_for_order($order_id);
         $commission_to_restore = intersoccer_money_floor_to_cents(max(0.0, $commission_reversed - $commission_reinstated));
         if ($commission_to_restore > 0 && $coach_id > 0) {
-            $referrals = $wpdb->prefix . 'intersoccer_referrals';
-            $referral_row = $wpdb->get_row($wpdb->prepare(
-                "SELECT * FROM {$referrals} WHERE order_id = %d AND coach_id = %d LIMIT 1",
-                $order_id,
-                $coach_id
-            ));
-            $referral_row_id = is_object($referral_row) && !empty($referral_row->id) ? (int) $referral_row->id : 0;
-            $current_credits = (float) get_user_meta($coach_id, 'intersoccer_credits', true);
-            update_user_meta($coach_id, 'intersoccer_credits', $current_credits + $commission_to_restore);
-            if ($referral_row_id > 0) {
-                $wpdb->insert(
-                    $wpdb->prefix . 'intersoccer_referral_credits',
-                    [
-                        'referral_id' => $referral_row_id,
-                        'coach_id' => $coach_id,
-                        'customer_id' => (int) ($referral_row->customer_id ?? $order->get_customer_id()),
-                        'order_id' => $order_id,
-                        'credit_amount' => $commission_to_restore,
-                        'credit_type' => 'commission_reinstatement',
-                        'created_at' => current_time('mysql'),
-                    ]
-                );
-            }
+            $this->apply_commission_reinstatement_for_order($order, $coach_id, $commission_to_restore);
         }
 
         $order->update_meta_data('_intersoccer_referrer_reward_points_reversed_total', 0);
@@ -2544,17 +2522,120 @@ The InterSoccer Team', 'intersoccer-referral'),
 
         $table = $wpdb->prefix . 'intersoccer_referral_credits';
         $sum = $wpdb->get_var($wpdb->prepare(
-            "SELECT COALESCE(SUM(
-                CASE
-                    WHEN credit_type = 'commission_reversal' THEN ABS(credit_amount)
-                    WHEN credit_type = 'commission_write_off' THEN credit_amount
-                    ELSE 0
-                END
-            ), 0) FROM {$table} WHERE order_id = %d",
+            "SELECT COALESCE(SUM(ABS(credit_amount)), 0) FROM {$table}
+             WHERE order_id = %d AND credit_type = 'commission_reversal'",
             $order_id
         ));
 
         return intersoccer_money_floor_to_cents((float) $sum);
+    }
+
+    /**
+     * @param WC_Order $order
+     * @param int      $coach_id
+     * @param float    $commission_to_restore
+     */
+    private function apply_commission_reinstatement_for_order($order, $coach_id, $commission_to_restore) {
+        global $wpdb;
+
+        $order_id = (int) $order->get_id();
+        $coach_id = (int) $coach_id;
+        $commission_to_restore = intersoccer_money_floor_to_cents((float) $commission_to_restore);
+        if ($order_id <= 0 || $coach_id <= 0 || $commission_to_restore <= 0) {
+            return;
+        }
+
+        if (!intersoccer_acquire_coach_credit_lock($coach_id)) {
+            intersoccer_schedule_order_refund_sync_retry($order_id, 'commission', [
+                'reason' => 'reinstatement',
+                'force_full' => true,
+            ]);
+            return;
+        }
+
+        $tx_started = false;
+        $use_transactions = $this->referral_credits_table_supports_transactions();
+        if ($use_transactions && !$this->is_wpdb_transaction_active()) {
+            $tx_started = $this->wpdb_start_transaction();
+        }
+
+        try {
+            $referrals = $wpdb->prefix . 'intersoccer_referrals';
+            $referral_row = $wpdb->get_row($wpdb->prepare(
+                "SELECT * FROM {$referrals} WHERE order_id = %d AND coach_id = %d LIMIT 1",
+                $order_id,
+                $coach_id
+            ));
+            if (!is_object($referral_row) || empty($referral_row->id)) {
+                intersoccer_referral_log(
+                    "InterSoccer: Skipping commission reinstatement for order {$order_id}; no referral row for coach {$coach_id}"
+                );
+                if ($tx_started) {
+                    $this->wpdb_commit_transaction();
+                }
+                return;
+            }
+
+            $referral_row_id = (int) $referral_row->id;
+            $inserted = $wpdb->insert(
+                $wpdb->prefix . 'intersoccer_referral_credits',
+                [
+                    'referral_id' => $referral_row_id,
+                    'coach_id' => $coach_id,
+                    'customer_id' => (int) ($referral_row->customer_id ?? $order->get_customer_id()),
+                    'order_id' => $order_id,
+                    'credit_amount' => $commission_to_restore,
+                    'credit_type' => 'commission_reinstatement',
+                    'created_at' => current_time('mysql'),
+                ]
+            );
+            if ($inserted === false) {
+                throw new RuntimeException('commission_reinstatement_insert_failed');
+            }
+
+            $this->apply_coach_credits_credit($coach_id, $commission_to_restore);
+
+            if ($tx_started) {
+                $this->wpdb_commit_transaction();
+            }
+        } catch (Throwable $e) {
+            if ($tx_started) {
+                $this->wpdb_rollback_transaction();
+                $this->invalidate_coach_credit_object_cache($coach_id);
+            }
+            throw $e;
+        } finally {
+            intersoccer_release_coach_credit_lock($coach_id);
+        }
+    }
+
+    /**
+     * @param int   $coach_id
+     * @param float $amount
+     */
+    private function apply_coach_credits_credit($coach_id, $amount) {
+        global $wpdb;
+
+        $coach_id = (int) $coach_id;
+        $amount = intersoccer_money_floor_to_cents((float) $amount);
+        if ($coach_id <= 0 || $amount <= 0) {
+            return;
+        }
+
+        $meta_key = 'intersoccer_credits';
+        $sql = $wpdb->prepare(
+            "UPDATE {$wpdb->usermeta}
+             SET meta_value = CAST(meta_value AS DECIMAL(20,4)) + %f
+             WHERE user_id = %d
+               AND meta_key = %s
+             LIMIT 1",
+            $amount,
+            $coach_id,
+            $meta_key
+        );
+        if ($wpdb->query($sql) === false) {
+            throw new RuntimeException('coach_credits_credit_failed');
+        }
     }
 
     /**

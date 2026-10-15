@@ -749,7 +749,7 @@ class ROICalculatorTest extends TestCase {
         $this->assertEquals(0, $result['goodwill_chf'], 'Should not be goodwill');
     }
     
-    public function testAdjustmentClassification_UnknownDefaultsToCorrection() {
+    public function testAdjustmentClassification_UnknownDefaultsToGoodwill() {
         $calculator = new InterSoccer_ROI_Calculator();
         
         global $mock_wpdb_get_results;

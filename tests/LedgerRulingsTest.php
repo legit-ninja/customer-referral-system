@@ -12,13 +12,17 @@ class LedgerRulingsTest extends TestCase {
         require_once __DIR__ . '/../includes/class-points-manager.php';
         require_once __DIR__ . '/../includes/class-commission-manager.php';
 
-        global $mock_user_meta, $mock_wc_orders_by_id, $mock_points_log_rows, $mock_options, $mock_wpdb_get_results, $mock_wpdb_inserts, $mock_order_points_allocated;
+        global $mock_user_meta, $mock_wc_orders_by_id, $mock_points_log_rows, $mock_options, $mock_wpdb_get_results, $mock_wpdb_inserts, $mock_order_points_allocated, $mock_wc_order_override, $mock_users, $mock_session, $mock_wpdb_transaction_depth;
         $mock_user_meta = [];
         $mock_wc_orders_by_id = [];
         $mock_points_log_rows = [];
         $mock_wpdb_get_results = [];
         $mock_wpdb_inserts = [];
         $mock_order_points_allocated = [];
+        $mock_wc_order_override = null;
+        $mock_users = [];
+        $mock_session = [];
+        $mock_wpdb_transaction_depth = 0;
         $mock_options['intersoccer_points_rate_customer_referral'] = 10;
         $mock_options['intersoccer_points_rate_customer_purchase'] = 10;
         $mock_options['intersoccer_proportional_commission_reversal'] = 'yes';
@@ -59,6 +63,9 @@ class LedgerRulingsTest extends TestCase {
         $mock_user_meta[$coach_id]['intersoccer_credits'] = (float) $amount;
     }
 
+    /**
+     * @return int Ledger row id
+     */
     private function seed_ledger_row(array $row) {
         global $mock_points_log_rows;
         static $next_id = 50000;
@@ -70,6 +77,47 @@ class LedgerRulingsTest extends TestCase {
         }
         unset($row['metadata_array']);
         $mock_points_log_rows[] = $row;
+        return (int) $row['id'];
+    }
+
+    private function refund_lot_allocations($order_id) {
+        global $mock_points_log_rows;
+        $all = [];
+        foreach ((array) $mock_points_log_rows as $row) {
+            if ((int) ($row['order_id'] ?? 0) !== (int) $order_id) {
+                continue;
+            }
+            if (!in_array($row['transaction_type'] ?? '', ['order_refund', 'order_cancelled'], true)) {
+                continue;
+            }
+            $meta = json_decode((string) ($row['metadata'] ?? ''), true);
+            if (!is_array($meta) || empty($meta['lot_allocations'])) {
+                continue;
+            }
+            foreach ($meta['lot_allocations'] as $alloc) {
+                $all[] = $alloc;
+            }
+        }
+        return $all;
+    }
+
+    private function reinstatement_lot_restores($order_id) {
+        global $mock_points_log_rows;
+        $all = [];
+        foreach ((array) $mock_points_log_rows as $row) {
+            if ((int) ($row['order_id'] ?? 0) !== (int) $order_id) {
+                continue;
+            }
+            if (($row['transaction_type'] ?? '') !== 'reversal_reinstated') {
+                continue;
+            }
+            $meta = json_decode((string) ($row['metadata'] ?? ''), true);
+            if (!is_array($meta) || empty($meta['restores_lot_allocation'])) {
+                continue;
+            }
+            $all[] = $meta['restores_lot_allocation'];
+        }
+        return $all;
     }
 
     private function seed_commission_credit_row($order_id, $referral_id, $coach_id, $credit_type, $amount) {
@@ -162,6 +210,34 @@ class LedgerRulingsTest extends TestCase {
 
         $this->assertSame([50], $this->ledger_amounts_for_order($order_id, 'coach_referral_reinstated'));
         $this->assertSame(70, (int) ($GLOBALS['mock_user_meta'][$coach_id]['intersoccer_points_balance'] ?? 0));
+    }
+
+    public function testLedgerRuling1_CommissionReinstatementRestoresOnlyClawedNotWriteOff() {
+        $order_id = 95125;
+        $coach_id = 95126;
+        $referral_id = 883;
+        $order = $this->make_order($order_id, 95127, 100, 'processing');
+        $order->update_meta_data('_intersoccer_referring_coach_id', $coach_id);
+        $order->save();
+        $this->seed_coach_credits($coach_id, 4.00);
+        $this->seed_commission_credit_row($order_id, $referral_id, $coach_id, 'commission_reversal', -4.00);
+        $this->seed_commission_credit_row($order_id, $referral_id, $coach_id, 'commission_write_off', 6.00);
+        global $mock_wpdb_get_results;
+        $mock_wpdb_get_results['intersoccer_referrals'] = [
+            (object) [
+                'id' => $referral_id,
+                'order_id' => $order_id,
+                'coach_id' => $coach_id,
+                'customer_id' => 95127,
+            ],
+        ];
+
+        InterSoccer_Commission_Manager::get_instance()->sync_reinstatement_paid_rewards_for_order($order);
+
+        $reinstate_rows = $this->commission_reinstatement_rows($order_id);
+        $this->assertCount(1, $reinstate_rows);
+        $this->assertEqualsWithDelta(4.00, (float) $reinstate_rows[0]['credit_amount'], 0.001);
+        $this->assertEqualsWithDelta(8.00, (float) $GLOBALS['mock_user_meta'][$coach_id]['intersoccer_credits'], 0.001);
     }
 
     public function testLedgerRuling1_CommissionReinstatementRestoresCreditsAndBalance() {
@@ -272,25 +348,56 @@ class LedgerRulingsTest extends TestCase {
     }
 
     public function testLedgerRuling2_PreCompletionPartialRefundUsesNetExVatForReferrerReward() {
-        $points = $this->manager();
-        $order = $this->make_order(95002, 9503, 110, 'processing', 10);
-        $order->set_subtotal(100);
-        $order->set_date_created('2025-05-01 10:00:00');
-        $order->save();
+        require_once __DIR__ . '/../includes/class-referral-handler.php';
 
-        $refund = new WC_Order_Refund(950021, 55);
+        global $mock_users, $mock_user_meta, $mock_session, $mock_wc_order_override;
+
+        $referrer_id = 95201;
+        $buyer_id = 95202;
+        $order_id = 95203;
+        $mock_users[$referrer_id] = (object) [
+            'ID' => $referrer_id,
+            'roles' => ['customer'],
+            'display_name' => 'Referrer',
+            'user_email' => 'ref95201@example.com',
+        ];
+        $mock_users[$buyer_id] = (object) [
+            'ID' => $buyer_id,
+            'roles' => ['customer'],
+            'display_name' => 'Buyer',
+            'user_email' => 'buy95202@example.com',
+        ];
+        $mock_user_meta[$referrer_id] = ['intersoccer_customer_referral_code' => 'LED95201'];
+        $mock_user_meta[$buyer_id] = [];
+        $mock_session = [
+            'intersoccer_referral' => [
+                'code' => 'LED95201',
+                'event_id' => null,
+                'coach_event_id' => null,
+                'set_at' => time(),
+            ],
+        ];
+
+        $order = new WC_Order($order_id);
+        $order->set_id($order_id);
+        $order->set_customer_id($buyer_id);
+        $order->set_total(110);
+        $order->set_tax_total(10);
+        $order->set_subtotal(100);
+        $order->set_status('processing');
+        $order->set_date_created('2025-05-01 10:00:00');
+
+        $refund = new WC_Order_Refund(952031, 55);
         $refund->set_total(-55);
         $refund->set_date_created('2025-05-15 10:00:00');
         $order->add_refund($refund);
         $order->set_date_completed('2025-06-01 12:00:00');
         $order->set_status('completed');
-        $order->save();
+        $mock_wc_order_override = $order;
 
-        $net = $points->get_order_net_rewardable_amount_ex_vat($order);
-        $this->assertEqualsWithDelta(50.0, $net, 0.01);
+        (new InterSoccer_Referral_Handler())->process_referral_order($order_id);
 
-        $reward_points = (int) $points->calculate_points_from_order_total($net, 9504, 'referral', false);
-        $this->assertSame(5, $reward_points);
+        $this->assertSame(5, (int) ($mock_user_meta[$referrer_id]['intersoccer_points_balance'] ?? 0));
     }
 
     public function testLedgerRuling2_CommissionBaseUsesNetPaidExVatAfterPreCompletionRefund() {
@@ -340,19 +447,47 @@ class LedgerRulingsTest extends TestCase {
     }
 
     public function testLedgerRuling3_UntaggedPositiveAdjustmentRemainsGift() {
+        $customer_id = 9506;
+        $order_id = 95061;
         $points = $this->manager();
         $this->seed_ledger_row([
-            'customer_id' => 9506,
+            'customer_id' => $customer_id,
             'order_id' => 0,
             'transaction_type' => 'admin_adjustment',
             'points_amount' => 15,
             'points_balance' => 15,
             'metadata' => '',
+            'created_at' => '2025-01-01 10:00:00',
         ]);
-        $this->seed_balance(9506, 15);
+        $this->seed_ledger_row([
+            'customer_id' => $customer_id,
+            'order_id' => 0,
+            'transaction_type' => 'admin_adjustment',
+            'points_amount' => 20,
+            'points_balance' => 35,
+            'metadata_array' => ['adjustment_reason' => 'correction'],
+            'created_at' => '2025-01-02 10:00:00',
+        ]);
+        $this->seed_balance($customer_id, 35);
+        global $mock_order_points_allocated;
+        $mock_order_points_allocated[$order_id] = 10;
+        $this->seed_ledger_row([
+            'customer_id' => $customer_id,
+            'order_id' => $order_id,
+            'transaction_type' => 'order_purchase',
+            'points_amount' => 10,
+            'points_balance' => 45,
+            'created_at' => '2025-02-01 10:00:00',
+        ]);
+        $this->seed_balance($customer_id, 45);
 
-        $this->assertTrue($points->is_positive_points_lot_gift('admin_adjustment', 15, ''));
-        $this->assertSame(15, $points->get_unspent_gifted_points(9506));
+        $order = $this->make_order($order_id, $customer_id, 80, 'completed');
+        $order->set_status('refunded');
+        $points->handle_order_status_refunded($order_id);
+
+        $this->assertSame(35, $points->get_points_balance($customer_id));
+        $this->assertSame(15, $points->get_unspent_gifted_points($customer_id));
+        $this->assertSame([-10], $this->ledger_amounts_for_order($order_id, 'order_refund'));
     }
 
     public function testLedgerRuling3_RefundReversalClawsCorrectionOnlyExactAmounts() {
@@ -362,7 +497,7 @@ class LedgerRulingsTest extends TestCase {
 
         $order = $this->make_order($order_id, $customer_id, 100, 'completed');
         $this->seed_balance($customer_id, 0);
-        $this->seed_ledger_row([
+        $correction_id = $this->seed_ledger_row([
             'customer_id' => $customer_id,
             'order_id' => 0,
             'transaction_type' => 'admin_adjustment',
@@ -383,7 +518,7 @@ class LedgerRulingsTest extends TestCase {
         $this->seed_balance($customer_id, 40);
         global $mock_order_points_allocated;
         $mock_order_points_allocated[$order_id] = 15;
-        $this->seed_ledger_row([
+        $purchase_id = $this->seed_ledger_row([
             'customer_id' => $customer_id,
             'order_id' => $order_id,
             'transaction_type' => 'order_purchase',
@@ -396,10 +531,128 @@ class LedgerRulingsTest extends TestCase {
         $order->set_status('refunded');
         $points->handle_order_status_refunded($order_id);
 
-        // 12 correction + 3 purchase debited; 28 goodwill FIFO-protected.
         $this->assertSame(40, $points->get_points_balance($customer_id));
+        $this->assertSame(12, $points->get_fifo_lot_remaining($customer_id, $correction_id));
         $this->assertSame(28, $points->get_unspent_gifted_points($customer_id));
+        $this->assertSame(0, $points->get_fifo_lot_remaining($customer_id, $purchase_id));
         $this->assertSame([-15], $this->ledger_amounts_for_order($order_id, 'order_refund'));
-        $this->assertSame(0, $this->count_ledger_type($order_id, 'reversal_write_off'));
+        $allocs = $this->refund_lot_allocations($order_id);
+        $this->assertCount(1, $allocs);
+        $this->assertSame($purchase_id, (int) $allocs[0]['ledger_id']);
+        $this->assertSame(15, (int) $allocs[0]['amount']);
+        $this->assertSame('subject_order_purchase', (string) $allocs[0]['phase']);
+
+        $order->set_status('processing');
+        $points->sync_reinstatement_for_order($order);
+
+        $this->assertSame(55, $points->get_points_balance($customer_id));
+        $this->assertSame(15, $points->get_fifo_lot_remaining($customer_id, $purchase_id));
+        $restores = $this->reinstatement_lot_restores($order_id);
+        $this->assertCount(1, $restores);
+        $this->assertSame($purchase_id, (int) $restores[0]['ledger_id']);
+        $this->assertSame(15, (int) $restores[0]['amount']);
+    }
+
+    public function testLedgerRuling3_PartiallySpentOrderLotFallsBackToCorrectionThenReinstatesLots() {
+        $customer_id = 95160;
+        $order_id = 95161;
+        $points = $this->manager();
+
+        $order = $this->make_order($order_id, $customer_id, 100, 'completed');
+        global $mock_order_points_allocated;
+        $mock_order_points_allocated[$order_id] = 15;
+        $purchase_id = $this->seed_ledger_row([
+            'customer_id' => $customer_id,
+            'order_id' => $order_id,
+            'transaction_type' => 'order_purchase',
+            'points_amount' => 15,
+            'points_balance' => 15,
+            'created_at' => '2025-01-01 10:00:00',
+        ]);
+        $this->seed_ledger_row([
+            'customer_id' => $customer_id,
+            'order_id' => 0,
+            'transaction_type' => 'points_redemption',
+            'points_amount' => -10,
+            'points_balance' => 5,
+            'created_at' => '2025-01-02 10:00:00',
+        ]);
+        $correction_id = $this->seed_ledger_row([
+            'customer_id' => $customer_id,
+            'order_id' => 0,
+            'transaction_type' => 'admin_adjustment',
+            'points_amount' => 12,
+            'points_balance' => 17,
+            'metadata_array' => ['adjustment_reason' => 'correction'],
+            'created_at' => '2025-01-03 10:00:00',
+        ]);
+        $this->seed_balance($customer_id, 17);
+
+        $order->set_status('refunded');
+        $points->handle_order_status_refunded($order_id);
+
+        $this->assertSame(2, $points->get_fifo_lot_remaining($customer_id, $correction_id));
+        $this->assertSame(0, $points->get_fifo_lot_remaining($customer_id, $purchase_id));
+        $this->assertSame([-15], $this->ledger_amounts_for_order($order_id, 'order_refund'));
+        $allocs = $this->refund_lot_allocations($order_id);
+        $this->assertCount(2, $allocs);
+        $this->assertSame(5, (int) $allocs[0]['amount']);
+        $this->assertSame($purchase_id, (int) $allocs[0]['ledger_id']);
+        $this->assertSame(10, (int) $allocs[1]['amount']);
+        $this->assertSame($correction_id, (int) $allocs[1]['ledger_id']);
+
+        $order->set_status('processing');
+        $points->sync_reinstatement_for_order($order);
+
+        $this->assertSame(5, $points->get_fifo_lot_remaining($customer_id, $purchase_id));
+        $this->assertSame(12, $points->get_fifo_lot_remaining($customer_id, $correction_id));
+        $this->assertSame(17, $points->get_points_balance($customer_id));
+        $restores = $this->reinstatement_lot_restores($order_id);
+        $this->assertCount(2, $restores);
+    }
+
+    public function testLedgerRuling2_RefundExVatUsesOrderTaxRatioWhenRefundHasNoTax() {
+        $points = $this->manager();
+        $order = $this->make_order(95210, 95211, 110, 'processing', 10);
+        $order->set_subtotal(100);
+        $refund = new WC_Order_Refund(952101, 55);
+        $refund->set_total(-55);
+        $ex_vat = $points->get_refund_amount_ex_vat($refund, $order);
+        $this->assertEqualsWithDelta(50.0, $ex_vat, 0.01);
+    }
+
+    public function testLedgerRuling2_BaseCommissionAndLoyaltyBonusUseNetExVatBase() {
+        global $mock_options;
+        $mock_options['intersoccer_commission_rate_tier1'] = 10;
+        $mock_options['intersoccer_loyalty_bonus_first'] = 10;
+
+        $order = $this->make_order(95220, 95221, 110, 'processing', 10);
+        $order->set_subtotal(100);
+        $order->set_shipping_total(0);
+        $order->set_date_created('2025-05-01 10:00:00');
+        $order->save();
+        $refund = new WC_Order_Refund(952201, 55);
+        $refund->set_total(-55);
+        $refund->set_date_created('2025-05-10 10:00:00');
+        $order->add_refund($refund);
+        $order->set_date_completed('2025-06-01 12:00:00');
+        $order->set_status('completed');
+        $order->save();
+
+        $coach_id = 95222;
+        $rewardable = InterSoccer_Commission_Manager::get_rewardable_commissionable_amount($order);
+        $base = InterSoccer_Commission_Manager::calculate_base_commission($order, $coach_id);
+        $loyalty = InterSoccer_Commission_Manager::calculate_loyalty_bonus($order, 1);
+        $this->assertEqualsWithDelta(50.0, $rewardable, 0.01);
+        $this->assertEqualsWithDelta($rewardable * 0.1, $base, 0.02);
+        $this->assertEqualsWithDelta($rewardable * 0.1, $loyalty, 0.02);
+    }
+
+    public function testLedgerRuling3_ManualAdjustmentAndPointsRefundShareGiftClassification() {
+        $points = $this->manager();
+        $this->assertTrue($points->is_positive_points_lot_gift('manual_adjustment', 8, '', 'Random manual entry'));
+        $this->assertFalse($points->is_positive_points_lot_gift('manual_adjustment', 8, json_encode(['adjustment_reason' => 'correction']), ''));
+        $this->assertTrue($points->is_positive_points_lot_gift('points_refund', 5, '', 'gesture'));
+        $this->assertFalse($points->is_positive_points_lot_gift('points_refund', 5, '', 'refund credit fix'));
     }
 }

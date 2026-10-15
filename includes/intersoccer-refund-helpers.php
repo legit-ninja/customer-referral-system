@@ -302,3 +302,125 @@ if (!function_exists('intersoccer_schedule_order_refund_sync_retry')) {
         return (bool) wp_schedule_single_event(time() + max(1, (int) $delay_seconds), $hook, $args);
     }
 }
+
+if (!function_exists('intersoccer_classify_adjustment_cost_bucket')) {
+    /**
+     * Ledger / ROI: classify a positive adjustment row as correction cost vs goodwill gift.
+     *
+     * @param string $transaction_type
+     * @param string $description
+     * @param string $metadata_json
+     * @return string correction|goodwill
+     */
+    function intersoccer_classify_adjustment_cost_bucket($transaction_type, $description, $metadata_json = '') {
+        $transaction_type = (string) $transaction_type;
+        $desc = strtolower((string) $description);
+
+        if ($transaction_type === 'admin_reset' || $transaction_type === 'admin_balance_set') {
+            return 'correction';
+        }
+
+        $adjustment_reason = '';
+        if (is_string($metadata_json) && $metadata_json !== '') {
+            $decoded = json_decode($metadata_json, true);
+            if (is_array($decoded) && isset($decoded['adjustment_reason'])) {
+                $adjustment_reason = (string) $decoded['adjustment_reason'];
+            }
+        }
+
+        if ($adjustment_reason === 'correction') {
+            return 'correction';
+        }
+        if ($adjustment_reason === 'goodwill' || $adjustment_reason === 'bonus') {
+            return 'goodwill';
+        }
+
+        $correction_keywords = ['cancel', 'error', 'incorrect', 'fix', 'return', 'refund', 'mistake', 'wrong', 'changed', 'test', 'testing', 'example', 'e2e', 'classic test'];
+        $goodwill_keywords = ['goodwill', 'bonus', 'survey', 'reward', 'compensation', 'apolog', 'gesture', 'exceptional', 'not mature', 'mature enough', 'referral', 'referal', 'informed us'];
+
+        foreach ($correction_keywords as $kw) {
+            if ($kw !== '' && strpos($desc, $kw) !== false) {
+                return 'correction';
+            }
+        }
+        foreach ($goodwill_keywords as $kw) {
+            if ($kw !== '' && strpos($desc, $kw) !== false) {
+                return 'goodwill';
+            }
+        }
+
+        return 'goodwill';
+    }
+}
+
+if (!function_exists('intersoccer_adjustment_row_is_untagged_default')) {
+    /**
+     * True when a positive adjustment row has no tag/metadata reason and no description keyword match.
+     *
+     * @param string $transaction_type
+     * @param string $description
+     * @param string $metadata_json
+     * @return bool
+     */
+    function intersoccer_adjustment_row_is_untagged_default($transaction_type, $description, $metadata_json = '') {
+        $transaction_type = (string) $transaction_type;
+        if ($transaction_type === 'admin_reset' || $transaction_type === 'admin_balance_set') {
+            return false;
+        }
+
+        $adjustment_reason = '';
+        if (is_string($metadata_json) && $metadata_json !== '') {
+            $decoded = json_decode($metadata_json, true);
+            if (is_array($decoded) && isset($decoded['adjustment_reason'])) {
+                $adjustment_reason = (string) $decoded['adjustment_reason'];
+            }
+        }
+        if ($adjustment_reason !== '') {
+            return false;
+        }
+
+        $desc = strtolower((string) $description);
+        $keywords = [
+            'cancel', 'error', 'incorrect', 'fix', 'return', 'refund', 'mistake', 'wrong', 'changed', 'test', 'testing', 'example', 'e2e', 'classic test',
+            'goodwill', 'bonus', 'survey', 'reward', 'compensation', 'apolog', 'gesture', 'exceptional', 'not mature', 'mature enough', 'referral', 'referal', 'informed us',
+        ];
+        foreach ($keywords as $kw) {
+            if ($kw !== '' && strpos($desc, $kw) !== false) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
+
+if (!function_exists('intersoccer_positive_ledger_lot_is_gift')) {
+    /**
+     * Whether a positive points lot is a protected gift (not clawed on earned reversal).
+     *
+     * @param string $transaction_type
+     * @param int    $points_amount
+     * @param string $metadata_json
+     * @param string $description
+     * @return bool
+     */
+    function intersoccer_positive_ledger_lot_is_gift($transaction_type, $points_amount, $metadata_json = '', $description = '') {
+        $transaction_type = (string) $transaction_type;
+        $points_amount = (int) $points_amount;
+        if ($points_amount <= 0) {
+            return false;
+        }
+
+        if (in_array($transaction_type, ['admin_adjustment', 'manual_adjustment', 'points_refund'], true)) {
+            return intersoccer_classify_adjustment_cost_bucket($transaction_type, $description, $metadata_json) !== 'correction';
+        }
+
+        if ($transaction_type === 'admin_reset' || $transaction_type === 'admin_balance_set') {
+            return false;
+        }
+
+        $gift_types = (array) apply_filters('intersoccer_points_gift_credit_types', ['gift_received', 'admin_adjustment']);
+
+        return in_array($transaction_type, array_map('strval', $gift_types), true);
+    }
+}

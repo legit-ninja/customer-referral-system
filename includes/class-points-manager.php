@@ -976,31 +976,8 @@ class InterSoccer_Points_Manager {
      * @param string $metadata_json
      * @return bool
      */
-    public function is_positive_points_lot_gift($transaction_type, $points_amount, $metadata_json = '') {
-        $transaction_type = (string) $transaction_type;
-        $points_amount = (int) $points_amount;
-        if ($points_amount <= 0) {
-            return false;
-        }
-
-        if ($transaction_type === 'admin_adjustment') {
-            $meta = is_string($metadata_json) && $metadata_json !== ''
-                ? json_decode($metadata_json, true)
-                : [];
-            if (!is_array($meta)) {
-                $meta = [];
-            }
-            $reason = isset($meta['adjustment_reason']) ? (string) $meta['adjustment_reason'] : '';
-            if ($reason === 'correction') {
-                return false;
-            }
-
-            return true;
-        }
-
-        $gift_types = array_map('strval', $this->get_points_gift_credit_types());
-
-        return in_array($transaction_type, $gift_types, true);
+    public function is_positive_points_lot_gift($transaction_type, $points_amount, $metadata_json = '', $description = '') {
+        return intersoccer_positive_ledger_lot_is_gift($transaction_type, $points_amount, $metadata_json, $description);
     }
 
     /**
@@ -1054,16 +1031,22 @@ class InterSoccer_Points_Manager {
      * @param int $customer_id
      * @return int
      */
-    public function get_unspent_gifted_points($customer_id) {
+    /**
+     * FIFO lot state after applying all spending (positive lots with remaining amounts).
+     *
+     * @param int $customer_id
+     * @return array<int, array<string, mixed>>
+     */
+    public function get_customer_fifo_lots_state($customer_id) {
         global $wpdb;
 
         $customer_id = (int) $customer_id;
         if ($customer_id <= 0) {
-            return 0;
+            return [];
         }
 
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT id, transaction_type, points_amount, metadata FROM {$this->points_log_table}
+            "SELECT id, order_id, transaction_type, points_amount, metadata, description FROM {$this->points_log_table}
              WHERE customer_id = %d
              ORDER BY created_at ASC, id ASC",
             $customer_id
@@ -1079,32 +1062,239 @@ class InterSoccer_Points_Manager {
             if ($amount > 0) {
                 $type = (string) (is_array($row) ? ($row['transaction_type'] ?? '') : ($row->transaction_type ?? ''));
                 $metadata = (string) (is_array($row) ? ($row['metadata'] ?? '') : ($row->metadata ?? ''));
-                $is_gift = $this->is_positive_points_lot_gift($type, $amount, $metadata);
-                $lots[] = ['amount' => $amount, 'is_gift' => $is_gift];
+                $description = (string) (is_array($row) ? ($row['description'] ?? '') : ($row->description ?? ''));
+                $order_id = (int) (is_array($row) ? ($row['order_id'] ?? 0) : ($row->order_id ?? 0));
+                $ledger_id = (int) (is_array($row) ? ($row['id'] ?? 0) : ($row->id ?? 0));
+                $restored_to_ledger = 0;
+                if ($metadata !== '') {
+                    $decoded_positive = json_decode($metadata, true);
+                    if (is_array($decoded_positive) && !empty($decoded_positive['restores_lot_allocation'])) {
+                        $restore = $decoded_positive['restores_lot_allocation'];
+                        if (is_array($restore)) {
+                            $restored_to_ledger = (int) ($restore['ledger_id'] ?? 0);
+                        }
+                    }
+                }
+                if ($restored_to_ledger > 0) {
+                    $restored = false;
+                    foreach ($lots as $i => $lot) {
+                        if ((int) ($lot['ledger_id'] ?? 0) === $restored_to_ledger) {
+                            $lots[$i]['remaining'] += $amount;
+                            $restored = true;
+                            break;
+                        }
+                    }
+                    if ($restored) {
+                        continue;
+                    }
+                }
+                $is_gift = $this->is_positive_points_lot_gift($type, $amount, $metadata, $description);
+                $lots[] = [
+                    'ledger_id' => $ledger_id,
+                    'order_id' => $order_id,
+                    'transaction_type' => $type,
+                    'metadata' => $metadata,
+                    'remaining' => $amount,
+                    'is_gift' => $is_gift,
+                ];
                 continue;
             }
 
-            // Spending uses earned (non-gift) lots first, oldest first, and only then gift lots.
+            $metadata = (string) (is_array($row) ? ($row['metadata'] ?? '') : ($row->metadata ?? ''));
             $remaining = abs($amount);
+            $targeted = [];
+            if ($metadata !== '') {
+                $decoded = json_decode($metadata, true);
+                if (is_array($decoded) && !empty($decoded['lot_allocations']) && is_array($decoded['lot_allocations'])) {
+                    $targeted = $decoded['lot_allocations'];
+                }
+            }
+            if (!empty($targeted)) {
+                foreach ($targeted as $alloc) {
+                    if (!is_array($alloc)) {
+                        continue;
+                    }
+                    $ledger_id = (int) ($alloc['ledger_id'] ?? 0);
+                    $take = (int) ($alloc['amount'] ?? 0);
+                    if ($ledger_id <= 0 || $take <= 0) {
+                        continue;
+                    }
+                    foreach ($lots as $i => $lot) {
+                        if ((int) ($lot['ledger_id'] ?? 0) !== $ledger_id) {
+                            continue;
+                        }
+                        $applied = min((int) $lot['remaining'], $take);
+                        $lots[$i]['remaining'] -= $applied;
+                        $remaining -= $applied;
+                        break;
+                    }
+                }
+            }
+            if ($remaining <= 0) {
+                continue;
+            }
             foreach ([false, true] as $consume_gift) {
                 foreach ($lots as $i => $lot) {
                     if ($remaining <= 0) {
                         break 2;
                     }
-                    if ((bool) $lot['is_gift'] !== $consume_gift || $lot['amount'] <= 0) {
+                    if ((bool) $lot['is_gift'] !== $consume_gift || (int) $lot['remaining'] <= 0) {
                         continue;
                     }
-                    $take = min($lot['amount'], $remaining);
-                    $lots[$i]['amount'] -= $take;
+                    $take = min((int) $lot['remaining'], $remaining);
+                    $lots[$i]['remaining'] -= $take;
                     $remaining -= $take;
                 }
             }
         }
 
-        $gift_remaining = 0;
+        return $lots;
+    }
+
+    /**
+     * Remaining points on a specific positive ledger lot after FIFO spending.
+     *
+     * @param int $customer_id
+     * @param int $ledger_id
+     * @return int
+     */
+    public function get_fifo_lot_remaining($customer_id, $ledger_id) {
+        $ledger_id = (int) $ledger_id;
+        foreach ($this->get_customer_fifo_lots_state($customer_id) as $lot) {
+            if ((int) ($lot['ledger_id'] ?? 0) === $ledger_id) {
+                return max(0, (int) ($lot['remaining'] ?? 0));
+            }
+        }
+
+        return 0;
+    }
+
+    /**
+     * Plan how an earned-points reversal debits existing lots (order lot first, then clawable fallback).
+     *
+     * @param int $customer_id
+     * @param int $subject_order_id Order being refunded/cancelled.
+     * @param int $delta            Points to reverse this sync.
+     * @return array{allocations: array<int, array<string, mixed>>, debit: int, shortfall: int}
+     */
+    public function plan_earned_reversal_lot_allocations($customer_id, $subject_order_id, $delta) {
+        $customer_id = (int) $customer_id;
+        $subject_order_id = (int) $subject_order_id;
+        $delta = max(0, (int) $delta);
+        if ($delta <= 0) {
+            return ['allocations' => [], 'debit' => 0, 'shortfall' => 0];
+        }
+
+        $lots = $this->get_customer_fifo_lots_state($customer_id);
+        $allocations = [];
+        $remaining = $delta;
+
         foreach ($lots as $lot) {
+            if ($remaining <= 0) {
+                break;
+            }
             if (!empty($lot['is_gift'])) {
-                $gift_remaining += (int) $lot['amount'];
+                continue;
+            }
+            if (($lot['transaction_type'] ?? '') !== 'order_purchase') {
+                continue;
+            }
+            if ((int) ($lot['order_id'] ?? 0) !== $subject_order_id) {
+                continue;
+            }
+            $take = min((int) $lot['remaining'], $remaining);
+            if ($take <= 0) {
+                continue;
+            }
+            $allocations[] = $this->format_lot_allocation_entry($lot, $take, 'subject_order_purchase');
+            $remaining -= $take;
+        }
+
+        foreach ($lots as $lot) {
+            if ($remaining <= 0) {
+                break;
+            }
+            if (!empty($lot['is_gift']) || (int) ($lot['remaining'] ?? 0) <= 0) {
+                continue;
+            }
+            if (($lot['transaction_type'] ?? '') === 'order_purchase'
+                && (int) ($lot['order_id'] ?? 0) === $subject_order_id
+            ) {
+                continue;
+            }
+            $take = min((int) $lot['remaining'], $remaining);
+            if ($take <= 0) {
+                continue;
+            }
+            $allocations[] = $this->format_lot_allocation_entry($lot, $take, 'clawable_fallback');
+            $remaining -= $take;
+        }
+
+        $debit = $delta - $remaining;
+
+        return [
+            'allocations' => $allocations,
+            'debit' => $debit,
+            'shortfall' => $remaining,
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $lot
+     * @param int                  $amount
+     * @param string               $phase
+     * @return array<string, mixed>
+     */
+    private function format_lot_allocation_entry(array $lot, $amount, $phase) {
+        return [
+            'ledger_id' => (int) ($lot['ledger_id'] ?? 0),
+            'order_id' => (int) ($lot['order_id'] ?? 0),
+            'transaction_type' => (string) ($lot['transaction_type'] ?? ''),
+            'metadata' => (string) ($lot['metadata'] ?? ''),
+            'amount' => (int) $amount,
+            'phase' => (string) $phase,
+        ];
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $allocations
+     * @param int                              $max_debit
+     * @return array<int, array<string, mixed>>
+     */
+    private function trim_lot_allocations_to_debit_amount(array $allocations, $max_debit) {
+        $max_debit = max(0, (int) $max_debit);
+        $trimmed = [];
+        $remaining = $max_debit;
+        foreach ($allocations as $alloc) {
+            if ($remaining <= 0) {
+                break;
+            }
+            if (!is_array($alloc)) {
+                continue;
+            }
+            $take = min($remaining, (int) ($alloc['amount'] ?? 0));
+            if ($take <= 0) {
+                continue;
+            }
+            $entry = $alloc;
+            $entry['amount'] = $take;
+            $trimmed[] = $entry;
+            $remaining -= $take;
+        }
+
+        return $trimmed;
+    }
+
+    public function get_unspent_gifted_points($customer_id) {
+        $customer_id = (int) $customer_id;
+        if ($customer_id <= 0) {
+            return 0;
+        }
+
+        $gift_remaining = 0;
+        foreach ($this->get_customer_fifo_lots_state($customer_id) as $lot) {
+            if (!empty($lot['is_gift'])) {
+                $gift_remaining += (int) ($lot['remaining'] ?? 0);
             }
         }
 
@@ -1290,14 +1480,22 @@ class InterSoccer_Points_Manager {
         }
 
         $write_off_reason = $reason;
+        $lot_allocations = [];
         if ($this->customer_points_expired_blocks_reversal($order_id, $customer_id)) {
             $debit_amount = 0;
             $shortfall = $delta;
             $write_off_reason = 'expired';
         } else {
-            $attributable = $this->get_attributable_balance_for_order_reversal($customer_id, $order_id);
-            $debit_amount = min($delta, $attributable);
-            $shortfall = $delta - $debit_amount;
+            $plan = $this->plan_earned_reversal_lot_allocations($customer_id, $order_id, $delta);
+            $lot_allocations = $plan['allocations'];
+            $debit_amount = (int) $plan['debit'];
+            $shortfall = (int) $plan['shortfall'];
+            $balance_cap = max(0, (int) $this->get_points_balance($customer_id));
+            if ($debit_amount > $balance_cap) {
+                $lot_allocations = $this->trim_lot_allocations_to_debit_amount($lot_allocations, $balance_cap);
+                $debit_amount = $balance_cap;
+                $shortfall = $delta - $debit_amount;
+            }
             if ($shortfall > 0) {
                 $write_off_reason = 'spent_or_gift_protected';
             }
@@ -1317,6 +1515,9 @@ class InterSoccer_Points_Manager {
         }
         if ($shortfall > 0) {
             $metadata['shortfall'] = $shortfall;
+        }
+        if (!empty($lot_allocations)) {
+            $metadata['lot_allocations'] = $lot_allocations;
         }
 
         if ($debit_amount > 0) {
@@ -1932,6 +2133,168 @@ class InterSoccer_Points_Manager {
     }
 
     /**
+     * @param int      $order_id
+     * @param string[] $transaction_types
+     * @return array<int, object>
+     */
+    private function get_order_points_log_rows_for_types($order_id, array $transaction_types) {
+        global $wpdb;
+
+        $order_id = (int) $order_id;
+        $transaction_types = array_values(array_filter(array_map('strval', $transaction_types)));
+        if ($order_id <= 0 || empty($transaction_types)) {
+            return [];
+        }
+
+        $placeholders = implode(', ', array_fill(0, count($transaction_types), '%s'));
+        $sql = "SELECT points_amount, metadata, transaction_type FROM {$this->points_log_table}
+                WHERE order_id = %d AND transaction_type IN ($placeholders)
+                ORDER BY created_at ASC, id ASC";
+        $prepared = $wpdb->prepare($sql, array_merge([$order_id], $transaction_types));
+
+        return (array) $wpdb->get_results($prepared);
+    }
+
+    /**
+     * @param int      $order_id
+     * @param string[] $transaction_types
+     * @return array<int, array{amount: int, template: array<string, mixed>}>
+     */
+    private function aggregate_debited_lot_allocations_for_order($order_id, array $transaction_types) {
+        $by_ledger = [];
+        foreach ($this->get_order_points_log_rows_for_types($order_id, $transaction_types) as $row) {
+            $raw = is_object($row) ? ($row->metadata ?? '') : ($row['metadata'] ?? '');
+            $meta = is_string($raw) && $raw !== '' ? json_decode($raw, true) : [];
+            if (!is_array($meta) || empty($meta['lot_allocations']) || !is_array($meta['lot_allocations'])) {
+                continue;
+            }
+            foreach ($meta['lot_allocations'] as $alloc) {
+                if (!is_array($alloc)) {
+                    continue;
+                }
+                $ledger_id = (int) ($alloc['ledger_id'] ?? 0);
+                $amount = (int) ($alloc['amount'] ?? 0);
+                if ($ledger_id <= 0 || $amount <= 0) {
+                    continue;
+                }
+                if (!isset($by_ledger[$ledger_id])) {
+                    $template = $alloc;
+                    unset($template['amount'], $template['phase']);
+                    $by_ledger[$ledger_id] = ['amount' => 0, 'template' => $template];
+                }
+                $by_ledger[$ledger_id]['amount'] += $amount;
+            }
+        }
+
+        return $by_ledger;
+    }
+
+    /**
+     * @param int $order_id
+     * @return array<int, int>
+     */
+    private function aggregate_restored_lot_amounts_for_order($order_id) {
+        $by_ledger = [];
+        foreach ($this->get_order_points_log_rows_for_types($order_id, ['reversal_reinstated']) as $row) {
+            $raw = is_object($row) ? ($row->metadata ?? '') : ($row['metadata'] ?? '');
+            $meta = is_string($raw) && $raw !== '' ? json_decode($raw, true) : [];
+            if (!is_array($meta) || empty($meta['restores_lot_allocation']) || !is_array($meta['restores_lot_allocation'])) {
+                continue;
+            }
+            $alloc = $meta['restores_lot_allocation'];
+            $ledger_id = (int) ($alloc['ledger_id'] ?? 0);
+            $amount = (int) ($alloc['amount'] ?? 0);
+            if ($ledger_id <= 0 || $amount <= 0) {
+                continue;
+            }
+            if (!isset($by_ledger[$ledger_id])) {
+                $by_ledger[$ledger_id] = 0;
+            }
+            $by_ledger[$ledger_id] += $amount;
+        }
+
+        return $by_ledger;
+    }
+
+    /**
+     * @param WC_Order $order
+     * @param int      $customer_id
+     */
+    private function sync_earned_lot_reinstatements_for_order($order, $customer_id) {
+        $order_id = (int) $order->get_id();
+        $customer_id = (int) $customer_id;
+
+        $debited = $this->get_abs_points_log_sum_for_order_transaction_types(
+            $order_id,
+            ['order_refund', 'order_cancelled']
+        );
+        $reinstated = $this->get_abs_points_log_sum_for_order_transaction_types(
+            $order_id,
+            ['reversal_reinstated']
+        );
+        $to_reaward = max(0, $debited - $reinstated);
+        if ($to_reaward <= 0) {
+            return;
+        }
+
+        $debited_lots = $this->aggregate_debited_lot_allocations_for_order(
+            $order_id,
+            ['order_refund', 'order_cancelled']
+        );
+        if (empty($debited_lots)) {
+            $this->add_points_transaction(
+                $customer_id,
+                'reversal_reinstated',
+                $to_reaward,
+                $order_id,
+                sprintf('Reinstated %d earned points for order #%d', $to_reaward, $order_id),
+                ['fraction' => 1.0]
+            );
+            return;
+        }
+
+        $restored = $this->aggregate_restored_lot_amounts_for_order($order_id);
+        $reawarded_via_lots = 0;
+        foreach ($debited_lots as $ledger_id => $data) {
+            $pending = (int) $data['amount'] - (int) ($restored[$ledger_id] ?? 0);
+            if ($pending <= 0) {
+                continue;
+            }
+            $alloc = $data['template'];
+            $alloc['amount'] = $pending;
+            $this->add_points_transaction(
+                $customer_id,
+                'reversal_reinstated',
+                $pending,
+                $order_id,
+                sprintf(
+                    'Reinstated %d earned points to ledger lot %d for order #%d',
+                    $pending,
+                    (int) $ledger_id,
+                    $order_id
+                ),
+                [
+                    'fraction' => 1.0,
+                    'restores_lot_allocation' => $alloc,
+                ]
+            );
+            $reawarded_via_lots += $pending;
+        }
+
+        $legacy_remainder = $to_reaward - $reawarded_via_lots;
+        if ($legacy_remainder > 0) {
+            $this->add_points_transaction(
+                $customer_id,
+                'reversal_reinstated',
+                $legacy_remainder,
+                $order_id,
+                sprintf('Reinstated %d earned points for order #%d', $legacy_remainder, $order_id),
+                ['fraction' => 1.0]
+            );
+        }
+    }
+
+    /**
      * Sum prior reinstated-retake write-offs for an order (points already satisfied via write-off).
      *
      * @param int $order_id
@@ -2344,25 +2707,7 @@ class InterSoccer_Points_Manager {
             return;
         }
 
-        $debited = $this->get_abs_points_log_sum_for_order_transaction_types(
-            $order_id,
-            ['order_refund', 'order_cancelled']
-        );
-        $reinstated = $this->get_abs_points_log_sum_for_order_transaction_types(
-            $order_id,
-            ['reversal_reinstated']
-        );
-        $to_reaward = max(0, $debited - $reinstated);
-        if ($to_reaward > 0) {
-            $this->add_points_transaction(
-                $customer_id,
-                'reversal_reinstated',
-                $to_reaward,
-                $order_id,
-                sprintf('Reinstated %d earned points for order #%d', $to_reaward, $order_id),
-                ['fraction' => 1.0]
-            );
-        }
+        $this->sync_earned_lot_reinstatements_for_order($order, $customer_id);
 
         $returned = $this->get_abs_points_log_sum_for_order_transaction_types($order_id, ['points_refund']);
         $retaken = $this->get_abs_points_log_sum_for_order_transaction_types($order_id, ['redeemed_retaken']);

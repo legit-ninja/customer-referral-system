@@ -536,8 +536,6 @@ if (!function_exists('intersoccer_mock_sum_commission_clawback_for_order')) {
             $amount = (float) ($data['credit_amount'] ?? 0);
             if ($type === 'commission_reversal') {
                 $sum += abs($amount);
-            } elseif ($type === 'commission_write_off') {
-                $sum += $amount;
             }
         }
         return $sum;
@@ -1365,11 +1363,53 @@ if (!function_exists('intersoccer_mock_customer_points_ledger_for_fifo')) {
         foreach ($rows as $row) {
             $out[] = (object) [
                 'id' => (int) ($row['id'] ?? 0),
+                'order_id' => (int) ($row['order_id'] ?? 0),
                 'transaction_type' => (string) ($row['transaction_type'] ?? ''),
                 'points_amount' => (int) ($row['points_amount'] ?? 0),
                 'metadata' => (string) ($row['metadata'] ?? ''),
+                'description' => (string) ($row['description'] ?? ''),
             ];
         }
+        return $out;
+    }
+}
+
+if (!function_exists('intersoccer_mock_points_log_rows_for_order_types')) {
+    /**
+     * @param int    $order_id
+     * @param string $query
+     * @return array<int, object>
+     */
+    function intersoccer_mock_points_log_rows_for_order_types($order_id, $query) {
+        global $mock_points_log_rows;
+        $order_id = (int) $order_id;
+        $types = [];
+        if (is_string($query) && preg_match_all("/'([a-z0-9_]+)'/i", $query, $matches)) {
+            foreach ($matches[1] as $candidate) {
+                if (strpos($candidate, 'intersoccer') === false && strpos($candidate, 'wp_') === false) {
+                    $types[] = $candidate;
+                }
+            }
+        }
+        $types = array_values(array_unique($types));
+        $out = [];
+        foreach ((array) $mock_points_log_rows as $row) {
+            if ((int) ($row['order_id'] ?? 0) !== $order_id) {
+                continue;
+            }
+            $type = (string) ($row['transaction_type'] ?? '');
+            if (!empty($types) && !in_array($type, $types, true)) {
+                continue;
+            }
+            $out[] = (object) [
+                'points_amount' => (int) ($row['points_amount'] ?? 0),
+                'metadata' => (string) ($row['metadata'] ?? ''),
+                'transaction_type' => $type,
+            ];
+        }
+        usort($out, static function ($a, $b) {
+            return 0;
+        });
         return $out;
     }
 }
@@ -1541,6 +1581,26 @@ if (!class_exists('Mock_WPDB')) {
                 } else {
                     $mock_user_meta[$user_id]['intersoccer_credits'] = max(0.0, $current - $amount);
                 }
+                if (function_exists('wp_cache_delete')) {
+                    wp_cache_delete($user_id, 'user_meta');
+                }
+                return 1;
+            }
+
+            $is_coach_credits_credit_update = is_string($query)
+                && stripos($query, 'UPDATE') !== false
+                && strpos($query, 'usermeta') !== false
+                && strpos($query, 'intersoccer_credits') !== false
+                && preg_match('/CAST\(meta_value\s+AS\s+DECIMAL\([^)]+\)\)\s*\+\s*([0-9.]+)/i', $query, $credit_add_match)
+                && preg_match('/user_id\s*=\s*(\d+)/', $query, $user_match);
+            if ($is_coach_credits_credit_update) {
+                $user_id = (int) $user_match[1];
+                $amount = (float) $credit_add_match[1];
+                if (!isset($mock_user_meta[$user_id]) || !is_array($mock_user_meta[$user_id])) {
+                    $mock_user_meta[$user_id] = [];
+                }
+                $current = (float) ($mock_user_meta[$user_id]['intersoccer_credits'] ?? 0);
+                $mock_user_meta[$user_id]['intersoccer_credits'] = $current + $amount;
                 if (function_exists('wp_cache_delete')) {
                     wp_cache_delete($user_id, 'user_meta');
                 }
@@ -1758,7 +1818,7 @@ $mock_referral_reward_unique_key_present = true;
 
             if (is_string($query)
                 && strpos($query, 'intersoccer_referral_credits') !== false
-                && strpos($query, 'commission_write_off') !== false
+                && strpos($query, 'commission_reversal') !== false
                 && preg_match('/order_id\s*=\s*(\d+)/', $query, $order_match)
                 && stripos($query, 'referral_id') === false
             ) {
@@ -1911,6 +1971,14 @@ $mock_referral_reward_unique_key_present = true;
                 if ($needle !== '' && strpos($query, $needle) !== false) {
                     return is_callable($result) ? $result($query) : $result;
                 }
+            }
+
+            if (is_string($query)
+                && strpos($query, 'points_log') !== false
+                && stripos($query, 'transaction_type IN') !== false
+                && preg_match('/order_id\s*=\s*(\d+)/', $query, $order_log_match)
+            ) {
+                return intersoccer_mock_points_log_rows_for_order_types((int) $order_log_match[1], $query);
             }
 
             if (is_string($query)
