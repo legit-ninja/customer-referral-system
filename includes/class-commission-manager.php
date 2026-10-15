@@ -74,7 +74,7 @@ class InterSoccer_Commission_Manager {
      * Calculate base commission based on coach tier (customer count)
      */
     public static function calculate_base_commission($order, $coach_id) {
-        $commissionable = self::get_commissionable_amount($order);
+        $commissionable = self::get_rewardable_commissionable_amount($order);
 
         // Get coach's customer count to determine tier
         $customer_count = self::get_coach_customer_count($coach_id);
@@ -111,7 +111,7 @@ class InterSoccer_Commission_Manager {
      * @return float Commission amount in CHF
      */
     public static function calculate_referral_code_commission($order, $coach_id) {
-        $commissionable = self::get_commissionable_amount($order);
+        $commissionable = self::get_rewardable_commissionable_amount($order);
         $commission_rate = self::get_referral_code_commission_rate();
         return round($commissionable * $commission_rate, 2);
     }
@@ -197,6 +197,30 @@ class InterSoccer_Commission_Manager {
      * @param WC_Order|object $order
      * @return float
      */
+    /**
+     * Commissionable goods base scaled to net paid ex-VAT after pre-completion refunds.
+     *
+     * @param WC_Order|object $order
+     * @return float
+     */
+    public static function get_rewardable_commissionable_amount($order) {
+        $commissionable = self::get_commissionable_amount($order);
+        if (!class_exists('InterSoccer_Points_Manager')) {
+            return $commissionable;
+        }
+        $points_manager = InterSoccer_Points_Manager::get_instance();
+        $gross_ex_vat = $points_manager->get_order_paid_total_ex_vat($order);
+        $net_ex_vat = $points_manager->get_order_net_rewardable_amount_ex_vat($order);
+        if ($gross_ex_vat <= 0 || $net_ex_vat <= 0) {
+            return 0.0;
+        }
+        if ($net_ex_vat >= $gross_ex_vat) {
+            return $commissionable;
+        }
+
+        return $commissionable * ($net_ex_vat / $gross_ex_vat);
+    }
+
     private static function get_commissionable_amount($order) {
         $commissionable = 0.0;
 
@@ -974,7 +998,7 @@ class InterSoccer_Commission_Manager {
      * Calculate loyalty bonus based on purchase count
      */
     public static function calculate_loyalty_bonus($order, $purchase_count) {
-        $commissionable = self::get_commissionable_amount($order);
+        $commissionable = self::get_rewardable_commissionable_amount($order);
 
         // Get loyalty bonus rates from settings
         $first_loyalty = get_option('intersoccer_loyalty_bonus_first', 5) / 100;
@@ -2384,6 +2408,175 @@ The InterSoccer Team', 'intersoccer-referral'),
             }
             $wpdb->update($referrals, ['status' => 'reversed'], ['id' => (int) $row->id]);
         }
+    }
+
+    /**
+     * Re-credit referral rewards and coach commission reversed for this order (idempotent via ledger/credits).
+     *
+     * @param WC_Order $order
+     */
+    public function sync_reinstatement_paid_rewards_for_order($order) {
+        if (!is_object($order) || !method_exists($order, 'get_id')) {
+            return;
+        }
+
+        $order_id = (int) $order->get_id();
+        if ($order_id <= 0) {
+            return;
+        }
+
+        $points_manager = $this->get_points_manager();
+        if (!$points_manager) {
+            return;
+        }
+
+        $referrer_id = (int) $order->get_meta('_intersoccer_referrer_reward_user_id', true);
+        if ($referrer_id > 0) {
+            $reversed = $points_manager->get_abs_points_log_sum_for_order_transaction_types(
+                $order_id,
+                ['customer_referral_reversal']
+            );
+            $reinstated = $points_manager->get_abs_points_log_sum_for_order_transaction_types(
+                $order_id,
+                ['customer_referral_reinstated']
+            );
+            $to_restore = max(0, $reversed - $reinstated);
+            if ($to_restore > 0) {
+                $points_manager->add_points_transaction(
+                    $referrer_id,
+                    'customer_referral_reinstated',
+                    $to_restore,
+                    $order_id,
+                    sprintf('Reinstated customer referral reward for order #%d', $order_id),
+                    ['fraction' => 1.0]
+                );
+            }
+        }
+
+        global $wpdb;
+        $rewards_table = $wpdb->prefix . 'intersoccer_referral_rewards';
+        $reward_rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$rewards_table} WHERE order_id = %d",
+            $order_id
+        ));
+        $coach_id = 0;
+        foreach ((array) $reward_rows as $row) {
+            if (is_object($row) && !empty($row->coach_id)) {
+                $coach_id = (int) $row->coach_id;
+                break;
+            }
+        }
+        if ($coach_id <= 0) {
+            $coach_id = (int) $order->get_meta('_intersoccer_referring_coach_id', true);
+        }
+        if ($coach_id > 0) {
+            $coach_reversed = $points_manager->get_abs_points_log_sum_for_order_transaction_types(
+                $order_id,
+                ['coach_referral_reversal']
+            );
+            $coach_reinstated = $points_manager->get_abs_points_log_sum_for_order_transaction_types(
+                $order_id,
+                ['coach_referral_reinstated']
+            );
+            $coach_to_restore = max(0, $coach_reversed - $coach_reinstated);
+            if ($coach_to_restore > 0) {
+                $points_manager->add_points_transaction(
+                    $coach_id,
+                    'coach_referral_reinstated',
+                    $coach_to_restore,
+                    $order_id,
+                    sprintf('Reinstated coach referral points for order #%d', $order_id),
+                    ['fraction' => 1.0]
+                );
+            }
+        }
+
+        $commission_reversed = $this->get_commission_clawback_total_for_order($order_id);
+        $commission_reinstated = $this->get_commission_reinstatement_total_for_order($order_id);
+        $commission_to_restore = intersoccer_money_floor_to_cents(max(0.0, $commission_reversed - $commission_reinstated));
+        if ($commission_to_restore > 0 && $coach_id > 0) {
+            $referrals = $wpdb->prefix . 'intersoccer_referrals';
+            $referral_row = $wpdb->get_row($wpdb->prepare(
+                "SELECT * FROM {$referrals} WHERE order_id = %d AND coach_id = %d LIMIT 1",
+                $order_id,
+                $coach_id
+            ));
+            $referral_row_id = is_object($referral_row) && !empty($referral_row->id) ? (int) $referral_row->id : 0;
+            $current_credits = (float) get_user_meta($coach_id, 'intersoccer_credits', true);
+            update_user_meta($coach_id, 'intersoccer_credits', $current_credits + $commission_to_restore);
+            if ($referral_row_id > 0) {
+                $wpdb->insert(
+                    $wpdb->prefix . 'intersoccer_referral_credits',
+                    [
+                        'referral_id' => $referral_row_id,
+                        'coach_id' => $coach_id,
+                        'customer_id' => (int) ($referral_row->customer_id ?? $order->get_customer_id()),
+                        'order_id' => $order_id,
+                        'credit_amount' => $commission_to_restore,
+                        'credit_type' => 'commission_reinstatement',
+                        'created_at' => current_time('mysql'),
+                    ]
+                );
+            }
+        }
+
+        $order->update_meta_data('_intersoccer_referrer_reward_points_reversed_total', 0);
+        $order->update_meta_data('_intersoccer_referrer_reward_reversed', 0);
+        $order->update_meta_data('_intersoccer_coach_referral_points_reversed_total', 0);
+        $order->update_meta_data('_intersoccer_commission_amount_reversed_total', 0);
+        $order->update_meta_data('_intersoccer_paid_rewards_reversed', 0);
+        if (method_exists($order, 'save')) {
+            $order->save();
+        }
+    }
+
+    /**
+     * @param int $order_id
+     * @return float
+     */
+    private function get_commission_clawback_total_for_order($order_id) {
+        global $wpdb;
+
+        $order_id = (int) $order_id;
+        if ($order_id <= 0) {
+            return 0.0;
+        }
+
+        $table = $wpdb->prefix . 'intersoccer_referral_credits';
+        $sum = $wpdb->get_var($wpdb->prepare(
+            "SELECT COALESCE(SUM(
+                CASE
+                    WHEN credit_type = 'commission_reversal' THEN ABS(credit_amount)
+                    WHEN credit_type = 'commission_write_off' THEN credit_amount
+                    ELSE 0
+                END
+            ), 0) FROM {$table} WHERE order_id = %d",
+            $order_id
+        ));
+
+        return intersoccer_money_floor_to_cents((float) $sum);
+    }
+
+    /**
+     * @param int $order_id
+     * @return float
+     */
+    private function get_commission_reinstatement_total_for_order($order_id) {
+        global $wpdb;
+
+        $order_id = (int) $order_id;
+        if ($order_id <= 0) {
+            return 0.0;
+        }
+
+        $table = $wpdb->prefix . 'intersoccer_referral_credits';
+        $sum = $wpdb->get_var($wpdb->prepare(
+            "SELECT COALESCE(SUM(credit_amount), 0) FROM {$table}
+             WHERE order_id = %d AND credit_type = 'commission_reinstatement'",
+            $order_id
+        ));
+
+        return intersoccer_money_floor_to_cents((float) $sum);
     }
 
     /**

@@ -12,6 +12,7 @@ require_once dirname(__FILE__) . '/intersoccer-refund-helpers.php';
  * Refund / reinstatement extensions:
  * - reversal_write_off — earned or retake shortfall recorded at current balance (points_amount 0).
  * - reversal_reinstated — earned points re-credited when a cancelled/refunded order is paid again.
+ * - customer_referral_reinstated / coach_referral_reinstated — referral rewards restored after reinstatement.
  * - redeemed_retaken — redeemed points debited again after reinstatement or late payment.
  */
 class InterSoccer_Points_Manager {
@@ -812,7 +813,194 @@ class InterSoccer_Points_Manager {
             $refunded = max(0.0, (float) $order->get_total_refunded());
             $total = max(0.0, $total - $refunded);
         }
+
         return $total;
+    }
+
+    /**
+     * Order total paid excluding VAT (cash paid, not commissionable subtotal).
+     *
+     * @param WC_Order|object $order
+     * @return float
+     */
+    public function get_order_paid_total_ex_vat($order) {
+        if (!is_object($order) || !method_exists($order, 'get_total')) {
+            return 0.0;
+        }
+        $total = max(0.0, (float) $order->get_total());
+        $tax = method_exists($order, 'get_total_tax') ? max(0.0, (float) $order->get_total_tax()) : 0.0;
+
+        return max(0.0, $total - $tax);
+    }
+
+    /**
+     * Net rewardable amount: paid ex-VAT minus refunds that occurred before completion.
+     *
+     * @param WC_Order|object $order
+     * @return float
+     */
+    public function get_order_net_rewardable_amount_ex_vat($order) {
+        if (!is_object($order)) {
+            return 0.0;
+        }
+
+        $paid_ex_vat = $this->get_order_paid_total_ex_vat($order);
+        if ($paid_ex_vat <= 0) {
+            return 0.0;
+        }
+
+        if (!method_exists($order, 'get_refunds')) {
+            return $paid_ex_vat;
+        }
+
+        $refunded_ex_vat = 0.0;
+        foreach ((array) $order->get_refunds() as $refund) {
+            if (!$this->is_refund_before_order_completion($order, $refund)) {
+                continue;
+            }
+            $refunded_ex_vat += $this->get_refund_amount_ex_vat($refund, $order);
+        }
+
+        return max(0.0, $paid_ex_vat - $refunded_ex_vat);
+    }
+
+    /**
+     * @param WC_Order|object $order
+     * @return int|null Unix timestamp when the order completed, or null if unknown.
+     */
+    public function get_order_completion_timestamp($order) {
+        if (!is_object($order)) {
+            return null;
+        }
+        if (method_exists($order, 'get_date_completed')) {
+            $completed = $order->get_date_completed();
+            if (is_object($completed) && method_exists($completed, 'getTimestamp')) {
+                return (int) $completed->getTimestamp();
+            }
+            if (!empty($completed)) {
+                $ts = strtotime((string) $completed);
+                return $ts ? (int) $ts : null;
+            }
+        }
+        if (method_exists($order, 'has_status') && $order->has_status(['completed', 'wc-completed'])) {
+            $created = method_exists($order, 'get_date_created') ? $order->get_date_created() : null;
+            if (is_object($created) && method_exists($created, 'getTimestamp')) {
+                return (int) $created->getTimestamp();
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param WC_Order|object $order
+     * @param object          $refund
+     * @return bool
+     */
+    public function is_refund_before_order_completion($order, $refund) {
+        $completion_ts = $this->get_order_completion_timestamp($order);
+        if ($completion_ts === null) {
+            return true;
+        }
+
+        $refund_ts = $this->get_refund_object_timestamp($refund);
+        if ($refund_ts === null) {
+            return true;
+        }
+
+        return $refund_ts <= $completion_ts;
+    }
+
+    /**
+     * @param object $refund
+     * @return int|null
+     */
+    public function get_refund_object_timestamp($refund) {
+        if (!is_object($refund)) {
+            return null;
+        }
+        if (method_exists($refund, 'get_date_created')) {
+            $created = $refund->get_date_created();
+            if (is_object($created) && method_exists($created, 'getTimestamp')) {
+                return (int) $created->getTimestamp();
+            }
+            if (!empty($created)) {
+                $ts = strtotime((string) $created);
+                return $ts ? (int) $ts : null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param object          $refund
+     * @param WC_Order|object $order
+     * @return float
+     */
+    public function get_refund_amount_ex_vat($refund, $order) {
+        if (!is_object($refund)) {
+            return 0.0;
+        }
+
+        $refund_total = 0.0;
+        if (method_exists($refund, 'get_total')) {
+            $refund_total = abs((float) $refund->get_total());
+        }
+        if ($refund_total <= 0 && method_exists($refund, 'get_amount')) {
+            $refund_total = abs((float) $refund->get_amount());
+        }
+        if ($refund_total <= 0) {
+            return 0.0;
+        }
+
+        $refund_tax = 0.0;
+        if (is_object($order) && method_exists($order, 'get_total') && method_exists($order, 'get_total_tax')) {
+            $order_gross = max(0.00001, abs((float) $order->get_total()));
+            $order_tax = max(0.0, (float) $order->get_total_tax());
+            if ($order_tax > 0) {
+                $refund_tax = $refund_total * ($order_tax / $order_gross);
+            }
+        } elseif (method_exists($refund, 'get_total_tax')) {
+            $refund_tax = abs((float) $refund->get_total_tax());
+        }
+
+        return max(0.0, $refund_total - $refund_tax);
+    }
+
+    /**
+     * Whether a positive ledger lot counts as gifted (not clawed back on refund).
+     *
+     * @param string $transaction_type
+     * @param int    $points_amount
+     * @param string $metadata_json
+     * @return bool
+     */
+    public function is_positive_points_lot_gift($transaction_type, $points_amount, $metadata_json = '') {
+        $transaction_type = (string) $transaction_type;
+        $points_amount = (int) $points_amount;
+        if ($points_amount <= 0) {
+            return false;
+        }
+
+        if ($transaction_type === 'admin_adjustment') {
+            $meta = is_string($metadata_json) && $metadata_json !== ''
+                ? json_decode($metadata_json, true)
+                : [];
+            if (!is_array($meta)) {
+                $meta = [];
+            }
+            $reason = isset($meta['adjustment_reason']) ? (string) $meta['adjustment_reason'] : '';
+            if ($reason === 'correction') {
+                return false;
+            }
+
+            return true;
+        }
+
+        $gift_types = array_map('strval', $this->get_points_gift_credit_types());
+
+        return in_array($transaction_type, $gift_types, true);
     }
 
     /**
@@ -875,13 +1063,12 @@ class InterSoccer_Points_Manager {
         }
 
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT id, transaction_type, points_amount FROM {$this->points_log_table}
+            "SELECT id, transaction_type, points_amount, metadata FROM {$this->points_log_table}
              WHERE customer_id = %d
              ORDER BY created_at ASC, id ASC",
             $customer_id
         ));
 
-        $gift_types = array_map('strval', $this->get_points_gift_credit_types());
         $lots = [];
 
         foreach ((array) $rows as $row) {
@@ -891,7 +1078,8 @@ class InterSoccer_Points_Manager {
             }
             if ($amount > 0) {
                 $type = (string) (is_array($row) ? ($row['transaction_type'] ?? '') : ($row->transaction_type ?? ''));
-                $is_gift = in_array($type, $gift_types, true);
+                $metadata = (string) (is_array($row) ? ($row['metadata'] ?? '') : ($row->metadata ?? ''));
+                $is_gift = $this->is_positive_points_lot_gift($type, $amount, $metadata);
                 $lots[] = ['amount' => $amount, 'is_gift' => $is_gift];
                 continue;
             }
@@ -2208,6 +2396,10 @@ class InterSoccer_Points_Manager {
         }
 
         $this->reset_refund_reversal_running_totals($order, $to_retake > 0 ? $retake_shortfall : 0);
+
+        if (class_exists('InterSoccer_Commission_Manager')) {
+            InterSoccer_Commission_Manager::get_instance()->sync_reinstatement_paid_rewards_for_order($order);
+        }
     }
 
     /**

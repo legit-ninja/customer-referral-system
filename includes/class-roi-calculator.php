@@ -204,7 +204,7 @@ class InterSoccer_ROI_Calculator {
         $points_log = $this->table_prefix . 'intersoccer_points_log';
         
         $adjustments = $this->wpdb->get_results($this->wpdb->prepare("
-            SELECT points_amount, description, transaction_type
+            SELECT points_amount, description, transaction_type, metadata
             FROM {$points_log}
             WHERE points_amount > 0
               AND transaction_type IN ('admin_adjustment', 'manual_adjustment', 'admin_balance_set', 'points_refund', 'admin_reset')
@@ -229,15 +229,34 @@ class InterSoccer_ROI_Calculator {
                 $desc = strtolower($adj['description'] ?? '');
                 $amount = (float) ($adj['points_amount'] ?? 0);
                 $type = $adj['transaction_type'] ?? '';
+                $metadata_raw = $adj['metadata'] ?? '';
             } else {
                 $desc = strtolower($adj->description ?? '');
                 $amount = (float) ($adj->points_amount ?? 0);
                 $type = $adj->transaction_type ?? '';
+                $metadata_raw = $adj->metadata ?? '';
+            }
+
+            $adjustment_reason = '';
+            if (is_string($metadata_raw) && $metadata_raw !== '') {
+                $decoded = json_decode($metadata_raw, true);
+                if (is_array($decoded) && isset($decoded['adjustment_reason'])) {
+                    $adjustment_reason = (string) $decoded['adjustment_reason'];
+                }
             }
             
             // admin_reset and admin_balance_set are always corrections
             if ($type === 'admin_reset' || $type === 'admin_balance_set') {
                 $correction_points += $amount;
+                continue;
+            }
+
+            if ($adjustment_reason === 'correction') {
+                $correction_points += $amount;
+                continue;
+            }
+            if ($adjustment_reason === 'goodwill' || $adjustment_reason === 'bonus') {
+                $goodwill_points += $amount;
                 continue;
             }
             
@@ -267,8 +286,8 @@ class InterSoccer_ROI_Calculator {
             } elseif ($is_goodwill) {
                 $goodwill_points += $amount;
             } else {
-                // Unclassified defaults to correction (conservative - don't overcount cost)
-                $correction_points += $amount;
+                // Untagged positive adjustments are treated as goodwill gifts (Ledger ruling).
+                $goodwill_points += $amount;
                 if (!empty($desc)) {
                     $unclassified_count++;
                 }

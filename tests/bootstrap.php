@@ -863,6 +863,7 @@ if (!class_exists('WC_Order')) {
         private $refunds = [];
         private $total_refunded = 0.0;
         private $date_paid = null;
+        private $date_completed = null;
 
         public function __construct($id = 0) {
             $this->id = (int) $id;
@@ -894,6 +895,27 @@ if (!class_exists('WC_Order')) {
 
         public function get_customer_id() {
             return $this->customer_id;
+        }
+
+        public function get_date_completed() {
+            if (!$this->date_completed) {
+                return null;
+            }
+            return new class($this->date_completed) {
+                private $timestamp;
+                private $date_string;
+                public function __construct($date_string) {
+                    $this->date_string = $date_string;
+                    $this->timestamp = strtotime($date_string);
+                }
+                public function getTimestamp() {
+                    return $this->timestamp;
+                }
+            };
+        }
+
+        public function set_date_completed($date_string) {
+            $this->date_completed = $date_string;
         }
 
         public function get_date_created() {
@@ -1298,6 +1320,7 @@ if (!function_exists('intersoccer_mock_customer_points_ledger_for_fifo')) {
                 'id' => (int) ($row['id'] ?? 0),
                 'transaction_type' => (string) ($row['transaction_type'] ?? ''),
                 'points_amount' => (int) ($row['points_amount'] ?? 0),
+                'metadata' => (string) ($row['metadata'] ?? ''),
             ];
         }
         return $out;

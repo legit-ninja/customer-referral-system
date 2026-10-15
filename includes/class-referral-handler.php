@@ -684,11 +684,16 @@ class InterSoccer_Referral_Handler {
         $referral_status = 'pending';
 
         $is_first_purchase = $this->is_first_purchase($customer_id, $order_id);
-        $order_total = max(0, (float) $order->get_total());
+        $order_total = 0.0;
+        if (class_exists('InterSoccer_Points_Manager')) {
+            $order_total = InterSoccer_Points_Manager::get_instance()->get_order_net_rewardable_amount_ex_vat($order);
+        } else {
+            $order_total = max(0, (float) $order->get_total());
+        }
         $referrer_reward_points = 0;
         if ($is_customer_referrer && $eligibility['eligible']) {
             if (class_exists('InterSoccer_Points_Manager')) {
-                $points_manager = new InterSoccer_Points_Manager();
+                $points_manager = InterSoccer_Points_Manager::get_instance();
                 $referrer_reward_points = (int) $points_manager->calculate_points_from_order_total(
                     $order_total,
                     (int) $referrer['id'],

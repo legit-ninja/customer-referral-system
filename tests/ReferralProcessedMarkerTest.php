@@ -91,6 +91,7 @@ class ReferralProcessedMarkerTest extends TestCase {
         $order->set_status('completed');
         $order->set_customer_id($buyer_id);
         $order->set_total(100);
+        $order->set_tax_total(0);
         $mock_wc_order_override = $order;
 
         $handler = new InterSoccer_Referral_Handler();
