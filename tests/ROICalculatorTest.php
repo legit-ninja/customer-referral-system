@@ -186,7 +186,7 @@ class ROICalculatorTest extends TestCase {
     
     // Note: Incrementality constants (REFERRAL 25%-75%, LOYALTY 5%-25%) are tested
     // indirectly via exact-value ROI tests. If constants change, those tests break.
-    // See testReferralROIWithRange_SingleOrder_ExactValues, testHPOS_SQLPath_ExactValues.
+    // See testReferralROIWithRange_SingleOrder_ExactValues, testLoyaltyROIWithRange_ExactValues.
     
     /**
      * Test that referral ROI returns em-dash when no camp margin is configured
@@ -3608,5 +3608,262 @@ class ROICalculatorTest extends TestCase {
         
         // Liability reduction = expired amount
         $this->assertEquals(100, $liability['liability_reductions'], 'Liability reduction = 100 (expired)');
+    }
+
+    /**
+     * EXACT VALUE TEST: Failed first order followed by completed second order
+     * 
+     * Finance ruling: A referred customer's first order is their earliest COMPLETED or
+     * PROCESSING order, not their earliest order of any status. Failed/cancelled orders
+     * are skipped to find the first valid order.
+     * 
+     * Fixture:
+     *   Customer 501 referred with two orders:
+     *     Order 9001: Failed, 300 CHF (created first, status=failed)
+     *     Order 9002: Completed, 500 CHF (created second, status=completed)
+     * 
+     * Expected:
+     *   - Order 9002 counts as the "first order" (not 9001)
+     *   - Referral revenue = 500 CHF (from order 9002 only)
+     *   - get_first_referred_orders() returns {9002: 501}
+     */
+    public function testFirstOrder_FailedOrderSkipped_SecondOrderCounts() {
+        update_option('intersoccer_roi_camp_margin_percent', 40);
+        
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_orders_by_id, $mock_wc_get_orders;
+        
+        $today = wp_date('Y-m-d');
+        $window_start = wp_date('Y-m-d', strtotime('-11 months'));
+        
+        // Referral records: same customer, two orders (failed first, completed second)
+        $mock_wpdb_get_results = [
+            'intersoccer_referrals' => [
+                (object) ['customer_id' => 501, 'order_id' => 9001, 'created_at' => $window_start . ' 10:00:00'],
+                (object) ['customer_id' => 501, 'order_id' => 9002, 'created_at' => $window_start . ' 11:00:00'],
+            ],
+            'intersoccer_points_log' => [],
+        ];
+        
+        // Order 9001: Failed, 300 CHF
+        $failed_order = new WC_Order(9001);
+        $failed_order->set_customer_id(501);
+        $failed_order->set_status('failed');
+        $failed_order->set_date_created($window_start . ' 10:00:00');
+        $failed_order->set_total(300);
+        $failed_item = new WC_Order_Item(90011);
+        $failed_item->set_total(300);
+        $failed_order->add_item($failed_item);
+        $mock_wc_orders_by_id[9001] = $failed_order;
+        
+        // Order 9002: Completed, 500 CHF
+        $completed_order = new WC_Order(9002);
+        $completed_order->set_customer_id(501);
+        $completed_order->set_status('completed');
+        $completed_order->set_date_created($window_start . ' 11:00:00');
+        $completed_order->set_total(500);
+        $completed_item = new WC_Order_Item(90021);
+        $completed_item->set_total(500);
+        $completed_order->add_item($completed_item);
+        $mock_wc_orders_by_id[9002] = $completed_order;
+        
+        // Cost mocks
+        $mock_wpdb_get_var_results = [
+            'commission_amount' => 0,
+            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
+            'NOT IN' => 0,
+            'intersoccer_points_balance' => 0,
+            'points_expired' => 0,
+            'points_reversed' => 0,
+        ];
+        
+        $mock_wc_get_orders = function($args) { return []; };
+        
+        $calculator = new InterSoccer_ROI_Calculator();
+        
+        // Test get_first_referred_orders: should return order 9002, not 9001
+        $first_orders = $calculator->get_first_referred_orders();
+        $this->assertArrayHasKey(9002, $first_orders, 'Completed order 9002 should be first order');
+        $this->assertArrayNotHasKey(9001, $first_orders, 'Failed order 9001 should not be first order');
+        $this->assertEquals(501, $first_orders[9002], 'Order 9002 should map to customer 501');
+        
+        // Test calculate_referral_roi: revenue should be 500 (from order 9002)
+        $roi = $calculator->calculate_referral_roi();
+        $this->assertEquals(500.0, $roi['revenue_ex_vat'], 'Referral revenue = 500 CHF (completed order only)');
+    }
+
+    /**
+     * EXACT VALUE TEST: Fully refunded first order followed by completed second order
+     * 
+     * Finance ruling: A fully refunded order is treated like a cancelled order - it is
+     * not the "first order". The first valid order is the next non-refunded completed order.
+     * 
+     * Fixture:
+     *   Customer 502 referred with two orders:
+     *     Order 9003: Completed but fully refunded, 400 CHF
+     *     Order 9004: Completed (no refund), 600 CHF
+     * 
+     * Expected:
+     *   - Order 9004 counts as the "first order" (not 9003)
+     *   - Referral revenue = 600 CHF (from order 9004 only)
+     *   - get_first_referred_orders() returns {9004: 502}
+     */
+    public function testFirstOrder_FullyRefundedOrderSkipped_SecondOrderCounts() {
+        update_option('intersoccer_roi_camp_margin_percent', 40);
+        
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_orders_by_id, $mock_wc_get_orders;
+        
+        $today = wp_date('Y-m-d');
+        $window_start = wp_date('Y-m-d', strtotime('-11 months'));
+        
+        // Referral records: same customer, two orders
+        $mock_wpdb_get_results = [
+            'intersoccer_referrals' => [
+                (object) ['customer_id' => 502, 'order_id' => 9003, 'created_at' => $window_start . ' 10:00:00'],
+                (object) ['customer_id' => 502, 'order_id' => 9004, 'created_at' => $window_start . ' 12:00:00'],
+            ],
+            'intersoccer_points_log' => [],
+        ];
+        
+        // Order 9003: Completed but fully refunded
+        $refunded_order = new WC_Order(9003);
+        $refunded_order->set_customer_id(502);
+        $refunded_order->set_status('completed');
+        $refunded_order->set_date_created($window_start . ' 10:00:00');
+        $refunded_order->set_total(400);
+        $refunded_item = new WC_Order_Item(90031);
+        $refunded_item->set_total(400);
+        $refunded_order->add_item($refunded_item);
+        
+        // Create refund for order 9003 (full refund of 400 CHF)
+        $refund = new WC_Order_Refund(90030);
+        $refund->set_parent_id(9003);
+        $refund->set_total(-400); // Refunds are negative
+        $refunded_order->set_refunds([$refund]);
+        
+        $mock_wc_orders_by_id[9003] = $refunded_order;
+        
+        // Order 9004: Completed, no refund
+        $completed_order = new WC_Order(9004);
+        $completed_order->set_customer_id(502);
+        $completed_order->set_status('completed');
+        $completed_order->set_date_created($window_start . ' 12:00:00');
+        $completed_order->set_total(600);
+        $completed_item = new WC_Order_Item(90041);
+        $completed_item->set_total(600);
+        $completed_order->add_item($completed_item);
+        $mock_wc_orders_by_id[9004] = $completed_order;
+        
+        // Cost mocks
+        $mock_wpdb_get_var_results = [
+            'commission_amount' => 0,
+            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
+            'NOT IN' => 0,
+            'intersoccer_points_balance' => 0,
+            'points_expired' => 0,
+            'points_reversed' => 0,
+        ];
+        
+        $mock_wc_get_orders = function($args) { return []; };
+        
+        $calculator = new InterSoccer_ROI_Calculator();
+        
+        // Test get_first_referred_orders: should return order 9004, not 9003
+        $first_orders = $calculator->get_first_referred_orders();
+        $this->assertArrayHasKey(9004, $first_orders, 'Non-refunded order 9004 should be first order');
+        $this->assertArrayNotHasKey(9003, $first_orders, 'Fully refunded order 9003 should not be first order');
+        $this->assertEquals(502, $first_orders[9004], 'Order 9004 should map to customer 502');
+        
+        // Test calculate_referral_roi: revenue should be 600 (from order 9004)
+        $roi = $calculator->calculate_referral_roi();
+        $this->assertEquals(600.0, $roi['revenue_ex_vat'], 'Referral revenue = 600 CHF (non-refunded order only)');
+    }
+
+    /**
+     * EXACT VALUE TEST: Discount not counted twice when failed order followed by completed order
+     * 
+     * Finance ruling: If a referral discount or commission was applied to a failed/cancelled
+     * order and then reversed, count the cost only once, on the order that completed.
+     * 
+     * Fixture:
+     *   Customer 503:
+     *     Order 9005: Failed, had 20 CHF first-order discount (reversed/not shipped)
+     *     Order 9006: Completed, 20 CHF first-order discount applied
+     * 
+     * Expected:
+     *   - First-order discount cost = 20 CHF (counted once, on completed order 9006)
+     *   - Not 40 CHF (would be double-counting if we counted failed order too)
+     *   - get_first_referred_orders() returns {9006: 503}
+     */
+    public function testFirstOrderDiscount_NotCountedTwice_FailedThenCompleted() {
+        update_option('intersoccer_roi_camp_margin_percent', 40);
+        
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_orders_by_id, $mock_wc_get_orders;
+        
+        $today = wp_date('Y-m-d');
+        $window_start = wp_date('Y-m-d', strtotime('-11 months'));
+        
+        // Referral records: same customer, two orders
+        $mock_wpdb_get_results = [
+            'intersoccer_referrals' => [
+                (object) ['customer_id' => 503, 'order_id' => 9005, 'created_at' => $window_start . ' 10:00:00'],
+                (object) ['customer_id' => 503, 'order_id' => 9006, 'created_at' => $window_start . ' 14:00:00'],
+            ],
+            'intersoccer_points_log' => [],
+        ];
+        
+        // Order 9005: Failed, had discount meta (but shouldn't count since failed)
+        $failed_order = new WC_Order(9005);
+        $failed_order->set_customer_id(503);
+        $failed_order->set_status('failed');
+        $failed_order->set_date_created($window_start . ' 10:00:00');
+        $failed_order->set_total(280); // 300 - 20 discount
+        $failed_order->update_meta_data('_intersoccer_first_order_discount_applied', 1);
+        $failed_order->update_meta_data('_intersoccer_first_order_discount_amount', 20);
+        $failed_item = new WC_Order_Item(90051);
+        $failed_item->set_total(280);
+        $failed_order->add_item($failed_item);
+        $mock_wc_orders_by_id[9005] = $failed_order;
+        
+        // Order 9006: Completed, has first-order discount
+        $completed_order = new WC_Order(9006);
+        $completed_order->set_customer_id(503);
+        $completed_order->set_status('completed');
+        $completed_order->set_date_created($window_start . ' 14:00:00');
+        $completed_order->set_total(480); // 500 - 20 discount
+        $completed_order->update_meta_data('_intersoccer_first_order_discount_applied', 1);
+        $completed_order->update_meta_data('_intersoccer_first_order_discount_amount', 20);
+        $completed_item = new WC_Order_Item(90061);
+        $completed_item->set_total(480);
+        $completed_order->add_item($completed_item);
+        $mock_wc_orders_by_id[9006] = $completed_order;
+        
+        // Cost mocks (0 for commissions/points, discount will come from orders)
+        $mock_wpdb_get_var_results = [
+            'commission_amount' => 0,
+            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
+            'NOT IN' => 0,
+            'intersoccer_points_balance' => 0,
+            'points_expired' => 0,
+            'points_reversed' => 0,
+        ];
+        
+        // Let the default wc_get_orders mock handle filtering
+        // It will filter by status and only return completed/processing orders
+        $mock_wc_get_orders = null;
+        
+        $calculator = new InterSoccer_ROI_Calculator();
+        
+        // Test get_first_referred_orders: should return only completed order
+        $first_orders = $calculator->get_first_referred_orders();
+        $this->assertArrayHasKey(9006, $first_orders, 'Completed order 9006 should be first order');
+        $this->assertArrayNotHasKey(9005, $first_orders, 'Failed order 9005 should not be first order');
+        
+        // Test first-order discount cost: should be 20 (not 40)
+        $discount_cost = $calculator->get_first_order_discount_cost();
+        $this->assertEquals(20.0, $discount_cost, 'First-order discount = 20 CHF (counted once on completed order)');
+        
+        // Total referral cost breakdown should reflect single discount
+        $costs = $calculator->get_cost_breakdown();
+        $this->assertEquals(20.0, $costs['first_order_discount_chf'], 'Cost breakdown shows 20 CHF discount (not 40)');
     }
 }

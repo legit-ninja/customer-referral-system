@@ -800,6 +800,33 @@ class InterSoccer_ROI_Calculator {
     }
     
     /**
+     * Check if an order is fully refunded (treat like cancelled for first-order logic)
+     * 
+     * Finance ruling: A fully refunded order is not the "first order" - skip to find the next valid one.
+     */
+    private function is_fully_refunded($order) {
+        if (!method_exists($order, 'get_refunds')) {
+            return false;
+        }
+        
+        $refunds = $order->get_refunds();
+        if (empty($refunds)) {
+            return false;
+        }
+        
+        // Sum all refund amounts (refunds are negative, so sum should match -order_total)
+        $total_refunded = 0.0;
+        foreach ($refunds as $refund) {
+            $total_refunded += abs((float) $refund->get_total());
+        }
+        
+        $order_total = abs((float) $order->get_total());
+        
+        // Consider fully refunded if refund total >= order total (within small tolerance for rounding)
+        return $total_refunded >= ($order_total - 0.01);
+    }
+    
+    /**
      * Get points liability with redemption rate, age breakdown, and expiry policy
      * FIX #6: Compare like with like for month-over-month
      * FIX #7: Add age buckets
@@ -1179,16 +1206,21 @@ class InterSoccer_ROI_Calculator {
             
             if (!$customer_id || !$order_id) continue;
             if (isset($counted_customers[$customer_id])) continue;
-            $counted_customers[$customer_id] = true;
             
-            // Finance dedupe: referral revenue = ONLY the first (referred) order
-            // Later orders from this customer count toward loyalty if they hold points
+            // Finance ruling: first order = earliest COMPLETED/PROCESSING order (not failed/cancelled/fully-refunded)
+            // Skip invalid orders to find the first valid one per customer
             $referred_order = wc_get_order($order_id);
             if (!$referred_order) continue;
             
             // Skip if status is not completed/processing
             $order_status = $referred_order->get_status();
             if (!in_array($order_status, ['completed', 'processing'])) continue;
+            
+            // Skip fully refunded orders (treat like cancelled)
+            if ($this->is_fully_refunded($referred_order)) continue;
+            
+            // This is the first valid order for this customer
+            $counted_customers[$customer_id] = true;
             
             // Only count if order is within the period (both start and end)
             $order_date = $referred_order->get_date_created();
@@ -1278,6 +1310,8 @@ class InterSoccer_ROI_Calculator {
         $first_orders = [];
         $seen_customers = [];
         
+        // Finance ruling: first order = earliest COMPLETED/PROCESSING order (not failed/cancelled/fully-refunded)
+        // Skip invalid orders to find the first valid one per customer
         foreach ($referrals as $ref) {
             $customer_id = is_object($ref) ? ($ref->customer_id ?? null) : ($ref['customer_id'] ?? null);
             $order_id = is_object($ref) ? ($ref->order_id ?? null) : ($ref['order_id'] ?? null);
@@ -1285,6 +1319,17 @@ class InterSoccer_ROI_Calculator {
             if (!$customer_id || !$order_id) continue;
             if (isset($seen_customers[$customer_id])) continue;
             
+            // Check if order is valid (completed/processing and not fully refunded)
+            $order = wc_get_order($order_id);
+            if (!$order) continue;
+            
+            $status = $order->get_status();
+            if (!in_array($status, ['completed', 'processing'])) continue;
+            
+            // Skip fully refunded orders (treat like cancelled)
+            if ($this->is_fully_refunded($order)) continue;
+            
+            // This is the first valid order for this customer
             $seen_customers[$customer_id] = true;
             $first_orders[(int) $order_id] = (int) $customer_id;
         }
@@ -1797,10 +1842,15 @@ class InterSoccer_ROI_Calculator {
             
             if (!$customer_id || !$order_id) continue;
             if (isset($counted_customers[$customer_id])) continue;
-            $counted_customers[$customer_id] = true;
             
+            // Finance ruling: first order = earliest COMPLETED/PROCESSING order (not failed/cancelled/fully-refunded)
             $referred_order = wc_get_order($order_id);
-            if (!$referred_order || !in_array($referred_order->get_status(), ['completed', 'processing'])) continue;
+            if (!$referred_order) continue;
+            if (!in_array($referred_order->get_status(), ['completed', 'processing'])) continue;
+            if ($this->is_fully_refunded($referred_order)) continue;
+            
+            // This is the first valid order for this customer
+            $counted_customers[$customer_id] = true;
             
             // FIX #10: Apply new-family rule
             if (!$this->is_new_family($customer_id, $order_id)) continue;
