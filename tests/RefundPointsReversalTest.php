@@ -332,7 +332,9 @@ class RefundPointsReversalTest extends TestCase {
 
         $points = $this->manager();
         $order = $this->make_order(92013, 9213, 100, 'refunded');
-        $this->seed_balance(9213, 0);
+        // Enough balance that a second reversal would show up (a zero
+        // balance would hide it behind the clamp).
+        $this->seed_balance(9213, 50);
 
         $mock_order_points_allocated[92013] = 10;
         $mock_points_log_rows[] = [
@@ -350,8 +352,9 @@ class RefundPointsReversalTest extends TestCase {
 
         $points->handle_order_status_refunded(92013);
 
-        $this->assertSame(0, $points->get_points_balance(9213));
-        $this->assertCount(1, $this->ledger_amounts_for_order(92013, 'order_refund'));
+        $this->assertSame(50, $points->get_points_balance(9213));
+        $this->assertSame([-10], $this->ledger_amounts_for_order(92013, 'order_refund'));
+        $this->assertSame(0, (int) $order->get_meta('_intersoccer_points_reversal_shortfall', true));
     }
 
     public function testLegacyRedeemedRefundLedgerWithoutMetaPreventsSecondReturn() {
@@ -393,14 +396,17 @@ class RefundPointsReversalTest extends TestCase {
             'transaction_type' => 'order_refund',
             'points_amount' => -5,
         ];
-        $mock_user_meta[9215]['intersoccer_points_balance'] = 5;
+        // Keep a balance above the full earned amount so reversing the whole
+        // 10 again (instead of the remaining 5) would be visible.
+        $mock_user_meta[9215]['intersoccer_points_balance'] = 50;
 
         $order->set_status('refunded');
         $points->handle_order_status_refunded(92015);
 
-        $this->assertSame(0, $points->get_points_balance(9215));
+        $this->assertSame(45, $points->get_points_balance(9215));
         $this->assertSame(10, (int) $order->get_meta('_intersoccer_purchase_points_reversed_total', true));
         $this->assertSame([-5, -5], $this->ledger_amounts_for_order(92015, 'order_refund'));
+        $this->assertSame(0, (int) $order->get_meta('_intersoccer_points_reversal_shortfall', true));
     }
 
     public function testUnpaidPendingOrderAutoCancelReturnsRedeemedPointsOnce() {
