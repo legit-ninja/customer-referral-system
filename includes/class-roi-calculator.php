@@ -1168,7 +1168,7 @@ class InterSoccer_ROI_Calculator {
             FROM {$referrals_table}
             WHERE created_at BETWEEN %s AND %s
               AND order_id IS NOT NULL
-            ORDER BY created_at ASC
+            ORDER BY created_at ASC, order_id ASC
         ", $range['start'], $range['end'] . ' 23:59:59'));
         
         $counted_customers = [];
@@ -1268,11 +1268,11 @@ class InterSoccer_ROI_Calculator {
         $referrals_table = $this->table_prefix . 'intersoccer_referrals';
         
         $referrals = $this->wpdb->get_results($this->wpdb->prepare("
-            SELECT DISTINCT customer_id, order_id
+            SELECT DISTINCT customer_id, order_id, created_at
             FROM {$referrals_table}
             WHERE created_at BETWEEN %s AND %s
               AND order_id IS NOT NULL
-            ORDER BY created_at ASC
+            ORDER BY created_at ASC, order_id ASC
         ", $range['start'], $range['end'] . ' 23:59:59'));
         
         $first_orders = [];
@@ -1782,7 +1782,7 @@ class InterSoccer_ROI_Calculator {
             FROM {$referrals_table}
             WHERE created_at BETWEEN %s AND %s
               AND order_id IS NOT NULL
-            ORDER BY created_at ASC
+            ORDER BY created_at ASC, order_id ASC
         ", $range['start'], $range['end'] . ' 23:59:59'));
         
         $first_order_revenue = 0;

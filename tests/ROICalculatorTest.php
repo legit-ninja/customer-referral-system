@@ -181,22 +181,12 @@ class ROICalculatorTest extends TestCase {
     }
     
     // =========================================================================
-    // INCREMENTALITY CONSTANTS
-    // =========================================================================
-    
-    public function testIncrementalityConstants_ReferralRange() {
-        $this->assertEquals(0.25, InterSoccer_ROI_Calculator::REFERRAL_INCREMENTALITY_LOW, 'Referral low should be 25%');
-        $this->assertEquals(0.75, InterSoccer_ROI_Calculator::REFERRAL_INCREMENTALITY_HIGH, 'Referral high should be 75%');
-    }
-    
-    public function testIncrementalityConstants_LoyaltyRange() {
-        $this->assertEquals(0.05, InterSoccer_ROI_Calculator::LOYALTY_INCREMENTALITY_LOW, 'Loyalty low should be 5%');
-        $this->assertEquals(0.25, InterSoccer_ROI_Calculator::LOYALTY_INCREMENTALITY_HIGH, 'Loyalty high should be 25%');
-    }
-    
-    // =========================================================================
     // BEHAVIORAL TESTS WITH FIXTURE DATA
     // =========================================================================
+    
+    // Note: Incrementality constants (REFERRAL 25%-75%, LOYALTY 5%-25%) are tested
+    // indirectly via exact-value ROI tests. If constants change, those tests break.
+    // See testReferralROIWithRange_SingleOrder_ExactValues, testHPOS_SQLPath_ExactValues.
     
     /**
      * Test that referral ROI returns em-dash when no camp margin is configured
@@ -3141,16 +3131,21 @@ class ROICalculatorTest extends TestCase {
     /**
      * ORDER BY GUARD: First referred order picked by earliest created_at
      * 
-     * The SQL includes ORDER BY created_at ASC. This test verifies the PHP code
-     * correctly uses the first occurrence per customer when iterating results.
+     * This test FAILS if ORDER BY is removed from the SQL.
      * 
-     * Fixture (mock returns sorted results as SQL would):
+     * The mock returns rows in REVERSE date order (later first). The mock callback
+     * sorts them by created_at ASC only if the SQL contains ORDER BY.
+     * Without ORDER BY, the wrong order would be picked as "first".
+     * 
+     * Fixture:
      *   Customer 9301: order 9301 at -3mo (500 CHF), order 9302 at -2mo (300 CHF)
-     *   Referral records: sorted by created_at ASC (9301 first, then 9302)
+     *   Mock returns: [9302 (later), 9301 (earlier)] - WRONG order
+     *   With ORDER BY: sorted to [9301, 9302] - CORRECT order
      * 
      * Expected: order 9301 (500 CHF) is the first order, 9302 goes to holder spend
+     * Fails if ORDER BY removed: order 9302 (300 CHF) picked as first
      */
-    public function testFirstReferredOrder_SortedByDate_PicksEarliest() {
+    public function testFirstReferredOrder_OrderByGuard_FailsWithoutSort() {
         update_option('intersoccer_roi_camp_margin_percent', 40);
         
         global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_orders_by_id, $mock_user_meta, $mock_wpdb_get_col_results;
@@ -3178,13 +3173,26 @@ class ROICalculatorTest extends TestCase {
         $mock_user_meta[9301] = ['intersoccer_points_balance' => 50];
         $mock_wpdb_get_col_results = ['intersoccer_points_balance' => [9301]];
         
-        // Referral records sorted by created_at ASC (as ORDER BY would do)
-        // First row for customer 9301 is order 9301, which should be picked
+        // CRITICAL: Rows in REVERSE date order (later first) - simulates unsorted DB return
+        // The callback sorts only if ORDER BY is in the SQL
+        $unsorted_rows = [
+            (object) ['customer_id' => 9301, 'order_id' => 9302, 'created_at' => $later_date],
+            (object) ['customer_id' => 9301, 'order_id' => 9301, 'created_at' => $first_date],
+        ];
+        
         $mock_wpdb_get_results = [
-            'intersoccer_referrals' => [
-                (object) ['customer_id' => 9301, 'order_id' => 9301, 'created_at' => $first_date],
-                (object) ['customer_id' => 9301, 'order_id' => 9302, 'created_at' => $later_date],
-            ],
+            'intersoccer_referrals' => function($query) use ($unsorted_rows) {
+                // Sort only if ORDER BY is present in the SQL
+                if (stripos($query, 'ORDER BY') !== false) {
+                    $sorted = $unsorted_rows;
+                    usort($sorted, function($a, $b) {
+                        return strcmp($a->created_at, $b->created_at);
+                    });
+                    return $sorted;
+                }
+                // Without ORDER BY: return in wrong order
+                return $unsorted_rows;
+            },
             'intersoccer_points_log' => [],
         ];
         
@@ -3196,12 +3204,13 @@ class ROICalculatorTest extends TestCase {
         
         $calculator = new InterSoccer_ROI_Calculator();
         
-        // Referral revenue should be 500 (first order picked from sorted results)
+        // With ORDER BY: first order (500) is picked
+        // Without ORDER BY: would pick 300 (later order listed first in unsorted results)
         $referral = $calculator->calculate_referral_roi();
         $this->assertEquals(500, $referral['revenue_ex_vat'], 
-            'First order (500) picked from sorted referral records');
+            'ORDER BY guard: first order (500) must be picked; fails if ORDER BY removed (would get 300)');
         
-        // Holder spend should be 300 (later order, since first is excluded)
+        // Holder spend should be 300 (later order excluded from referral)
         $loyalty = $calculator->calculate_loyalty_roi();
         $this->assertEqualsWithDelta(300.0, $loyalty['holder_avg_spend'], 0.1,
             'Later order (300) goes to holder spend');
@@ -3250,31 +3259,84 @@ class ROICalculatorTest extends TestCase {
 
     /**
      * STATUS GUARD - LOYALTY PATH: Non-completed orders excluded from holder comparison
+     * 
+     * This test FAILS if the status filter is removed from wc_get_orders calls.
+     * 
+     * Fixture:
+     *   Holder 7101: completed order (500 CHF) + on-hold order (999 CHF)
+     *   Holder 7102: pending order (888 CHF) only
+     *   Non-holder 7201: completed order (100 CHF)
+     * 
+     * Expected with status filter:
+     *   holder_count: 1 (only 7101 has completed order)
+     *   holder_avg_spend: 500 (only completed order counted)
+     *   non_holder_avg: 100
+     * 
+     * Fails if status filter removed:
+     *   Would count 999 + 888 = extra revenue, wrong holder_count
      */
-    public function testLoyaltyROI_StatusFilterExcludesNonCompleted() {
+    public function testLoyaltyROI_StatusGuard_FailsWithoutFilter() {
         update_option('intersoccer_roi_camp_margin_percent', 40);
         
         global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders, $mock_user_meta, $mock_wpdb_get_col_results;
+        global $mock_wc_orders_by_id;
         
         $in_window_date = wp_date('Y-m-d', strtotime('-3 months')) . ' 10:00:00';
         
-        // On-hold order for a holder (should be EXCLUDED)
-        global $mock_wc_orders_by_id;
-        $order = $this->createMockOrder(
-            7101, 'on-hold', $in_window_date,
+        // Holder 7101: completed order (500) + on-hold order (999)
+        $order_completed = $this->createMockOrder(
+            7101, 'completed', $in_window_date,
+            [['name' => 'Camp', 'subtotal' => 500, 'total' => 500]],
+            [], [], []
+        );
+        $order_completed->set_customer_id(7101);
+        
+        $order_onhold = $this->createMockOrder(
+            7102, 'on-hold', $in_window_date,
             [['name' => 'Camp', 'subtotal' => 999, 'total' => 999]],
             [], [], []
         );
-        $order->set_customer_id(7101);
+        $order_onhold->set_customer_id(7101);
+        
+        // Holder 7102: pending order only (should NOT count)
+        $order_pending = $this->createMockOrder(
+            7103, 'pending', $in_window_date,
+            [['name' => 'Camp', 'subtotal' => 888, 'total' => 888]],
+            [], [], []
+        );
+        $order_pending->set_customer_id(7102);
+        
+        // Non-holder 7201: completed order (100)
+        $order_nonholder = $this->createMockOrder(
+            7104, 'completed', $in_window_date,
+            [['name' => 'Camp', 'subtotal' => 100, 'total' => 100]],
+            [], [], []
+        );
+        $order_nonholder->set_customer_id(7201);
         
         $mock_user_meta[7101] = ['intersoccer_points_balance' => 100];
-        $mock_wpdb_get_col_results = ['intersoccer_points_balance' => [7101]];
+        $mock_user_meta[7102] = ['intersoccer_points_balance' => 50];
+        $mock_wpdb_get_col_results = ['intersoccer_points_balance' => [7101, 7102]];
         
-        // Filter mock to return no orders (since the only order is on-hold)
-        $mock_wc_get_orders = function($args) {
+        // Mock returns ALL orders, but filters by status when requested
+        $all_orders = [7101 => $order_completed, 7102 => $order_onhold, 7103 => $order_pending, 7104 => $order_nonholder];
+        $mock_wc_get_orders = function($args) use ($all_orders, &$mock_wc_orders_by_id) {
             $statuses = isset($args['status']) ? (array) $args['status'] : ['completed', 'processing'];
-            // No completed/processing orders exist
-            return [];
+            $filtered_ids = [];
+            foreach ($all_orders as $oid => $order) {
+                $status = $order->get_status();
+                if (in_array($status, $statuses) || in_array('wc-' . $status, $statuses)) {
+                    $filtered_ids[] = $oid;
+                }
+            }
+            if (isset($args['return']) && $args['return'] === 'ids') {
+                return $filtered_ids;
+            }
+            $orders = [];
+            foreach ($filtered_ids as $oid) {
+                $orders[] = $mock_wc_orders_by_id[$oid];
+            }
+            return $orders;
         };
         
         $mock_wpdb_get_var_results = [
@@ -3287,24 +3349,78 @@ class ROICalculatorTest extends TestCase {
         $calculator = new InterSoccer_ROI_Calculator();
         $loyalty = $calculator->calculate_loyalty_roi();
         
-        // Holder with on-hold order should have 0 spend (dormant - no completed orders)
-        $this->assertEquals(0, $loyalty['holder_count'],
-            'On-hold orders should not count toward holder presence');
+        // With status filter: only holder 7101 has a completed order
+        // Holder 7102 has only pending order, so doesn't count as active holder
+        $this->assertEquals(1, $loyalty['holder_count'],
+            'Status guard: only holders with completed/processing orders count');
+        $this->assertEqualsWithDelta(500.0, $loyalty['holder_avg_spend'], 0.1,
+            'Status guard: only completed order (500) counted, not on-hold (999)');
+        $this->assertEqualsWithDelta(100.0, $loyalty['non_holder_avg_spend'], 0.1,
+            'Non-holder completed order counted');
+        
+        // If status filter is removed, would get:
+        // - holder_count could include 7102 (pending order)
+        // - holder_avg_spend would include 999 from on-hold order
     }
 
     /**
-     * HPOS FALLBACK PATH TEST: When HPOS detection fails, falls back to batched processing
+     * HPOS DETECTION TEST: Verifies HPOS is detected when enabled
      * 
-     * This verifies the batched fallback path works correctly with mock data.
-     * The HPOS SQL path cannot be fully unit tested without a real database.
+     * The HPOS SQL path uses aggregate queries that are difficult to mock.
+     * This test verifies HPOS detection works, then the batched fallback
+     * test below exercises the actual calculation with exact values.
+     */
+    public function testHPOS_Detection_WhenEnabled() {
+        // Enable HPOS
+        update_option('woocommerce_custom_orders_table_enabled', 'yes');
+        
+        global $mock_wpdb_get_var_results;
+        
+        // Mock: HPOS table exists and has data
+        $mock_wpdb_get_var_results = [
+            "SELECT COUNT(*) FROM" => 10,
+        ];
+        
+        $calculator = new InterSoccer_ROI_Calculator();
+        
+        // Use reflection to test private method
+        $reflection = new \ReflectionClass($calculator);
+        $method = $reflection->getMethod('is_hpos_active');
+        $method->setAccessible(true);
+        
+        $this->assertTrue($method->invoke($calculator), 'HPOS should be detected as active');
+        
+        // Cleanup
+        delete_option('woocommerce_custom_orders_table_enabled');
+    }
+    
+    /**
+     * HPOS DETECTION TEST: Verifies HPOS is not active when disabled
+     */
+    public function testHPOS_Detection_WhenDisabled() {
+        delete_option('woocommerce_custom_orders_table_enabled');
+        
+        $calculator = new InterSoccer_ROI_Calculator();
+        
+        $reflection = new \ReflectionClass($calculator);
+        $method = $reflection->getMethod('is_hpos_active');
+        $method->setAccessible(true);
+        
+        $this->assertFalse($method->invoke($calculator), 'HPOS should not be active when disabled');
+    }
+
+    /**
+     * BATCHED FALLBACK PATH TEST: When HPOS is disabled
      * 
      * Fixture:
      *   2 holders with 600 CHF each = 1200 total, avg 600
      *   2 non-holders with 100 CHF each = 200 total, avg 100
      *   Extra spend = (600 - 100) × 2 = 1000 CHF
      */
-    public function testHPOSFallback_BatchedPath_ExactValues() {
+    public function testBatchedFallback_ExactValues() {
         update_option('intersoccer_roi_camp_margin_percent', 40);
+        // Disable HPOS to force batched path
+        delete_option('woocommerce_custom_orders_table_enabled');
         
         global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wpdb_get_col_results;
         global $mock_wc_get_orders, $mock_wc_orders_by_id, $mock_user_meta;
@@ -3415,19 +3531,19 @@ class ROICalculatorTest extends TestCase {
     }
 
     /**
-     * EXACT VALUE TEST: Liability age breakdown
+     * EXACT VALUE TEST: Liability expired/reversed breakdown
      * 
      * Fixture:
      *   Total balance: 5000 CHF
      *   Expired: 1000 CHF
-     *   Reversed: 500 CHF (via order_refund/points_refund/reversal)
+     *   Reversed: 500 CHF
      * 
      * Expected:
      *   total_expired: 1000
      *   total_reversed: 500
      *   liability_reductions: 1500
      */
-    public function testLiability_AgeBreakdown_ExactValues() {
+    public function testLiability_ExpiredReversed_ExactValues() {
         global $mock_wpdb_get_var_results, $mock_wpdb_get_results;
         
         $mock_wpdb_get_var_results = [
@@ -3441,9 +3557,13 @@ class ROICalculatorTest extends TestCase {
         $calculator = new InterSoccer_ROI_Calculator();
         $liability = $calculator->get_points_liability();
         
+        $this->assertEquals(5000, $liability['current_chf'], 'current balance = 5000');
         $this->assertEquals(1000, $liability['total_expired'], 'total_expired = 1000');
         $this->assertEquals(500, $liability['total_reversed'], 'total_reversed = 500');
         $this->assertEquals(1500, $liability['liability_reductions'], 'reductions = 1000 + 500');
+        
+        // Age breakdown exists (detailed bucket testing requires complex mock setup)
+        $this->assertArrayHasKey('age_breakdown', $liability, 'Should have age_breakdown');
     }
 
     /**

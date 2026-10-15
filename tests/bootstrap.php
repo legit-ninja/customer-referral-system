@@ -582,6 +582,15 @@ if (!function_exists('wp_date')) {
     }
 }
 
+if (!function_exists('get_gmt_from_date')) {
+    function get_gmt_from_date($date_string, $format = 'Y-m-d H:i:s') {
+        // Simplified mock - assumes input is already in local time
+        // In real WP, this converts from site timezone to GMT
+        $timestamp = strtotime($date_string);
+        return date($format, $timestamp);
+    }
+}
+
 // Mock WC_Order_Item for line items
 if (!class_exists('WC_Order_Item')) {
     class WC_Order_Item {
