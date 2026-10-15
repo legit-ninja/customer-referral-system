@@ -29,6 +29,23 @@ class CommissionReinstatementGuardsTest extends TestCase {
         $hooks = $reflection->getProperty('woocommerce_hooks_registered');
         $hooks->setAccessible(true);
         $hooks->setValue(null, false);
+        $this->resetCommissionManagerTransactionState();
+    }
+
+    private function resetCommissionManagerTransactionState(): void {
+        $reflection = new ReflectionClass(InterSoccer_Commission_Manager::class);
+        foreach (['wpdb_transaction_depth', 'referral_credits_table_engine'] as $property) {
+            $prop = $reflection->getProperty($property);
+            $prop->setAccessible(true);
+            $prop->setValue(null, $property === 'wpdb_transaction_depth' ? 0 : null);
+        }
+    }
+
+    private function forceReferralCreditsTableEngine(string $engine): void {
+        $reflection = new ReflectionClass(InterSoccer_Commission_Manager::class);
+        $prop = $reflection->getProperty('referral_credits_table_engine');
+        $prop->setAccessible(true);
+        $prop->setValue(null, strtoupper($engine));
     }
 
     protected function tearDown(): void {
@@ -93,6 +110,8 @@ class CommissionReinstatementGuardsTest extends TestCase {
 
     public function testReinstatementDoesNotCreditBalanceWhenLedgerInsertFails() {
         global $mock_user_meta, $mock_fail_wpdb_insert_tables, $mock_wpdb_inserts;
+        // Without durable referral-credit transactions, a balance-first reinstatement would leave coach credits changed after a failed insert.
+        $this->forceReferralCreditsTableEngine('MyISAM');
         $coach_id = 97102;
         $order_id = 97002;
         $mock_user_meta[$coach_id] = ['intersoccer_credits' => 20.0];
