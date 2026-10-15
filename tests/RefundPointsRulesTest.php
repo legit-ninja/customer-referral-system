@@ -144,6 +144,43 @@ class RefundPointsRulesTest extends TestCase {
         $this->assertSame(80, $points->get_points_balance($customer_id));
     }
 
+    public function testRule2SpendingUsesEarnedPointsBeforeGiftedPoints() {
+        $points = $this->manager();
+        $customer_id = 93025;
+        $rows = [
+            [0, 'gift_received', 50, 50, '2024-01-01 10:00:00', 1],
+            [930025, 'order_purchase', 100, 150, '2024-01-02 10:00:00', 2],
+            [0, 'points_redeemed', -100, 50, '2024-01-03 10:00:00', 3],
+        ];
+        foreach ($rows as $r) {
+            $this->seed_ledger_row([
+                'customer_id' => $customer_id,
+                'order_id' => $r[0],
+                'transaction_type' => $r[1],
+                'points_amount' => $r[2],
+                'points_balance' => $r[3],
+                'created_at' => $r[4],
+                'id' => $r[5],
+            ]);
+        }
+        $this->seed_balance($customer_id, 50);
+
+        $this->assertSame(50, $points->get_unspent_gifted_points($customer_id));
+        $this->assertSame(0, $points->get_attributable_balance_for_order_reversal($customer_id, 930025));
+
+        $order = $this->make_order(930025, $customer_id, 100, 'completed');
+        $order->set_status('refunded');
+        $points->handle_order_status_refunded(930025);
+
+        $clawed = 0;
+        foreach ($this->ledger_types_for_order(930025, 'order_refund') as $row) {
+            $clawed += abs((int) $row['points_amount']);
+        }
+        $this->assertSame(0, $clawed);
+        $this->assertNotEmpty($this->ledger_types_for_order(930025, 'reversal_write_off'));
+        $this->assertSame(50, $points->get_points_balance($customer_id));
+    }
+
     public function testRule2GiftReceivedAfterPurchaseIsProtected() {
         $points = $this->manager();
         $customer_id = 93022;

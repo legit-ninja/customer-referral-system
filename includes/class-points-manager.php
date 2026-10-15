@@ -853,8 +853,9 @@ class InterSoccer_Points_Manager {
      * - Walk FIFO: each positive row opens a lot (amount, is_gift). A lot is a gift when
      *   transaction_type is in {@see get_points_gift_credit_types()} and points_amount > 0
      *   (so positive admin_adjustment counts; negative rows do not).
-     * - Each negative row consumes the oldest remaining lots first (gift or not) until its
-     *   absolute amount is exhausted. Zero rows are ignored.
+     * - Each negative row uses up non-gift (earned) lots first, oldest first, and only then
+     *   gift lots, oldest first, until its absolute amount is exhausted. Zero rows are ignored.
+     *   Example: gift 50, earn 100, spend 100 leaves 50 unspent gifted points.
      * - Unspent gifted points = sum of remaining gift-lot amounts, capped at max(0, current balance).
      *
      * @param int $customer_id
@@ -890,13 +891,19 @@ class InterSoccer_Points_Manager {
                 continue;
             }
 
+            // Spending uses earned (non-gift) lots first, oldest first, and only then gift lots.
             $remaining = abs($amount);
-            while ($remaining > 0 && !empty($lots)) {
-                $take = min($lots[0]['amount'], $remaining);
-                $lots[0]['amount'] -= $take;
-                $remaining -= $take;
-                if ($lots[0]['amount'] <= 0) {
-                    array_shift($lots);
+            foreach ([false, true] as $consume_gift) {
+                foreach ($lots as $i => $lot) {
+                    if ($remaining <= 0) {
+                        break 2;
+                    }
+                    if ((bool) $lot['is_gift'] !== $consume_gift || $lot['amount'] <= 0) {
+                        continue;
+                    }
+                    $take = min($lot['amount'], $remaining);
+                    $lots[$i]['amount'] -= $take;
+                    $remaining -= $take;
                 }
             }
         }
