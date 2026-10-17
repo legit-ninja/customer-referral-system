@@ -12,6 +12,7 @@
         }
     },
     "scripts": {
+        "install-hooks": "bash bin/install-hooks.sh",
         "test": "phpunit"
     }
 }
