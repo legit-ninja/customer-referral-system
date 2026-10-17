@@ -54,7 +54,9 @@ if (!function_exists('intersoccer_crs_is_referral_admin_screen')) {
      */
     function intersoccer_crs_is_referral_admin_screen(string $hook): bool {
         foreach (intersoccer_crs_referral_admin_page_slugs() as $slug) {
-            if (str_ends_with($hook, $slug)) {
+            $suffix = '_page_' . $slug;
+            $suffix_len = strlen($suffix);
+            if (strlen($hook) >= $suffix_len && substr_compare($hook, $suffix, -$suffix_len) === 0) {
                 return true;
             }
         }

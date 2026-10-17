@@ -632,7 +632,7 @@ deploy_to_server() {
         --exclude='.git' \
         --exclude='.gitignore' \
         --exclude='node_modules' \
-        --exclude='vendor' \
+        --exclude='/vendor' \
         --exclude='tests' \
         --exclude='docs' \
         --exclude='.phpunit.result.cache' \

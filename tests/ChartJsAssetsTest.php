@@ -51,6 +51,24 @@ class ChartJsAssetsTest extends TestCase
         $this->assertSame('3.9.1', $GLOBALS['intersoccer_test_registered_scripts'][$handle]['ver']);
     }
 
+    /**
+     * @dataProvider referral_admin_screen_hook_provider
+     */
+    public function test_is_referral_admin_screen_matches_crs_hooks_only(string $hook, bool $expected): void
+    {
+        $this->assertSame($expected, intersoccer_crs_is_referral_admin_screen($hook));
+    }
+
+    public static function referral_admin_screen_hook_provider(): array
+    {
+        return [
+            'CRS submenu' => ['referrals_page_intersoccer-coaches', true],
+            'CRS top-level' => ['toplevel_page_intersoccer-referrals', true],
+            'RR reports menu' => ['toplevel_page_intersoccer-reports-rosters', false],
+            'unrelated intersoccer hook' => ['admin_page_intersoccer-reports', false],
+        ];
+    }
+
     public function test_no_chart_cdn_urls_in_plugin_php_outside_vendor_and_tests(): void
     {
         $patterns = [
