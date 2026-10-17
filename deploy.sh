@@ -625,6 +625,7 @@ deploy_to_server() {
     # Important: Include rules must come BEFORE exclude rules in rsync
     # Include README.md before excluding other *.md files
     RSYNC_CMD="$RSYNC_CMD --include='README.md'"
+    RSYNC_CMD="$RSYNC_CMD --include='js/vendor/**/LICENSE.md'"
     
     # Exclude files/directories
     RSYNC_CMD="$RSYNC_CMD \

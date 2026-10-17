@@ -921,8 +921,9 @@ class InterSoccer_Coach_Admin_Dashboard {
                 wp_enqueue_style('modern-dashboard-css', INTERSOCCER_REFERRAL_URL . 'assets/css/modern-dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
                 wp_enqueue_style('aos-css', 'https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css', [], '2.3.4');
                 wp_enqueue_script('aos-js', 'https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js', [], '2.3.4', true);
-                wp_enqueue_script('chart-js', 'https://cdn.jsdelivr.net/npm/chart.js', [], '4.4.0', true);
-                wp_enqueue_script('modern-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/modern-dashboard.js', ['jquery', 'aos-js', 'chart-js'], INTERSOCCER_REFERRAL_VERSION, true);
+                intersoccer_crs_enqueue_chart_js_vendor_asset();
+                $chart_handle = intersoccer_crs_chart_js_asset_handle();
+                wp_enqueue_script('modern-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/modern-dashboard.js', ['jquery', 'aos-js', $chart_handle], INTERSOCCER_REFERRAL_VERSION, true);
 
                 wp_localize_script('modern-dashboard-js', 'intersoccer_dashboard', [
                     'ajax_url' => admin_url('admin-ajax.php'),

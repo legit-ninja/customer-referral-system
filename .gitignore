@@ -4,7 +4,7 @@ todo.list
 run-tests.php
 test-verification.php
 run-simple-test.php
-vendor/
+/vendor/
 
 # Cursor rules and skills - workspace-specific, not for public repo
 .cursor/
