@@ -656,12 +656,13 @@ copy_translations_to_global_dir() {
     
     # Create a temporary PHP script to copy .mo files
     COPY_SCRIPT='<?php
-// Load WordPress to get constants
+// Load WordPress to get constants (script runs via php stdin; plugin dir is cwd).
 define("WP_USE_THEMES", false);
-require_once(dirname(dirname(dirname(dirname(__FILE__)))) . "/wp-load.php");
+$plugin_dir = getcwd();
+require_once dirname(dirname(dirname(dirname($plugin_dir)))) . "/wp-load.php";
 
 // Copy .mo files from plugin languages/ to wp-content/languages/plugins/
-$plugin_lang_dir = dirname(__FILE__) . "/languages/";
+$plugin_lang_dir = $plugin_dir . "/languages/";
 $global_lang_dir = WP_CONTENT_DIR . "/languages/plugins/";
 
 // Ensure global directory exists
@@ -691,15 +692,11 @@ echo "\nCopied " . $copied . " translation file(s) to global directory.\n";
 if ($failed > 0) {
     echo "Failed to copy " . $failed . " file(s).\n";
 }
-unlink(__FILE__);
 ?>'
-    
-    # Upload and execute the script
-    echo "$COPY_SCRIPT" | ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cat > ${SERVER_PATH}/copy-translations-temp.php"
     
     echo ""
     echo "Copying translation files on server..."
-    ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cd ${SERVER_PATH} && php copy-translations-temp.php"
+    printf '%s' "$COPY_SCRIPT" | ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cd ${SERVER_PATH} && php"
     
     echo ""
     echo -e "${GREEN}✓ Translation files copied to global directory${NC}"
@@ -710,9 +707,10 @@ clear_server_caches() {
     
     # Create a temporary PHP script to clear caches
     CLEAR_SCRIPT='<?php
-// Load WordPress to get functions
+// Load WordPress to get functions (script runs via php stdin; plugin dir is cwd).
 define("WP_USE_THEMES", false);
-require_once(dirname(dirname(dirname(dirname(__FILE__)))) . "/wp-load.php");
+$plugin_dir = getcwd();
+require_once dirname(dirname(dirname(dirname($plugin_dir)))) . "/wp-load.php";
 
 // Clear PHP Opcache
 if (function_exists("opcache_reset")) {
@@ -747,15 +745,11 @@ if (function_exists("wp_cache_delete")) {
 }
 
 echo "\nCaches cleared successfully!\n";
-unlink(__FILE__);
 ?>'
-    
-    # Upload and execute the script
-    echo "$CLEAR_SCRIPT" | ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cat > ${SERVER_PATH}/clear-cache-temp.php"
     
     echo ""
     echo "Executing cache clear script on server..."
-    ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cd ${SERVER_PATH} && php clear-cache-temp.php"
+    printf '%s' "$CLEAR_SCRIPT" | ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cd ${SERVER_PATH} && php"
     
     echo ""
     echo -e "${GREEN}✓ Server caches cleared${NC}"
@@ -779,7 +773,8 @@ drop_referral_tables() {
     DROP_SCRIPT='<?php
 define("WP_USE_THEMES", false);
 define("SHORTINIT", true);
-require_once dirname(dirname(dirname(dirname(__FILE__)))) . "/wp-load.php";
+$plugin_dir = getcwd();
+require_once dirname(dirname(dirname(dirname($plugin_dir)))) . "/wp-load.php";
 
 global $wpdb;
 $tables = [
@@ -807,13 +802,10 @@ foreach ($tables as $table) {
 }
 
 echo "\nReferral plugin tables dropped.\n";
-unlink(__FILE__);
 ?>'
 
-    echo "$DROP_SCRIPT" | ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cat > ${SERVER_PATH}/drop-referral-tables-temp.php"
-
     echo "Executing drop script on server..."
-    ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cd ${SERVER_PATH} && php drop-referral-tables-temp.php"
+    printf '%s' "$DROP_SCRIPT" | ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cd ${SERVER_PATH} && php"
 
     echo -e "${GREEN}✓ Referral plugin tables dropped${NC}"
 }
@@ -826,7 +818,8 @@ configure_sandbox_options() {
     # See: https://github.com/legit-ninja/customer-referral-system/issues/44
     SANDBOX_SCRIPT='<?php
 define("WP_USE_THEMES", false);
-require_once(dirname(dirname(dirname(dirname(__FILE__)))) . "/wp-load.php");
+$plugin_dir = getcwd();
+require_once dirname(dirname(dirname(dirname($plugin_dir)))) . "/wp-load.php";
 
 // Set points allocation method to instant for sandbox/test environments
 $current = get_option("intersoccer_points_allocation_method", "instant");
@@ -837,14 +830,10 @@ echo "✓ intersoccer_points_allocation_method: " . $current . " → " . $new . 
 echo "\nSandbox configuration complete.\n";
 echo "G-EARN / Cypress earn-smoke tests will now receive points on order processing.\n";
 echo "See: https://github.com/legit-ninja/customer-referral-system/issues/44\n";
-unlink(__FILE__);
 ?>'
 
-    # Upload and execute the script
-    echo "$SANDBOX_SCRIPT" | ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cat > ${SERVER_PATH}/configure-sandbox-temp.php"
-
     echo "Setting intersoccer_points_allocation_method=instant on server..."
-    ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cd ${SERVER_PATH} && php configure-sandbox-temp.php"
+    printf '%s' "$SANDBOX_SCRIPT" | ssh -p ${SSH_PORT} -i ${SSH_KEY} ${SERVER_USER}@${SERVER_HOST} "cd ${SERVER_PATH} && php"
 
     echo ""
     echo -e "${GREEN}✓ Sandbox options configured${NC}"
