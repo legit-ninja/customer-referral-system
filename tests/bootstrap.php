@@ -808,6 +808,13 @@ if (!function_exists('wp_date')) {
 
 if (!function_exists('get_gmt_from_date')) {
     function get_gmt_from_date($date_string, $format = 'Y-m-d H:i:s') {
+        // Tests that need real site-timezone -> GMT conversion (e.g. across DST) set
+        // $GLOBALS['mock_site_timezone'] to a zone name; otherwise input is treated as GMT.
+        if (!empty($GLOBALS['mock_site_timezone'])) {
+            $dt = new DateTime($date_string, new DateTimeZone($GLOBALS['mock_site_timezone']));
+            $dt->setTimezone(new DateTimeZone('UTC'));
+            return $dt->format($format);
+        }
         // Simplified mock - assumes input is already in local time
         // In real WP, this converts from site timezone to GMT
         $timestamp = strtotime($date_string);

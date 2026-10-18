@@ -41,6 +41,12 @@ class InterSoccer_ROI_Calculator {
     /** @var int Max seconds for on-request ROI order scans before deferring to background warm */
     const ROI_COMPUTE_BUDGET_CAP_SECONDS = 20;
     
+    /** @var int Lock window for queueing the background ROI warm */
+    const WARM_SCHEDULE_LOCK_SECONDS = 60;
+    
+    /** @var string Background warm hook */
+    const WARM_HOOK = 'intersoccer_roi_warm_cache';
+    
     /** @var array Per-request memo for get_cost_breakdown() */
     private $request_cost_breakdown_memo = [];
     
@@ -97,6 +103,35 @@ class InterSoccer_ROI_Calculator {
     /**
      * Background cache warm callback (registered at file load so cron / Action Scheduler requests have it).
      */
+    /**
+     * Order status change / refund: drop cached first-order discount and cost breakdown so the next
+     * dashboard view recomputes them. Cheap (prefix DELETEs on option_name); nothing is recomputed inline.
+     */
+    public static function invalidate_order_dependent_cache() {
+        global $wpdb;
+        if (!$wpdb) {
+            return;
+        }
+        foreach (['first_order_discount_', 'cost_breakdown_'] as $suffix) {
+            foreach (['_transient_', '_transient_timeout_'] as $option_prefix) {
+                $wpdb->query($wpdb->prepare(
+                    "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
+                    $option_prefix . self::CACHE_PREFIX . $suffix . '%'
+                ));
+            }
+        }
+    }
+    
+    /**
+     * Deactivation: remove any queued background warm.
+     */
+    public static function unschedule_cache_warm() {
+        wp_clear_scheduled_hook(self::WARM_HOOK);
+        if (function_exists('as_unschedule_all_actions')) {
+            as_unschedule_all_actions(self::WARM_HOOK);
+        }
+    }
+    
     public static function run_scheduled_cache_warm() {
         $calculator = new self();
         $calculator->warm_roi_cache();
@@ -224,6 +259,13 @@ class InterSoccer_ROI_Calculator {
      * Queue background cache warm (Action Scheduler preferred).
      */
     public function schedule_roi_cache_warm() {
+        // Short lock so two dashboard requests overrunning at the same time don't both queue a warm.
+        $lock_key = self::CACHE_PREFIX . 'warm_lock';
+        if (get_transient($lock_key)) {
+            return;
+        }
+        set_transient($lock_key, 1, self::WARM_SCHEDULE_LOCK_SECONDS);
+        
         if (function_exists('as_enqueue_async_action') && function_exists('as_has_scheduled_action')) {
             if (!as_has_scheduled_action('intersoccer_roi_warm_cache')) {
                 as_enqueue_async_action('intersoccer_roi_warm_cache');
@@ -951,8 +993,11 @@ class InterSoccer_ROI_Calculator {
             return $total;
         }, $effective_force);
         
-        if ($this->is_aborted_cache_value($value)) {
+        // get_cached() returns false when the compute callback aborted (time budget). Treat that,
+        // and a raw sentinel, as an abort: never memoize or cache it as a real 0.0.
+        if ($value === false || $this->is_aborted_cache_value($value)) {
             $this->roi_compute_aborted = true;
+            $this->mark_roi_pending_and_schedule_warm();
             return 0.0;
         }
         
@@ -1070,6 +1115,9 @@ class InterSoccer_ROI_Calculator {
         if (!defined('INTERSOCCER_PHPUNIT') || !INTERSOCCER_PHPUNIT) {
             return false;
         }
+        if (!class_exists('Mock_WPDB', false) || get_class($this->wpdb) !== 'Mock_WPDB') {
+            return false;
+        }
         global $mock_wpdb_get_col_results;
         if (empty($mock_wpdb_get_col_results)) {
             return true;
@@ -1103,13 +1151,18 @@ class InterSoccer_ROI_Calculator {
         $labels = $this->get_first_order_discount_fee_name_labels();
         $label_placeholders = implode(',', array_fill(0, count($labels), '%s'));
         
+        // Same local-day -> GMT conversion WooCommerce applies to 'Y-m-d...Y-m-d' date_created queries.
+        $start_gmt = get_gmt_from_date($range['start'] . ' 00:00:00', 'Y-m-d H:i:s');
+        $end_gmt = get_gmt_from_date($range['end'] . ' 23:59:59', 'Y-m-d H:i:s');
+        
         if ($this->is_hpos_active()) {
             $orders_table = $this->wpdb->prefix . 'wc_orders';
             $orders_meta_table = $this->wpdb->prefix . 'wc_orders_meta';
+            if (!$this->hpos_candidate_tables_exist($orders_table, $orders_meta_table)) {
+                return null;
+            }
             $items_table = $this->wpdb->prefix . 'woocommerce_order_items';
             $itemmeta_table = $this->wpdb->prefix . 'woocommerce_order_itemmeta';
-            $start_gmt = get_gmt_from_date($range['start'] . ' 00:00:00', 'Y-m-d H:i:s');
-            $end_gmt = get_gmt_from_date($range['end'] . ' 23:59:59', 'Y-m-d H:i:s');
             
             $sql = "
                 SELECT o.id
@@ -1140,9 +1193,7 @@ class InterSoccer_ROI_Calculator {
                   )
                 ORDER BY o.date_created_gmt DESC, o.id DESC
             ";
-            $params = array_merge([$start_gmt, $end_gmt], $labels);
-            $ids = $this->wpdb->get_col($this->wpdb->prepare($sql, $params));
-            return array_map('intval', $ids ?: []);
+            return $this->run_candidate_id_query($sql, array_merge([$start_gmt, $end_gmt], $labels));
         }
         
         $posts_table = $this->wpdb->posts;
@@ -1155,8 +1206,8 @@ class InterSoccer_ROI_Calculator {
             FROM {$posts_table} p
             WHERE p.post_type = 'shop_order'
               AND p.post_status IN ('wc-completed', 'wc-processing')
-              AND p.post_date >= %s
-              AND p.post_date <= %s
+              AND p.post_date_gmt >= %s
+              AND p.post_date_gmt <= %s
               AND (
                 EXISTS (
                     SELECT 1 FROM {$postmeta_table} pm
@@ -1179,9 +1230,52 @@ class InterSoccer_ROI_Calculator {
               )
             ORDER BY p.post_date DESC, p.ID DESC
         ";
-        $params = array_merge([$range['start'] . ' 00:00:00', $range['end'] . ' 23:59:59'], $labels);
-        $ids = $this->wpdb->get_col($this->wpdb->prepare($sql, $params));
-        return array_map('intval', $ids ?: []);
+        return $this->run_candidate_id_query($sql, array_merge([$start_gmt, $end_gmt], $labels));
+    }
+    
+    /**
+     * Run a candidate-id query. Returns null (caller falls back to the full scan) on any failure;
+     * an empty array only for a query that succeeded and matched nothing.
+     *
+     * @param string $sql
+     * @param array $params
+     * @return int[]|null
+     */
+    private function run_candidate_id_query($sql, $params) {
+        $prepared = $this->wpdb->prepare($sql, $params);
+        if (!is_string($prepared) || $prepared === '') {
+            return null;
+        }
+        
+        $ids = $this->wpdb->get_col($prepared);
+        if (!empty($this->wpdb->last_error) || !is_array($ids)) {
+            return null;
+        }
+        
+        return array_map('intval', $ids);
+    }
+    
+    /** @var bool|null Per-instance result of the HPOS table check */
+    private $hpos_candidate_tables_ok = null;
+    
+    /**
+     * @param string $orders_table
+     * @param string $orders_meta_table
+     * @return bool
+     */
+    private function hpos_candidate_tables_exist($orders_table, $orders_meta_table) {
+        if ($this->hpos_candidate_tables_ok === null) {
+            $ok = true;
+            foreach ([$orders_table, $orders_meta_table] as $table) {
+                $found = $this->wpdb->get_var($this->wpdb->prepare('SHOW TABLES LIKE %s', $table));
+                if (!empty($this->wpdb->last_error) || $found !== $table) {
+                    $ok = false;
+                    break;
+                }
+            }
+            $this->hpos_candidate_tables_ok = $ok;
+        }
+        return $this->hpos_candidate_tables_ok;
     }
     
     /**
@@ -2023,7 +2117,8 @@ class InterSoccer_ROI_Calculator {
             return $this->compute_holder_vs_nonholder($range);
         }, $effective_force);
         
-        if ($this->is_aborted_cache_value($result)) {
+        // false from get_cached() means the compute aborted; never memoize it.
+        if ($result === false || $this->is_aborted_cache_value($result)) {
             $this->mark_roi_pending_and_schedule_warm();
             $stale = $this->get_stale_transient_value($cache_key, $effective_force);
             if ($stale !== false) {
@@ -3077,7 +3172,9 @@ class InterSoccer_ROI_Calculator {
 }
 
 if (function_exists('add_action')) {
-    add_action('intersoccer_roi_warm_cache', ['InterSoccer_ROI_Calculator', 'run_scheduled_cache_warm']);
+    add_action(InterSoccer_ROI_Calculator::WARM_HOOK, ['InterSoccer_ROI_Calculator', 'run_scheduled_cache_warm']);
+    add_action('woocommerce_order_status_changed', ['InterSoccer_ROI_Calculator', 'invalidate_order_dependent_cache'], 20, 0);
+    add_action('woocommerce_order_refunded', ['InterSoccer_ROI_Calculator', 'invalidate_order_dependent_cache'], 20, 0);
 }
 
 } // end class_exists check

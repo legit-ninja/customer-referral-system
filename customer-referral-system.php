@@ -268,6 +268,14 @@ class InterSoccer_Referral_System {
         // Clear scheduled events
         wp_clear_scheduled_hook('intersoccer_daily_cleanup');
         wp_clear_scheduled_hook('intersoccer_weekly_reports');
+        if (class_exists('InterSoccer_ROI_Calculator')) {
+            InterSoccer_ROI_Calculator::unschedule_cache_warm();
+        } else {
+            wp_clear_scheduled_hook('intersoccer_roi_warm_cache');
+            if (function_exists('as_unschedule_all_actions')) {
+                as_unschedule_all_actions('intersoccer_roi_warm_cache');
+            }
+        }
         
         // Flush rewrite rules
         flush_rewrite_rules();
