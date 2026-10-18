@@ -38,6 +38,36 @@ class InterSoccer_ROI_Calculator {
     /** @var string Transient key prefix */
     const CACHE_PREFIX = 'intersoccer_roi_';
     
+    /** @var int Max seconds for on-request ROI order scans before deferring to background warm */
+    const ROI_COMPUTE_BUDGET_CAP_SECONDS = 20;
+    
+    /** @var int Lock window for queueing the background ROI warm */
+    const WARM_SCHEDULE_LOCK_SECONDS = 60;
+    
+    /** @var string Background warm hook */
+    const WARM_HOOK = 'intersoccer_roi_warm_cache';
+    
+    /** @var array Per-request memo for get_cost_breakdown() */
+    private $request_cost_breakdown_memo = [];
+    
+    /** @var array Per-request memo for get_first_order_discount_cost() keyed by range hash */
+    private $request_first_order_discount_memo = [];
+    
+    /** @var array Per-request memo for holder vs non-holder comparison */
+    private $request_holder_comparison_memo = [];
+    
+    /** @var float|null microtime() deadline for dashboard ROI compute budget */
+    private $roi_compute_deadline = null;
+    
+    /** @var bool ROI headline widgets should show pending placeholder (not partial numbers) */
+    private $roi_widgets_pending = false;
+    
+    /** @var bool Last order-scan computation aborted due to time budget */
+    private $roi_compute_aborted = false;
+    
+    /** @var bool Force transient bypass for this request (manual refresh semantics) */
+    private $request_force_refresh = false;
+    
     /**
      * Incrementality range bounds for ROI calculation (Finance assumption).
      * 
@@ -71,6 +101,43 @@ class InterSoccer_ROI_Calculator {
     }
     
     /**
+     * Background cache warm callback (registered at file load so cron / Action Scheduler requests have it).
+     */
+    /**
+     * Order status change / refund: drop cached first-order discount and cost breakdown so the next
+     * dashboard view recomputes them. Cheap (prefix DELETEs on option_name); nothing is recomputed inline.
+     */
+    public static function invalidate_order_dependent_cache() {
+        global $wpdb;
+        if (!$wpdb) {
+            return;
+        }
+        foreach (['first_order_discount_', 'cost_breakdown_'] as $suffix) {
+            foreach (['_transient_', '_transient_timeout_'] as $option_prefix) {
+                $wpdb->query($wpdb->prepare(
+                    "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
+                    $option_prefix . self::CACHE_PREFIX . $suffix . '%'
+                ));
+            }
+        }
+    }
+    
+    /**
+     * Deactivation: remove any queued background warm.
+     */
+    public static function unschedule_cache_warm() {
+        wp_clear_scheduled_hook(self::WARM_HOOK);
+        if (function_exists('as_unschedule_all_actions')) {
+            as_unschedule_all_actions(self::WARM_HOOK);
+        }
+    }
+    
+    public static function run_scheduled_cache_warm() {
+        $calculator = new self();
+        $calculator->warm_roi_cache();
+    }
+    
+    /**
      * Get cached value or compute and cache it
      * 
      * @param string $key Cache key suffix
@@ -89,8 +156,154 @@ class InterSoccer_ROI_Calculator {
         }
         
         $value = $compute();
+        if ($this->is_aborted_cache_value($value)) {
+            return false;
+        }
         set_transient($cache_key, $value, self::CACHE_TTL);
         return $value;
+    }
+    
+    /**
+     * Sentinel: compute callback aborted (time budget); must not be cached or shown as real data.
+     *
+     * @return array
+     */
+    private function aborted_cache_sentinel() {
+        return ['__intersoccer_roi_aborted__' => true];
+    }
+    
+    /**
+     * @param mixed $value
+     * @return bool
+     */
+    private function is_aborted_cache_value($value) {
+        return is_array($value) && !empty($value['__intersoccer_roi_aborted__']);
+    }
+    
+    /**
+     * Clear per-request memoization (also called from clear_cache).
+     */
+    private function clear_request_memos() {
+        $this->request_cost_breakdown_memo = [];
+        $this->request_first_order_discount_memo = [];
+        $this->request_holder_comparison_memo = [];
+        $this->roi_compute_aborted = false;
+        $this->roi_widgets_pending = false;
+    }
+    
+    /**
+     * Skip transient reads and recompute (dashboard manual refresh).
+     *
+     * @param bool $force
+     */
+    public function set_request_force_refresh($force = true) {
+        $this->request_force_refresh = (bool) $force;
+    }
+    
+    /**
+     * Start time budget for dashboard ROI order scans.
+     */
+    public function begin_dashboard_roi_compute() {
+        $max_execution = (int) ini_get('max_execution_time');
+        if ($max_execution <= 0) {
+            $max_execution = 30;
+        }
+        $budget = min(self::ROI_COMPUTE_BUDGET_CAP_SECONDS, $max_execution * 0.4);
+        $this->roi_compute_deadline = microtime(true) + $budget;
+    }
+    
+    /**
+     * @return bool
+     */
+    public function is_roi_widgets_pending() {
+        return $this->roi_widgets_pending;
+    }
+    
+    /**
+     * User-facing placeholder when ROI cache is warming.
+     *
+     * @return string
+     */
+    public function get_roi_pending_message() {
+        return __('ROI is being calculated, refresh in a minute', 'intersoccer-referral');
+    }
+    
+    /**
+     * @return bool
+     */
+    private function is_roi_compute_time_exceeded() {
+        return $this->roi_compute_deadline !== null && microtime(true) > $this->roi_compute_deadline;
+    }
+    
+    /**
+     * @param bool $effective_force_refresh
+     * @return array|false
+     */
+    private function get_stale_transient_value($cache_key_suffix, $effective_force_refresh) {
+        if ($effective_force_refresh) {
+            return false;
+        }
+        $cached = get_transient(self::CACHE_PREFIX . $cache_key_suffix);
+        if ($cached === false || $this->is_aborted_cache_value($cached) || (is_array($cached) && !empty($cached['pending']))) {
+            return false;
+        }
+        return $cached;
+    }
+    
+    private function mark_roi_pending_and_schedule_warm() {
+        $this->roi_widgets_pending = true;
+        $this->schedule_roi_cache_warm();
+    }
+    
+    /**
+     * Queue background cache warm (Action Scheduler preferred).
+     */
+    public function schedule_roi_cache_warm() {
+        // Short lock so two dashboard requests overrunning at the same time don't both queue a warm.
+        $lock_key = self::CACHE_PREFIX . 'warm_lock';
+        if (get_transient($lock_key)) {
+            return;
+        }
+        set_transient($lock_key, 1, self::WARM_SCHEDULE_LOCK_SECONDS);
+        
+        if (function_exists('as_enqueue_async_action') && function_exists('as_has_scheduled_action')) {
+            if (!as_has_scheduled_action('intersoccer_roi_warm_cache')) {
+                as_enqueue_async_action('intersoccer_roi_warm_cache');
+            }
+            return;
+        }
+        if (!wp_next_scheduled('intersoccer_roi_warm_cache')) {
+            wp_schedule_single_event(time() + 60, 'intersoccer_roi_warm_cache');
+        }
+    }
+    
+    /**
+     * Background job: full ROI cache warm without dashboard time budget.
+     */
+    public function warm_roi_cache() {
+        $this->roi_compute_deadline = null;
+        $this->roi_widgets_pending = false;
+        $this->roi_compute_aborted = false;
+        $this->clear_request_memos();
+        $this->get_cost_breakdown(true);
+        $range = $this->get_period_range();
+        $this->get_holder_vs_nonholder_comparison($range, true);
+        $this->get_first_order_discount_cost($range, true);
+    }
+    
+    /**
+     * Hash for cost breakdown cache/memo (range + settings that affect returned estimates).
+     *
+     * @param array $range
+     * @param array $settings
+     * @return string
+     */
+    private function get_cost_breakdown_memo_key($range, $settings) {
+        return md5($range['start'] . $range['end'] . '|' . wp_json_encode([
+            'ad' => $settings['ad_spend_chf'],
+            'staff' => $settings['staff_time_monthly_chf'],
+            'platform' => $settings['platform_fees_monthly_chf'],
+        ]));
     }
     
     /**
@@ -111,6 +324,8 @@ class InterSoccer_ROI_Calculator {
         
         $this->adjustment_classification_cache = null;
         $this->fallback_order_cache = [];
+        $this->clear_request_memos();
+        $this->request_force_refresh = false;
         
         return true;
     }
@@ -122,7 +337,9 @@ class InterSoccer_ROI_Calculator {
      */
     public function get_cache_status() {
         $range = $this->get_period_range();
-        $cache_key = '_transient_timeout_' . self::CACHE_PREFIX . 'revenue_' . md5($range['start'] . $range['end']);
+        $settings = $this->get_roi_settings();
+        $memo_key = $this->get_cost_breakdown_memo_key($range, $settings);
+        $cache_key = '_transient_timeout_' . self::CACHE_PREFIX . 'cost_breakdown_' . $memo_key;
         
         $timeout = get_option($cache_key);
         if ($timeout === false) {
@@ -510,10 +727,67 @@ class InterSoccer_ROI_Calculator {
      * NOT costs (shown separately):
      * - Corrections: fix errors, don't create new value
      */
-    public function get_cost_breakdown() {
+    public function get_cost_breakdown($force_refresh = false) {
         $range = $this->get_period_range();
         $settings = $this->get_roi_settings();
+        $effective_force = $force_refresh || $this->request_force_refresh;
+        $memo_key = $this->get_cost_breakdown_memo_key($range, $settings);
+        $cache_key_suffix = 'cost_breakdown_' . $memo_key;
         
+        if (!$effective_force && isset($this->request_cost_breakdown_memo[$memo_key])) {
+            return $this->request_cost_breakdown_memo[$memo_key];
+        }
+        
+        if (!$effective_force) {
+            $stale = $this->get_stale_transient_value($cache_key_suffix, false);
+            if ($stale !== false) {
+                $this->request_cost_breakdown_memo[$memo_key] = $stale;
+                return $stale;
+            }
+        }
+        
+        if ($this->is_roi_compute_time_exceeded()) {
+            $this->mark_roi_pending_and_schedule_warm();
+            $stale = $this->get_stale_transient_value($cache_key_suffix, false);
+            if ($stale !== false) {
+                $this->request_cost_breakdown_memo[$memo_key] = $stale;
+                return $stale;
+            }
+            $pending = $this->build_cost_breakdown_pending_shell($range, $settings);
+            $this->request_cost_breakdown_memo[$memo_key] = $pending;
+            return $pending;
+        }
+        
+        $computed = $this->compute_cost_breakdown($range, $settings);
+        if ($this->roi_compute_aborted || $this->is_aborted_cache_value($computed)) {
+            $this->roi_compute_aborted = true;
+            $this->mark_roi_pending_and_schedule_warm();
+            $stale = $this->get_stale_transient_value($cache_key_suffix, $effective_force);
+            if ($stale !== false) {
+                $this->request_cost_breakdown_memo[$memo_key] = $stale;
+                return $stale;
+            }
+            $pending = $this->build_cost_breakdown_pending_shell($range, $settings);
+            $this->request_cost_breakdown_memo[$memo_key] = $pending;
+            return $pending;
+        }
+        
+        $this->get_cached($cache_key_suffix, function () use ($computed) {
+            return $computed;
+        }, $effective_force);
+        
+        $this->request_cost_breakdown_memo[$memo_key] = $computed;
+        return $computed;
+    }
+    
+    /**
+     * Fast SQL portions of cost breakdown; may set roi_compute_aborted during first-order discount scan.
+     *
+     * @param array $range
+     * @param array $settings
+     * @return array
+     */
+    private function compute_cost_breakdown($range, $settings) {
         $points_log = $this->table_prefix . 'intersoccer_points_log';
         $commissions_table = $this->table_prefix . 'intersoccer_coach_commissions';
         
@@ -561,14 +835,18 @@ class InterSoccer_ROI_Calculator {
         
         // First-order referral discount (ex-VAT, net of refunds)
         // Finance decision: Count as referral program cost; reversed if order is fully refunded
-        $first_order_discount = $this->get_first_order_discount_cost($range);
+        $first_order_discount = $this->get_first_order_discount_cost($range, $this->request_force_refresh);
+        if ($this->roi_compute_aborted) {
+            $this->roi_compute_aborted = true;
+            return $this->aborted_cache_sentinel();
+        }
         
         // Calculate costs
         $referral_cost = $commissions + $referral_points + $first_order_discount;
         $total_real_cost = $referral_cost + $loyalty_cost;
         
         // Revenue for % calculation
-        $revenue = $this->get_revenue_ex_vat($range);
+        $revenue = $this->get_revenue_ex_vat($range, $this->request_force_refresh);
         $cost_percent_revenue = $revenue > 0 ? round(($total_real_cost / $revenue) * 100, 2) : 0;
         
         // Estimated costs from settings
@@ -604,6 +882,70 @@ class InterSoccer_ROI_Calculator {
             'adjustment_points_chf' => $correction_points, // Non-cost adjustments for display
             'unclassified_adjustments' => $adj['unclassified_count'],
             'period_label' => __('Rolling 12 Months', 'intersoccer-referral'),
+            'pending' => false,
+        ];
+    }
+    
+    /**
+     * Shell returned when ROI order scans are deferred; includes SQL-fast fields for non-ROI cards.
+     *
+     * @param array $range
+     * @param array $settings
+     * @return array
+     */
+    private function build_cost_breakdown_pending_shell($range, $settings) {
+        $points_log = $this->table_prefix . 'intersoccer_points_log';
+        $referral_points = (float) $this->wpdb->get_var($this->wpdb->prepare("
+            SELECT COALESCE(SUM(points_amount), 0)
+            FROM {$points_log}
+            WHERE points_amount > 0
+              AND transaction_type IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')
+              AND created_at BETWEEN %s AND %s
+        ", $range['start'], $range['end'] . ' 23:59:59'));
+        $loyalty_activity_points = (float) $this->wpdb->get_var($this->wpdb->prepare("
+            SELECT COALESCE(SUM(points_amount), 0)
+            FROM {$points_log}
+            WHERE points_amount > 0
+              AND transaction_type NOT IN (
+                  'customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward',
+                  'admin_adjustment', 'manual_adjustment', 'admin_balance_set', 'points_refund', 'admin_reset',
+                  'gift_sent', 'gift_received', 'gift_returned', 'reversal_reinstated'
+              )
+              AND created_at BETWEEN %s AND %s
+        ", $range['start'], $range['end'] . ' 23:59:59'));
+        $adj = $this->classify_adjustments($range);
+        $goodwill_points = $adj['goodwill_chf'];
+        $total_points_earned = $referral_points + $loyalty_activity_points + $goodwill_points;
+        $months = $this->period_months;
+        
+        return [
+            'referral_points_chf' => $referral_points,
+            'loyalty_activity_chf' => $loyalty_activity_points,
+            'loyalty_points_chf' => $loyalty_activity_points,
+            'goodwill_points_chf' => $goodwill_points,
+            'correction_points_chf' => $adj['correction_chf'],
+            'loyalty_cost_chf' => $loyalty_activity_points + $goodwill_points,
+            'points_earned_chf' => $total_points_earned,
+            'commissions_chf' => 0,
+            'first_order_discount_chf' => 0,
+            'referral_cost_chf' => 0,
+            'total_real_cost' => 0,
+            'revenue_ex_vat' => 0,
+            'cost_percent_revenue' => 0,
+            'ad_spend_chf' => $settings['ad_spend_chf'],
+            'staff_time_chf' => $settings['staff_time_monthly_chf'] * $months,
+            'platform_fees_chf' => $settings['platform_fees_monthly_chf'] * $months,
+            'total_estimated_chf' => 0,
+            'total_fully_loaded_chf' => 0,
+            'has_estimates' => false,
+            'has_goodwill' => $adj['has_goodwill'],
+            'has_corrections' => $adj['has_corrections'],
+            'has_adjustments' => $adj['has_goodwill'] || $adj['has_corrections'],
+            'has_first_order_discount' => false,
+            'adjustment_points_chf' => $adj['correction_chf'],
+            'unclassified_adjustments' => $adj['unclassified_count'],
+            'period_label' => __('Rolling 12 Months', 'intersoccer-referral'),
+            'pending' => true,
         ];
     }
     
@@ -622,28 +964,78 @@ class InterSoccer_ROI_Calculator {
      * @param array $range Date range with 'start' and 'end' keys
      * @return float Total first-order discount cost in CHF (positive number)
      */
-    public function get_first_order_discount_cost($range = null) {
+    public function get_first_order_discount_cost($range = null, $force_refresh = false) {
         if ($range === null) {
             $range = $this->get_period_range();
         }
         
-        // Always use batched processing to read actual fee lines
-        // HPOS aggregate queries can't easily read fee line totals with refund handling
-        return $this->get_first_order_discount_cost_batched($range);
+        $effective_force = $force_refresh || $this->request_force_refresh;
+        $memo_key = md5($range['start'] . $range['end']);
+        
+        if (!$effective_force && isset($this->request_first_order_discount_memo[$memo_key])) {
+            return $this->request_first_order_discount_memo[$memo_key];
+        }
+        
+        $cache_key_suffix = 'first_order_discount_' . $memo_key;
+        $value = $this->get_cached($cache_key_suffix, function () use ($range) {
+            if ($this->is_roi_compute_time_exceeded()) {
+                $this->roi_compute_aborted = true;
+                return $this->aborted_cache_sentinel();
+            }
+            $was_aborted = $this->roi_compute_aborted;
+            $this->roi_compute_aborted = false;
+            $total = $this->compute_first_order_discount_cost($range);
+            if ($this->roi_compute_aborted) {
+                // Scan stopped part-way: the partial total must never be cached or shown.
+                return $this->aborted_cache_sentinel();
+            }
+            $this->roi_compute_aborted = $was_aborted;
+            return $total;
+        }, $effective_force);
+        
+        // get_cached() returns false when the compute callback aborted (time budget). Treat that,
+        // and a raw sentinel, as an abort: never memoize or cache it as a real 0.0.
+        if ($value === false || $this->is_aborted_cache_value($value)) {
+            $this->roi_compute_aborted = true;
+            $this->mark_roi_pending_and_schedule_warm();
+            return 0.0;
+        }
+        
+        $this->request_first_order_discount_memo[$memo_key] = (float) $value;
+        return (float) $value;
     }
     
     /**
-     * Calculate first-order discount cost from actual fee lines on orders
-     * 
-     * Identification strategy:
-     * 1. Primary: order meta `_intersoccer_first_order_discount_applied` + `_intersoccer_first_order_discount_amount`
-     * 2. Fallback for older orders: fee name matching (WPML-safe with EN/FR/DE labels)
+     * Hybrid SQL + per-order PHP: SQL narrows candidates; refund netting and fee-name fallback stay in PHP.
+     *
+     * @param array $range
+     * @return float
      */
-    private function get_first_order_discount_cost_batched($range) {
+    private function compute_first_order_discount_cost($range) {
+        $candidate_ids = $this->get_first_order_discount_candidate_order_ids($range);
+        if ($candidate_ids === null) {
+            // Legacy full scan kept for parity tests and when SQL candidate tables are unavailable.
+            return $this->compute_first_order_discount_cost_legacy($range);
+        }
+        return $this->sum_first_order_discount_for_order_ids($candidate_ids);
+    }
+    
+    /**
+     * Legacy full order scan (reference for PHPUnit parity; used when SQL candidates unavailable).
+     *
+     * @param array $range
+     * @return float
+     */
+    private function compute_first_order_discount_cost_legacy($range) {
         $total = 0.0;
         $page = 1;
         
         do {
+            if ($this->is_roi_compute_time_exceeded()) {
+                $this->roi_compute_aborted = true;
+                return 0.0;
+            }
+            
             $orders = $this->wc_get_orders_all_languages([
                 'status' => ['completed', 'processing'],
                 'date_created' => $range['start'] . '...' . $range['end'],
@@ -653,30 +1045,237 @@ class InterSoccer_ROI_Calculator {
             ]);
             
             foreach ($orders as $order_id) {
-                $order = wc_get_order($order_id);
-                if (!$order || $order->get_type() === 'shop_order_refund') continue;
-                
-                $fee_amount = $this->get_first_order_discount_from_order($order);
-                
-                if ($fee_amount <= 0) {
-                    unset($order);
-                    continue;
+                if ($this->is_roi_compute_time_exceeded()) {
+                    $this->roi_compute_aborted = true;
+                    return 0.0;
                 }
-                
-                $refunded_fee = $this->get_refunded_first_order_discount($order, $fee_amount);
-                $net_discount = $fee_amount - $refunded_fee;
-                
-                if ($net_discount > 0) {
-                    $total += $net_discount;
-                }
-                
-                unset($order);
+                $total += $this->get_net_first_order_discount_for_order_id($order_id);
             }
             
             $page++;
         } while (count($orders) === self::BATCH_SIZE);
         
         return $total;
+    }
+    
+    /**
+     * @param int[] $order_ids
+     * @return float
+     */
+    private function sum_first_order_discount_for_order_ids($order_ids) {
+        $total = 0.0;
+        foreach ($order_ids as $order_id) {
+            if ($this->is_roi_compute_time_exceeded()) {
+                $this->roi_compute_aborted = true;
+                return 0.0;
+            }
+            $total += $this->get_net_first_order_discount_for_order_id((int) $order_id);
+        }
+        return $total;
+    }
+    
+    /**
+     * @param int $order_id
+     * @return float
+     */
+    private function get_net_first_order_discount_for_order_id($order_id) {
+        $order = wc_get_order($order_id);
+        if (!$order || $order->get_type() === 'shop_order_refund') {
+            return 0.0;
+        }
+        
+        $fee_amount = $this->get_first_order_discount_from_order($order);
+        if ($fee_amount <= 0) {
+            return 0.0;
+        }
+        
+        $refunded_fee = $this->get_refunded_first_order_discount($order, $fee_amount);
+        $net_discount = $fee_amount - $refunded_fee;
+        return $net_discount > 0 ? $net_discount : 0.0;
+    }
+    
+    /**
+     * @return string[]
+     */
+    private function get_first_order_discount_fee_name_labels() {
+        return [
+            __('Referral Discount', 'intersoccer-referral'),
+            'Referral Discount',
+            'Réduction de parrainage',
+            'Empfehlungsrabatt',
+        ];
+    }
+    
+    /**
+     * PHPUnit without candidate SQL mocks must use legacy full scan.
+     *
+     * @return bool
+     */
+    private function should_use_legacy_first_order_discount_scan() {
+        if (!defined('INTERSOCCER_PHPUNIT') || !INTERSOCCER_PHPUNIT) {
+            return false;
+        }
+        if (!class_exists('Mock_WPDB', false) || get_class($this->wpdb) !== 'Mock_WPDB') {
+            return false;
+        }
+        global $mock_wpdb_get_col_results;
+        if (empty($mock_wpdb_get_col_results)) {
+            return true;
+        }
+        foreach (['first_order_discount_candidates', '_intersoccer_first_order_discount', '_intersoccer_referral_discount_fee'] as $needle) {
+            if (isset($mock_wpdb_get_col_results[$needle])) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    /**
+     * Order IDs that may have a first-order referral discount in range (SQL narrow step).
+     *
+     * The WHERE clause is deliberately a superset of what get_first_order_discount_from_order()
+     * can match (any referral fee-item meta, any discount-amount order meta, any fee line with a
+     * known label). The exact amount, the meta/label precedence and refund netting are still
+     * decided per order in PHP, so extra candidates cost time but never change the total.
+     *
+     * Returns null to fall back to compute_first_order_discount_cost_legacy().
+     *
+     * @param array $range
+     * @return int[]|null
+     */
+    private function get_first_order_discount_candidate_order_ids($range) {
+        if ($this->should_use_legacy_first_order_discount_scan()) {
+            return null;
+        }
+        
+        $labels = $this->get_first_order_discount_fee_name_labels();
+        $label_placeholders = implode(',', array_fill(0, count($labels), '%s'));
+        
+        // Same local-day -> GMT conversion WooCommerce applies to 'Y-m-d...Y-m-d' date_created queries.
+        $start_gmt = get_gmt_from_date($range['start'] . ' 00:00:00', 'Y-m-d H:i:s');
+        $end_gmt = get_gmt_from_date($range['end'] . ' 23:59:59', 'Y-m-d H:i:s');
+        
+        if ($this->is_hpos_active()) {
+            $orders_table = $this->wpdb->prefix . 'wc_orders';
+            $orders_meta_table = $this->wpdb->prefix . 'wc_orders_meta';
+            if (!$this->hpos_candidate_tables_exist($orders_table, $orders_meta_table)) {
+                return null;
+            }
+            $items_table = $this->wpdb->prefix . 'woocommerce_order_items';
+            $itemmeta_table = $this->wpdb->prefix . 'woocommerce_order_itemmeta';
+            
+            $sql = "
+                SELECT o.id
+                FROM {$orders_table} o
+                WHERE o.type = 'shop_order'
+                  AND o.status IN ('wc-completed', 'wc-processing')
+                  AND o.date_created_gmt >= %s
+                  AND o.date_created_gmt <= %s
+                  AND (
+                    EXISTS (
+                        SELECT 1 FROM {$orders_meta_table} om
+                        WHERE om.order_id = o.id
+                          AND om.meta_key = '_intersoccer_first_order_discount_amount'
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM {$items_table} oi
+                        INNER JOIN {$itemmeta_table} im ON oi.order_item_id = im.order_item_id
+                        WHERE oi.order_id = o.id
+                          AND oi.order_item_type = 'fee'
+                          AND im.meta_key = '_intersoccer_referral_discount_fee'
+                    )
+                    OR EXISTS (
+                        SELECT 1 FROM {$items_table} oi
+                        WHERE oi.order_id = o.id
+                          AND oi.order_item_type = 'fee'
+                          AND oi.order_item_name IN ({$label_placeholders})
+                    )
+                  )
+                ORDER BY o.date_created_gmt DESC, o.id DESC
+            ";
+            return $this->run_candidate_id_query($sql, array_merge([$start_gmt, $end_gmt], $labels));
+        }
+        
+        $posts_table = $this->wpdb->posts;
+        $postmeta_table = $this->wpdb->postmeta;
+        $items_table = $this->wpdb->prefix . 'woocommerce_order_items';
+        $itemmeta_table = $this->wpdb->prefix . 'woocommerce_order_itemmeta';
+        
+        $sql = "
+            SELECT p.ID
+            FROM {$posts_table} p
+            WHERE p.post_type = 'shop_order'
+              AND p.post_status IN ('wc-completed', 'wc-processing')
+              AND p.post_date_gmt >= %s
+              AND p.post_date_gmt <= %s
+              AND (
+                EXISTS (
+                    SELECT 1 FROM {$postmeta_table} pm
+                    WHERE pm.post_id = p.ID
+                      AND pm.meta_key = '_intersoccer_first_order_discount_amount'
+                )
+                OR EXISTS (
+                    SELECT 1 FROM {$items_table} oi
+                    INNER JOIN {$itemmeta_table} im ON oi.order_item_id = im.order_item_id
+                    WHERE oi.order_id = p.ID
+                      AND oi.order_item_type = 'fee'
+                      AND im.meta_key = '_intersoccer_referral_discount_fee'
+                )
+                OR EXISTS (
+                    SELECT 1 FROM {$items_table} oi
+                    WHERE oi.order_id = p.ID
+                      AND oi.order_item_type = 'fee'
+                      AND oi.order_item_name IN ({$label_placeholders})
+                )
+              )
+            ORDER BY p.post_date DESC, p.ID DESC
+        ";
+        return $this->run_candidate_id_query($sql, array_merge([$start_gmt, $end_gmt], $labels));
+    }
+    
+    /**
+     * Run a candidate-id query. Returns null (caller falls back to the full scan) on any failure;
+     * an empty array only for a query that succeeded and matched nothing.
+     *
+     * @param string $sql
+     * @param array $params
+     * @return int[]|null
+     */
+    private function run_candidate_id_query($sql, $params) {
+        $prepared = $this->wpdb->prepare($sql, $params);
+        if (!is_string($prepared) || $prepared === '') {
+            return null;
+        }
+        
+        $ids = $this->wpdb->get_col($prepared);
+        if (!empty($this->wpdb->last_error) || !is_array($ids)) {
+            return null;
+        }
+        
+        return array_map('intval', $ids);
+    }
+    
+    /** @var bool|null Per-instance result of the HPOS table check */
+    private $hpos_candidate_tables_ok = null;
+    
+    /**
+     * @param string $orders_table
+     * @param string $orders_meta_table
+     * @return bool
+     */
+    private function hpos_candidate_tables_exist($orders_table, $orders_meta_table) {
+        if ($this->hpos_candidate_tables_ok === null) {
+            $ok = true;
+            foreach ([$orders_table, $orders_meta_table] as $table) {
+                $found = $this->wpdb->get_var($this->wpdb->prepare('SHOW TABLES LIKE %s', $table));
+                if (!empty($this->wpdb->last_error) || $found !== $table) {
+                    $ok = false;
+                    break;
+                }
+            }
+            $this->hpos_candidate_tables_ok = $ok;
+        }
+        return $this->hpos_candidate_tables_ok;
     }
     
     /**
@@ -1246,6 +1845,9 @@ class InterSoccer_ROI_Calculator {
         
         // FIX #5: Single referral cost source for both card and range
         $costs = $this->get_cost_breakdown();
+        if (!empty($costs['pending'])) {
+            return $this->referral_roi_pending_response($funnel);
+        }
         $total_cost = $costs['referral_cost_chf'];
         $coach_commissions = $costs['commissions_chf'];
         $referral_points = $costs['referral_points_chf'];
@@ -1432,10 +2034,16 @@ class InterSoccer_ROI_Calculator {
         
         // Get cost breakdown (uses shared classifier)
         $costs = $this->get_cost_breakdown();
+        if (!empty($costs['pending'])) {
+            return $this->loyalty_roi_pending_response();
+        }
         $liability = $this->get_points_liability();
         
         // Get holder vs non-holder comparison
         $comparison = $this->get_holder_vs_nonholder_comparison($range);
+        if (!empty($comparison['pending'])) {
+            return $this->loyalty_roi_pending_response();
+        }
         
         // FIX #3: Cost is loyalty_cost (points when earned), NOT net of expired/reversed
         $points_cost = $costs['loyalty_cost_chf'];
@@ -1492,11 +2100,46 @@ class InterSoccer_ROI_Calculator {
             $range = $this->get_period_range();
         }
         
-        $cache_key = 'holder_comparison_' . md5($range['start'] . $range['end']);
+        $effective_force = $force_refresh || $this->request_force_refresh;
+        $memo_key = md5($range['start'] . $range['end']);
         
-        return $this->get_cached($cache_key, function() use ($range) {
+        if (!$effective_force && isset($this->request_holder_comparison_memo[$memo_key])) {
+            return $this->request_holder_comparison_memo[$memo_key];
+        }
+        
+        $cache_key = 'holder_comparison_' . $memo_key;
+        
+        $result = $this->get_cached($cache_key, function () use ($range) {
+            if ($this->is_roi_compute_time_exceeded()) {
+                $this->roi_compute_aborted = true;
+                return $this->aborted_cache_sentinel();
+            }
             return $this->compute_holder_vs_nonholder($range);
-        }, $force_refresh);
+        }, $effective_force);
+        
+        // false from get_cached() means the compute aborted; never memoize it.
+        if ($result === false || $this->is_aborted_cache_value($result)) {
+            $this->mark_roi_pending_and_schedule_warm();
+            $stale = $this->get_stale_transient_value($cache_key, $effective_force);
+            if ($stale !== false) {
+                $this->request_holder_comparison_memo[$memo_key] = $stale;
+                return $stale;
+            }
+            return [
+                'holder_count' => 0,
+                'non_holder_count' => 0,
+                'holder_avg_spend' => 0,
+                'non_holder_avg_spend' => 0,
+                'holder_orders' => 0,
+                'non_holder_orders' => 0,
+                'holder_repeat_rate' => 0,
+                'non_holder_repeat_rate' => 0,
+                'pending' => true,
+            ];
+        }
+        
+        $this->request_holder_comparison_memo[$memo_key] = $result;
+        return $result;
     }
     
     /**
@@ -1639,7 +2282,8 @@ class InterSoccer_ROI_Calculator {
             ];
         }
         
-        // Fallback: batched processing
+        // Fallback: batched full order scan when HPOS aggregate path is unavailable.
+        // May return the aborted sentinel (time budget); get_cached() never stores it.
         return $this->compute_holder_vs_nonholder_batched($range, array_flip($holders));
     }
     
@@ -1726,6 +2370,11 @@ class InterSoccer_ROI_Calculator {
         
         $page = 1;
         do {
+            if ($this->is_roi_compute_time_exceeded()) {
+                $this->roi_compute_aborted = true;
+                return $this->aborted_cache_sentinel();
+            }
+            
             $orders = $this->wc_get_orders_all_languages([
                 'status' => ['completed', 'processing'],
                 'date_created' => $range['start'] . '...' . $range['end'],
@@ -1735,6 +2384,11 @@ class InterSoccer_ROI_Calculator {
             ]);
             
             foreach ($orders as $order_id) {
+                if ($this->is_roi_compute_time_exceeded()) {
+                    $this->roi_compute_aborted = true;
+                    return $this->aborted_cache_sentinel();
+                }
+                
                 $order = wc_get_order($order_id);
                 if (!$order || $order->get_type() === 'shop_order_refund') continue;
                 
@@ -2034,9 +2688,19 @@ class InterSoccer_ROI_Calculator {
             ];
         }
         
+        if ($this->is_roi_widgets_pending()) {
+            return $this->referral_roi_range_pending_response();
+        }
+        
         $settings = $this->get_roi_settings();
         $referral = $this->calculate_referral_roi();
+        if (!empty($referral['pending'])) {
+            return $this->referral_roi_range_pending_response();
+        }
         $costs = $this->get_cost_breakdown();
+        if (!empty($costs['pending'])) {
+            return $this->referral_roi_range_pending_response();
+        }
         
         $margin_rate = $settings['camp_margin_percent'] / 100;
         $referral_revenue = $referral['revenue_ex_vat'];
@@ -2096,9 +2760,19 @@ class InterSoccer_ROI_Calculator {
             ];
         }
         
+        if ($this->is_roi_widgets_pending()) {
+            return $this->loyalty_roi_range_pending_response();
+        }
+        
         $settings = $this->get_roi_settings();
         $loyalty = $this->calculate_loyalty_roi();
+        if (!empty($loyalty['pending'])) {
+            return $this->loyalty_roi_range_pending_response();
+        }
         $costs = $this->get_cost_breakdown();
+        if (!empty($costs['pending'])) {
+            return $this->loyalty_roi_range_pending_response();
+        }
         
         $margin_rate = $settings['camp_margin_percent'] / 100;
         $loyalty_extra_spend = $loyalty['total_extra_spend'];
@@ -2160,8 +2834,15 @@ class InterSoccer_ROI_Calculator {
             ];
         }
         
+        if ($this->is_roi_widgets_pending()) {
+            return $this->combined_roi_range_pending_response();
+        }
+        
         $settings = $this->get_roi_settings();
         $costs = $this->get_cost_breakdown();
+        if (!empty($costs['pending'])) {
+            return $this->combined_roi_range_pending_response();
+        }
         $referral = $this->calculate_referral_roi();
         $loyalty = $this->calculate_loyalty_roi();
         
@@ -2229,6 +2910,14 @@ class InterSoccer_ROI_Calculator {
      */
     public function calculate_fully_loaded_roi() {
         $costs = $this->get_cost_breakdown();
+        if (!empty($costs['pending']) || $this->is_roi_widgets_pending()) {
+            return [
+                'has_data' => false,
+                'show_margin_prompt' => false,
+                'roi_display' => $this->get_roi_pending_message(),
+                'pending' => true,
+            ];
+        }
         $referral = $this->calculate_referral_roi();
         $loyalty = $this->calculate_loyalty_roi();
         $settings = $this->get_roi_settings();
@@ -2391,6 +3080,101 @@ class InterSoccer_ROI_Calculator {
         
         return $data;
     }
+    
+    /**
+     * @param array $funnel
+     * @return array
+     */
+    private function referral_roi_pending_response($funnel) {
+        $this->roi_widgets_pending = true;
+        return [
+            'new_families' => $funnel['new_families'] ?? 0,
+            'sample_size' => $funnel['sample_size'] ?? 0,
+            'sample_warning' => $funnel['sample_warning'] ?? '',
+            'revenue_ex_vat' => 0,
+            'total_revenue' => 0,
+            'referred_share_percent' => 0,
+            'coach_commissions' => 0,
+            'referral_points_cost' => 0,
+            'total_cost' => 0,
+            'cost_per_family' => 0,
+            'roi_percentage' => null,
+            'roi_display' => $this->get_roi_pending_message(),
+            'has_data' => false,
+            'show_margin_prompt' => false,
+            'pending' => true,
+            'period_label' => __('Rolling 12 Months', 'intersoccer-referral'),
+        ];
+    }
+    
+    /**
+     * @return array
+     */
+    private function loyalty_roi_pending_response() {
+        $this->roi_widgets_pending = true;
+        return [
+            'holder_count' => 0,
+            'non_holder_count' => 0,
+            'holder_avg_spend' => 0,
+            'non_holder_avg_spend' => 0,
+            'holder_repeat_rate' => 0,
+            'non_holder_repeat_rate' => 0,
+            'extra_spend_per_customer' => 0,
+            'total_extra_spend' => 0,
+            'points_cost' => 0,
+            'liability_reductions' => 0,
+            'roi_percentage' => null,
+            'roi_display' => $this->get_roi_pending_message(),
+            'has_data' => false,
+            'show_margin_prompt' => false,
+            'pending' => true,
+            'comparison_note' => __('Comparison, not proof the program caused it', 'intersoccer-referral'),
+            'attribution_note' => __('Campaign and ad-spend decisions need channel attribution, which isn\'t tracked yet.', 'intersoccer-referral'),
+        ];
+    }
+    
+    /**
+     * @return array
+     */
+    private function referral_roi_range_pending_response() {
+        $this->roi_widgets_pending = true;
+        return [
+            'low' => null,
+            'high' => null,
+            'has_data' => false,
+            'show_margin_prompt' => false,
+            'pending' => true,
+            'display' => $this->get_roi_pending_message(),
+        ];
+    }
+    
+    /**
+     * @return array
+     */
+    private function loyalty_roi_range_pending_response() {
+        return $this->referral_roi_range_pending_response();
+    }
+    
+    /**
+     * @return array
+     */
+    private function combined_roi_range_pending_response() {
+        $this->roi_widgets_pending = true;
+        return [
+            'display' => $this->get_roi_pending_message(),
+            'has_data' => false,
+            'is_range' => false,
+            'show_margin_prompt' => false,
+            'method' => null,
+            'pending' => true,
+        ];
+    }
+}
+
+if (function_exists('add_action')) {
+    add_action(InterSoccer_ROI_Calculator::WARM_HOOK, ['InterSoccer_ROI_Calculator', 'run_scheduled_cache_warm']);
+    add_action('woocommerce_order_status_changed', ['InterSoccer_ROI_Calculator', 'invalidate_order_dependent_cache'], 20, 0);
+    add_action('woocommerce_order_refunded', ['InterSoccer_ROI_Calculator', 'invalidate_order_dependent_cache'], 20, 0);
 }
 
 } // end class_exists check

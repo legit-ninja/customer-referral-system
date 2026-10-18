@@ -38,6 +38,8 @@ class InterSoccer_Admin_Dashboard_Main {
     }
 
     public function render_main_dashboard() {
+        $this->roi_calculator->begin_dashboard_roi_compute();
+        
         $stats = $this->get_dashboard_stats();
         $credit_stats = $this->get_customer_credit_stats();
         $recent_referrals = $this->get_recent_referrals(10);
@@ -153,8 +155,15 @@ class InterSoccer_Admin_Dashboard_Main {
             <?php 
             // Get cache status for display
             $cache_status = $this->roi_calculator->get_cache_status();
+            $roi_widgets_pending = $this->roi_calculator->is_roi_widgets_pending();
+            $roi_pending_message = $this->roi_calculator->get_roi_pending_message();
             ?>
             <div class="roi-headline-section">
+                <?php if ($roi_widgets_pending): ?>
+                <div class="notice notice-info inline roi-pending-notice">
+                    <p><?php echo esc_html($roi_pending_message); ?></p>
+                </div>
+                <?php endif; ?>
                 <div class="roi-headline-header">
                     <h2><?php esc_html_e('Program ROI (Rolling 12 Months)', 'intersoccer-referral'); ?></h2>
                     <div class="roi-cache-controls">
@@ -222,7 +231,10 @@ class InterSoccer_Admin_Dashboard_Main {
                     $displayed_cost = round($raw_cost);
                     
                     // Display the range if available, otherwise fallback to single value
-                    if ($referral_roi_range['has_data'] && $referral_roi_range['low'] !== null) {
+                    if ($roi_widgets_pending || !empty($referral_roi['pending']) || !empty($referral_roi_range['pending'])) {
+                        $referral_roi_display = $roi_pending_message;
+                        $referral_roi_class = 'muted';
+                    } elseif ($referral_roi_range['has_data'] && $referral_roi_range['low'] !== null) {
                         $referral_roi_display = number_format($referral_roi_range['low'], 1) . '% – ' . number_format($referral_roi_range['high'], 1) . '%';
                         $referral_roi_class = ($referral_roi_range['low'] >= 0) ? 'positive' : 'negative';
                     } elseif (!$has_margin) {
@@ -262,7 +274,10 @@ class InterSoccer_Admin_Dashboard_Main {
                     <!-- Loyalty ROI (with range) -->
                     <?php 
                     // Display the range if available, otherwise fallback to single value
-                    if ($loyalty_roi_range['has_data'] && $loyalty_roi_range['low'] !== null) {
+                    if ($roi_widgets_pending || !empty($loyalty_roi['pending']) || !empty($loyalty_roi_range['pending'])) {
+                        $loyalty_roi_display = $roi_pending_message;
+                        $loyalty_roi_class = 'muted';
+                    } elseif ($loyalty_roi_range['has_data'] && $loyalty_roi_range['low'] !== null) {
                         $loyalty_roi_display = number_format($loyalty_roi_range['low'], 1) . '% – ' . number_format($loyalty_roi_range['high'], 1) . '%';
                         $loyalty_roi_class = ($loyalty_roi_range['low'] >= 0) ? 'positive' : 'negative';
                     } elseif (!$has_margin) {
@@ -388,7 +403,10 @@ class InterSoccer_Admin_Dashboard_Main {
 
             <!-- Financial Health Summary -->
             <!-- Figure sources: intersoccer_points_log (canonical SoT) -->
-            <?php $has_financial_data = !empty($financial_overview['has_data']); ?>
+            <?php
+            $financial_pending = !empty($financial_overview['pending']);
+            $has_financial_data = $financial_pending || !empty($financial_overview['has_data']);
+            ?>
             <div class="financial-health-section">
                 <h2><?php esc_html_e('Financial Health Overview', 'intersoccer-referral'); ?></h2>
                 <?php if (!$has_financial_data): ?>
@@ -400,11 +418,15 @@ class InterSoccer_Admin_Dashboard_Main {
                 <div class="financial-metrics">
                     <div class="financial-metric" title="<?php esc_attr_e('Points earned + commissions this calendar month (cost when earned)', 'intersoccer-referral'); ?>">
                         <span class="metric-label"><?php esc_html_e('Program Cost (This Month)', 'intersoccer-referral'); ?></span>
+                        <?php if ($financial_pending): ?>
+                        <span class="metric-value muted"><?php echo esc_html($this->roi_calculator->get_roi_pending_message()); ?></span>
+                        <?php else: ?>
                         <span class="metric-value"><?php echo esc_html(number_format($financial_overview['monthly_program_cost'], 0)); ?> <span class="unit-label">CHF</span></span>
                         <span class="metric-detail"><?php printf(
                             esc_html__('12mo avg: %s CHF', 'intersoccer-referral'),
                             number_format($cost_breakdown['total_real_cost'] / 12, 0)
                         ); ?></span>
+                        <?php endif; ?>
                     </div>
                     <div class="financial-metric" title="<?php esc_attr_e('Redeemed ÷ Earned (12mo, excl. corrections) × 100', 'intersoccer-referral'); ?>">
                         <span class="metric-label"><?php esc_html_e('Redemption Rate', 'intersoccer-referral'); ?></span>
@@ -558,6 +580,9 @@ class InterSoccer_Admin_Dashboard_Main {
                 <!-- 7. Program Cost Breakdown (Real costs only, split by referral vs loyalty) -->
                 <div class="dashboard-widget">
                     <h2><?php esc_html_e('Program Cost Breakdown', 'intersoccer-referral'); ?> <span class="period-label">(<?php esc_html_e('12mo', 'intersoccer-referral'); ?>)</span></h2>
+                    <?php if (!empty($cost_breakdown['pending'])): ?>
+                    <p class="muted"><?php echo esc_html($this->roi_calculator->get_roi_pending_message()); ?></p>
+                    <?php else: ?>
                     <div class="cost-breakdown">
                         <div class="cost-breakdown-section">
                             <h4><?php esc_html_e('Referral Cost', 'intersoccer-referral'); ?></h4>
@@ -648,6 +673,7 @@ class InterSoccer_Admin_Dashboard_Main {
                         </div>
                     </details>
                     <?php endif; ?>
+                    <?php endif; /* cost breakdown pending */ ?>
                 </div>
 
                 <!-- 8. Referral Funnel -->
@@ -1132,7 +1158,11 @@ class InterSoccer_Admin_Dashboard_Main {
         // CHF-based ROI calculation
         $roi_data = $this->calculate_chf_roi();
         
+        // ROI order scans deferred (time budget): don't show zero/partial costs as real figures.
+        $roi_pending = !empty($cost_breakdown['pending']) || $this->roi_calculator->is_roi_widgets_pending();
+        
         return [
+            'pending' => $roi_pending,
             'monthly_program_cost' => $monthly_program_cost,
             'credit_utilization_rate' => $credit_utilization_rate,
             'avg_credits_per_customer' => round($avg_credits_per_customer, 0),

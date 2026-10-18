@@ -4996,4 +4996,139 @@ class ROICalculatorTest extends TestCase {
         $this->assertSame(55.0, $costs['commissions_chf']);
         $this->assertSame(55.0, $costs['referral_cost_chf']);
     }
+
+    /**
+     * SQL candidate narrowing must match legacy full-scan totals on fixture orders.
+     */
+    public function testFirstOrderDiscount_SqlCandidatesMatchLegacyScan() {
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_orders_by_id, $mock_wc_get_orders, $mock_wpdb_get_col_results;
+
+        $window_start = wp_date('Y-m-d', strtotime('-11 months'));
+        $range = ['start' => $window_start, 'end' => wp_date('Y-m-d')];
+
+        $this->createMockOrder(91001, 'completed', $window_start . ' 12:00:00', [
+            ['total' => 480],
+        ], [], [], [
+            '_intersoccer_first_order_discount_applied' => 1,
+            '_intersoccer_first_order_discount_amount' => 25,
+        ]);
+
+        $this->mockWcGetOrders([91001]);
+
+        $mock_wpdb_get_var_results = [
+            'commission_amount' => 0,
+            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
+            'NOT IN' => 0,
+        ];
+        $mock_wpdb_get_results = [
+            'intersoccer_points_log' => [],
+        ];
+
+        $calculator = new InterSoccer_ROI_Calculator();
+        $reflection = new ReflectionClass($calculator);
+        $legacy = $reflection->getMethod('compute_first_order_discount_cost_legacy');
+        $legacy->setAccessible(true);
+        $legacy_total = $legacy->invoke($calculator, $range);
+
+        $mock_wpdb_get_col_results = [
+            '_intersoccer_first_order_discount' => [91001],
+        ];
+        $hybrid = $reflection->getMethod('compute_first_order_discount_cost');
+        $hybrid->setAccessible(true);
+        $hybrid_total = $hybrid->invoke($calculator, $range);
+
+        $this->assertEquals(25.0, $legacy_total);
+        $this->assertEquals($legacy_total, $hybrid_total);
+    }
+
+    /**
+     * Per-request memo: second get_cost_breakdown() must not re-run wc_get_orders scans.
+     */
+    public function testGetCostBreakdown_SecondCallDoesNotRescanOrders() {
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders, $mock_wc_orders_by_id;
+
+        $window_start = wp_date('Y-m-d', strtotime('-11 months'));
+        $this->createMockOrder(92001, 'completed', $window_start . ' 09:00:00', [
+            ['total' => 300],
+        ], [], [], [
+            '_intersoccer_first_order_discount_applied' => 1,
+            '_intersoccer_first_order_discount_amount' => 15,
+        ]);
+
+        $scan_calls = 0;
+        $mock_wc_get_orders = function ($args) use (&$scan_calls) {
+            if (isset($args['return']) && $args['return'] === 'ids') {
+                $scan_calls++;
+                return [92001];
+            }
+            return [];
+        };
+
+        $mock_wpdb_get_var_results = [
+            'commission_amount' => 0,
+            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
+            'NOT IN' => 0,
+            'intersoccer_points_balance' => 0,
+            'points_expired' => 0,
+            'points_reversed' => 0,
+        ];
+        $mock_wpdb_get_results = [
+            'intersoccer_points_log' => [],
+            'intersoccer_referrals' => [],
+        ];
+
+        $calculator = new InterSoccer_ROI_Calculator();
+        $first = $calculator->get_cost_breakdown();
+        $calls_after_first = $scan_calls;
+        $second = $calculator->get_cost_breakdown();
+
+        $this->assertSame($first['first_order_discount_chf'], $second['first_order_discount_chf']);
+        $this->assertEquals(15.0, $second['first_order_discount_chf']);
+        $this->assertSame($calls_after_first, $scan_calls, 'Second get_cost_breakdown() should not trigger another order scan');
+    }
+
+    /**
+     * Time budget exceeded: dashboard gets a pending shell, a warm is queued, and nothing partial is cached.
+     */
+    public function testGetCostBreakdown_BudgetExceededReturnsPendingAndCachesNothing() {
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders, $mock_transients, $mock_cron, $mock_scheduled_single_events;
+
+        $saved_cron = [$mock_cron, $mock_scheduled_single_events];
+        $mock_cron = [];
+        $mock_scheduled_single_events = [];
+        $mock_transients = [];
+
+        $scan_calls = 0;
+        $mock_wc_get_orders = function ($args) use (&$scan_calls) {
+            $scan_calls++;
+            return [];
+        };
+        $mock_wpdb_get_var_results = [
+            'commission_amount' => 0,
+            "IN ('customer_referral_reward', 'new_customer_bonus', 'coach_referral_reward')" => 0,
+            'NOT IN' => 0,
+        ];
+        $mock_wpdb_get_results = [
+            'intersoccer_points_log' => [],
+        ];
+
+        $calculator = new InterSoccer_ROI_Calculator();
+        $reflection = new ReflectionClass($calculator);
+        $deadline = $reflection->getProperty('roi_compute_deadline');
+        $deadline->setAccessible(true);
+        $deadline->setValue($calculator, microtime(true) - 1);
+
+        $costs = $calculator->get_cost_breakdown();
+
+        $this->assertTrue($costs['pending']);
+        $this->assertTrue($calculator->is_roi_widgets_pending());
+        $this->assertSame(0, $scan_calls, 'No order scan should start once the budget is spent');
+        $this->assertContains('intersoccer_roi_warm_cache', array_column($mock_scheduled_single_events, 'hook'));
+        foreach (array_keys($mock_transients) as $key) {
+            $this->assertStringNotContainsString('cost_breakdown_', $key);
+            $this->assertStringNotContainsString('first_order_discount_', $key);
+        }
+
+        [$mock_cron, $mock_scheduled_single_events] = $saved_cron;
+    }
 }

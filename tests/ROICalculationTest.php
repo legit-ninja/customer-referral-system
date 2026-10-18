@@ -18,7 +18,7 @@ class ROICalculationTest extends TestCase {
         require_once __DIR__ . '/../includes/class-admin-dashboard-main.php';
 
         global $mock_points_log_rows, $mock_user_meta, $mock_points_balances;
-        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders;
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders, $mock_transients;
 
         $this->saved = [
             'rows' => $mock_points_log_rows ?? [],
@@ -27,6 +27,7 @@ class ROICalculationTest extends TestCase {
             'var_results' => $mock_wpdb_get_var_results ?? [],
             'results' => $mock_wpdb_get_results ?? [],
             'wc_orders' => $mock_wc_get_orders ?? null,
+            'transients' => $mock_transients ?? [],
         ];
         
         $this->saved_options = [
@@ -38,12 +39,13 @@ class ROICalculationTest extends TestCase {
         $mock_wpdb_get_var_results = [];
         $mock_wpdb_get_results = [];
         $mock_wc_get_orders = function() { return []; };
+        $mock_transients = [];
         parent::setUp();
     }
 
     protected function tearDown(): void {
         global $mock_points_log_rows, $mock_user_meta, $mock_points_balances;
-        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders;
+        global $mock_wpdb_get_var_results, $mock_wpdb_get_results, $mock_wc_get_orders, $mock_transients;
 
         $mock_points_log_rows = $this->saved['rows'];
         $mock_user_meta = $this->saved['meta'];
@@ -51,6 +53,7 @@ class ROICalculationTest extends TestCase {
         $mock_wpdb_get_var_results = $this->saved['var_results'];
         $mock_wpdb_get_results = $this->saved['results'];
         $mock_wc_get_orders = $this->saved['wc_orders'];
+        $mock_transients = $this->saved['transients'];
         
         foreach ($this->saved_options as $key => $value) {
             if ($value !== false) {
