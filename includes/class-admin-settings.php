@@ -234,6 +234,15 @@ class InterSoccer_Admin_Settings {
                             </td>
                         </tr>
                         <tr>
+                            <th scope="row"><?php esc_html_e('Delete plugin data on uninstall', 'intersoccer-referral'); ?></th>
+                            <td>
+                                <input type="checkbox" name="intersoccer_wipe_data_on_uninstall" value="1" <?php checked(get_option('intersoccer_wipe_data_on_uninstall'), '1'); ?>>
+                                <p class="description" style="color: #d63638; font-weight: 500;">
+                                    <?php esc_html_e('Off by default. When on, deleting this plugin removes its roles (coach, content creator, partner) and settings. It is skipped automatically while another copy of this plugin is still installed.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
                             <th scope="row">
                                 <label for="referral-eligibility-window">
                                     <?php esc_html_e('New Customer & Eligibility Window (months)', 'intersoccer-referral'); ?>
@@ -4107,6 +4116,12 @@ class InterSoccer_Admin_Settings {
             'sanitize_callback' => 'boolval'
         ]);
 
+        register_setting('intersoccer_settings', 'intersoccer_wipe_data_on_uninstall', [
+            'type' => 'string',
+            'default' => '0',
+            'sanitize_callback' => [$this, 'sanitize_wipe_data_on_uninstall_option']
+        ]);
+
         register_setting('intersoccer_settings', 'intersoccer_referral_eligibility_months', [
             'type' => 'number',
             'default' => 18,
@@ -4480,6 +4495,16 @@ class InterSoccer_Admin_Settings {
      */
     public function sanitize_utm_enabled_option($value) {
         return (int) (!empty($value));
+    }
+
+    /**
+     * Persist wipe-on-uninstall checkbox as 1 or 0 (unchecked posts hidden 0).
+     *
+     * @param mixed $value
+     * @return string
+     */
+    public function sanitize_wipe_data_on_uninstall_option($value) {
+        return (!empty($value) && $value !== '0') ? '1' : '0';
     }
 
     /**

@@ -122,7 +122,7 @@ class InterSoccer_Referral_System {
         add_action('init', [$this, 'load_referral_textdomain'], 1);
         register_activation_hook(__FILE__, [$this, 'activate']);
         register_deactivation_hook(__FILE__, [$this, 'deactivate']);
-        register_uninstall_hook(__FILE__, ['InterSoccer_Referral_System', 'uninstall']);
+        add_action('admin_init', [self::class, 'cleanup_stale_uninstall_hooks'], 1);
     }
 
     /**
@@ -285,25 +285,15 @@ class InterSoccer_Referral_System {
     }
     
     public static function uninstall() {
-        // Remove custom roles
-        remove_role('coach');
-        remove_role('content_creator');
-        remove_role('partner');
-        
-        // Remove options
-        delete_option('intersoccer_commission_first');
-        delete_option('intersoccer_commission_second');
-        delete_option('intersoccer_commission_third');
-        delete_option('intersoccer_version');
-        
-        // Optional: Remove database tables (commented out for safety)
-        /*
-        global $wpdb;
-        $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}intersoccer_referrals");
-        */
-        
-        // Log uninstall
-        intersoccer_referral_log('InterSoccer Referral System uninstalled');
+        require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-uninstaller.php';
+        InterSoccer_Referral_Uninstaller::run(
+            defined('WP_UNINSTALL_PLUGIN') ? WP_UNINSTALL_PLUGIN : INTERSOCCER_REFERRAL_BASENAME
+        );
+    }
+
+    public static function cleanup_stale_uninstall_hooks() {
+        require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-uninstaller.php';
+        InterSoccer_Referral_Uninstaller::cleanup_stale_uninstall_hooks();
     }
     
     private function create_database_tables() {

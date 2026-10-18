@@ -424,7 +424,11 @@ if (!function_exists('update_option')) {
 
 if (!function_exists('delete_option')) {
     function delete_option($key) {
-        global $mock_options;
+        global $mock_options, $mock_delete_option_calls;
+        if (!is_array($mock_delete_option_calls)) {
+            $mock_delete_option_calls = [];
+        }
+        $mock_delete_option_calls[] = $key;
         if (!array_key_exists($key, $mock_options)) {
             return false;
         }
@@ -2441,6 +2445,10 @@ if (!function_exists('get_avatar_url')) {
 
 if (!function_exists('is_admin')) {
     function is_admin() {
+        global $mock_is_admin;
+        if (isset($mock_is_admin)) {
+            return (bool) $mock_is_admin;
+        }
         return false;
     }
 }
@@ -2969,7 +2977,11 @@ if (!function_exists('get_role')) {
 
 if (!function_exists('remove_role')) {
     function remove_role($role) {
-        global $mock_roles;
+        global $mock_roles, $mock_remove_role_calls;
+        if (!is_array($mock_remove_role_calls)) {
+            $mock_remove_role_calls = [];
+        }
+        $mock_remove_role_calls[] = $role;
         unset($mock_roles[$role]);
         return true;
     }
