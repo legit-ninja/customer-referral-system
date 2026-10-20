@@ -422,6 +422,20 @@ if (!function_exists('update_option')) {
     }
 }
 
+if (!function_exists('register_setting')) {
+    function register_setting($option_group, $option_name, $args = []) {
+        global $mock_registered_settings;
+        if (!is_array($mock_registered_settings)) {
+            $mock_registered_settings = [];
+        }
+        if (!isset($mock_registered_settings[$option_group])) {
+            $mock_registered_settings[$option_group] = [];
+        }
+        $mock_registered_settings[$option_group][$option_name] = $args;
+        return true;
+    }
+}
+
 if (!function_exists('delete_option')) {
     function delete_option($key) {
         global $mock_options, $mock_delete_option_calls;

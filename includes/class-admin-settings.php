@@ -225,6 +225,26 @@ class InterSoccer_Admin_Settings {
                             </td>
                         </tr>
                         <tr>
+                            <th scope="row"><?php esc_html_e('Referrer points basis', 'intersoccer-referral'); ?></th>
+                            <td>
+                                <?php
+                                $referrer_points_basis = InterSoccer_Referral_Handler::get_referrer_points_basis();
+                                ?>
+                                <label>
+                                    <input type="radio" name="intersoccer_referrer_points_basis" value="paid" <?php checked($referrer_points_basis, 'paid'); ?>>
+                                    <?php esc_html_e('Amount the friend paid after the discount', 'intersoccer-referral'); ?>
+                                </label>
+                                <br>
+                                <label>
+                                    <input type="radio" name="intersoccer_referrer_points_basis" value="full_price" <?php checked($referrer_points_basis, 'full_price'); ?>>
+                                    <?php esc_html_e('Full booking price before the friend\'s discount', 'intersoccer-referral'); ?>
+                                </label>
+                                <p class="description">
+                                    <?php esc_html_e('Choose what the referrer\'s points are calculated from. Changing this only affects referrals completed after you save; points already awarded are not changed.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
                             <th scope="row"><?php esc_html_e('Enable Debug Logging', 'intersoccer-referral'); ?></th>
                             <td>
                                 <input type="checkbox" name="intersoccer_debug_logging" value="1" <?php checked(get_option('intersoccer_debug_logging'), '1'); ?>>
@@ -4116,6 +4136,12 @@ class InterSoccer_Admin_Settings {
             'sanitize_callback' => 'boolval'
         ]);
 
+        register_setting('intersoccer_settings', 'intersoccer_referrer_points_basis', [
+            'type' => 'string',
+            'default' => 'paid',
+            'sanitize_callback' => [$this, 'sanitize_referrer_points_basis_option'],
+        ]);
+
         register_setting('intersoccer_settings', 'intersoccer_wipe_data_on_uninstall', [
             'type' => 'string',
             'default' => '0',
@@ -4555,6 +4581,16 @@ class InterSoccer_Admin_Settings {
         $value = is_string($value) ? strtolower($value) : 'ratio';
 
         return in_array($value, ['ratio', 'percentage'], true) ? $value : 'ratio';
+    }
+
+    /**
+     * Sanitize referrer points basis option.
+     *
+     * @param mixed $value
+     * @return string 'paid'|'full_price'
+     */
+    public function sanitize_referrer_points_basis_option($value) {
+        return ($value === 'full_price') ? 'full_price' : 'paid';
     }
 
     /**

@@ -612,6 +612,66 @@ class InterSoccer_Referral_Handler {
         }
     }
 
+    /**
+     * Referrer points basis for new referral awards ('paid' or 'full_price').
+     *
+     * @return string
+     */
+    public static function get_referrer_points_basis() {
+        $value = get_option('intersoccer_referrer_points_basis', 'paid');
+        return ($value === 'full_price') ? 'full_price' : 'paid';
+    }
+
+    /**
+     * CHF amount used to calculate referrer reward points for an order.
+     *
+     * @param WC_Order $order
+     * @param float    $paid_amount Net rewardable amount after the friend's discount.
+     * @return float
+     */
+    public static function get_referrer_points_base_amount($order, $paid_amount) {
+        $paid_amount = max(0.0, (float) $paid_amount);
+        if (self::get_referrer_points_basis() !== 'full_price') {
+            return $paid_amount;
+        }
+
+        return $paid_amount + self::get_friend_referral_discount_from_order($order);
+    }
+
+    /**
+     * Friend's first-order referral discount on this order (positive CHF).
+     *
+     * @param WC_Order $order
+     * @return float
+     */
+    private static function get_friend_referral_discount_from_order($order) {
+        if (!is_object($order) || !method_exists($order, 'get_items')) {
+            return 0.0;
+        }
+
+        foreach ($order->get_items('fee') as $fee) {
+            if (!method_exists($fee, 'get_meta')) {
+                continue;
+            }
+            $is_referral_fee = $fee->get_meta('_intersoccer_referral_discount_fee', true);
+            if ($is_referral_fee) {
+                return abs((float) $fee->get_total());
+            }
+        }
+
+        if (method_exists($order, 'get_meta')) {
+            $applied = $order->get_meta('_intersoccer_first_order_discount_applied', true);
+            if ($applied) {
+                $amount = $order->get_meta('_intersoccer_first_order_discount_amount', true);
+                if (is_numeric($amount) && (float) $amount > 0) {
+                    return abs((float) $amount);
+                }
+            }
+        }
+
+        return 0.0;
+    }
+
     // Process referral on order completion
     public function process_referral_order($order_id) {
         $order = wc_get_order($order_id);
@@ -692,17 +752,18 @@ class InterSoccer_Referral_Handler {
         }
         $referrer_reward_points = 0;
         if ($is_customer_referrer && $eligibility['eligible']) {
+            $referrer_points_base = self::get_referrer_points_base_amount($order, $order_total);
             if (class_exists('InterSoccer_Points_Manager')) {
                 $points_manager = InterSoccer_Points_Manager::get_instance();
                 $referrer_reward_points = (int) $points_manager->calculate_points_from_order_total(
-                    $order_total,
+                    $referrer_points_base,
                     (int) $referrer['id'],
                     'referral',
                     false
                 );
             } else {
                 $rate = max(1, (int) get_option('intersoccer_points_rate_customer_referral', 10));
-                $referrer_reward_points = (int) floor($order_total / $rate);
+                $referrer_reward_points = (int) floor($referrer_points_base / $rate);
             }
         }
 
