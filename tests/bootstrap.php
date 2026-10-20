@@ -847,6 +847,7 @@ if (!class_exists('WC_Order_Item')) {
         protected $name = '';
         protected $total = 0;
         protected $subtotal = 0;
+        protected $subtotal_tax = 0;
         protected $quantity = 1;
         protected $meta_data = [];
         protected $type = 'line_item';
@@ -881,6 +882,14 @@ if (!class_exists('WC_Order_Item')) {
 
         public function set_subtotal($subtotal) {
             $this->subtotal = (float) $subtotal;
+        }
+
+        public function get_subtotal_tax() {
+            return $this->subtotal_tax;
+        }
+
+        public function set_subtotal_tax($tax) {
+            $this->subtotal_tax = (float) $tax;
         }
 
         public function get_quantity() {

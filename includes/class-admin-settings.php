@@ -237,7 +237,7 @@ class InterSoccer_Admin_Settings {
                                 <br>
                                 <label>
                                     <input type="radio" name="intersoccer_referrer_points_basis" value="full_price" <?php checked($referrer_points_basis, 'full_price'); ?>>
-                                    <?php esc_html_e('Full booking price before the friend\'s discount', 'intersoccer-referral'); ?>
+                                    <?php esc_html_e('Full booking price before any discounts (referral, sibling, coupons, redeemed points)', 'intersoccer-referral'); ?>
                                 </label>
                                 <p class="description">
                                     <?php esc_html_e('Choose what the referrer\'s points are calculated from. Changing this only affects referrals completed after you save; points already awarded are not changed.', 'intersoccer-referral'); ?>

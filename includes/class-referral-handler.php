@@ -625,6 +625,11 @@ class InterSoccer_Referral_Handler {
     /**
      * CHF amount used to calculate referrer reward points for an order.
      *
+     * In full_price mode the base is list price from product line subtotals (ex-VAT, pre-coupon),
+     * plus PV per-line discounts added back, minus pre-completion refunds ex-VAT. Referral discounts,
+     * coupons (including campaign coupons), and redeemed points/credits are fees or coupons and are
+     * not in line subtotals, so they are excluded from this base. Tax and non-product fees are excluded.
+     *
      * @param WC_Order $order
      * @param float    $paid_amount Net rewardable amount after the friend's discount.
      * @return float
@@ -635,41 +640,63 @@ class InterSoccer_Referral_Handler {
             return $paid_amount;
         }
 
-        return $paid_amount + self::get_friend_referral_discount_from_order($order);
-    }
-
-    /**
-     * Friend's first-order referral discount on this order (positive CHF).
-     *
-     * @param WC_Order $order
-     * @return float
-     */
-    private static function get_friend_referral_discount_from_order($order) {
-        if (!is_object($order) || !method_exists($order, 'get_items')) {
-            return 0.0;
+        if (!is_object($order) || !method_exists($order, 'get_items') || !class_exists('InterSoccer_Points_Manager')) {
+            return $paid_amount;
         }
 
-        foreach ($order->get_items('fee') as $fee) {
-            if (!method_exists($fee, 'get_meta')) {
+        $line_items = $order->get_items('line_item');
+        if (!is_array($line_items) || $line_items === []) {
+            return $paid_amount;
+        }
+
+        $full_price = 0.0;
+        $prices_include_tax = function_exists('wc_prices_include_tax') && wc_prices_include_tax();
+
+        foreach ($line_items as $item) {
+            if (!is_object($item) || !method_exists($item, 'get_subtotal')) {
                 continue;
             }
-            $is_referral_fee = $fee->get_meta('_intersoccer_referral_discount_fee', true);
-            if ($is_referral_fee) {
-                return abs((float) $fee->get_total());
-            }
-        }
 
-        if (method_exists($order, 'get_meta')) {
-            $applied = $order->get_meta('_intersoccer_first_order_discount_applied', true);
-            if ($applied) {
-                $amount = $order->get_meta('_intersoccer_first_order_discount_amount', true);
-                if (is_numeric($amount) && (float) $amount > 0) {
-                    return abs((float) $amount);
+            $subtotal = max(0.0, (float) $item->get_subtotal());
+            $full_price += $subtotal;
+
+            $discount_per_unit = 0.0;
+            if (method_exists($item, 'get_meta')) {
+                $meta_discount = $item->get_meta('_intersoccer_total_item_discount', true);
+                if (is_numeric($meta_discount) && (float) $meta_discount > 0) {
+                    $discount_per_unit = (float) $meta_discount;
+                } else {
+                    $display_discount = $item->get_meta('Discount Amount', true);
+                    if (is_numeric($display_discount) && (float) $display_discount > 0) {
+                        $discount_per_unit = (float) $display_discount;
+                    }
                 }
             }
+
+            $quantity = method_exists($item, 'get_quantity') ? max(1, (int) $item->get_quantity()) : 1;
+            $add_back = max(0.0, $discount_per_unit) * $quantity;
+
+            if ($add_back > 0 && $prices_include_tax && method_exists($item, 'get_subtotal_tax')) {
+                $subtotal_tax = max(0.0, (float) $item->get_subtotal_tax());
+                if ($subtotal_tax > 0 && $subtotal > 0) {
+                    $add_back *= $subtotal / ($subtotal + $subtotal_tax);
+                }
+            }
+
+            $full_price += $add_back;
         }
 
-        return 0.0;
+        $points_manager = InterSoccer_Points_Manager::get_instance();
+        if (method_exists($order, 'get_refunds')) {
+            foreach ((array) $order->get_refunds() as $refund) {
+                if (!$points_manager->is_refund_before_order_completion($order, $refund)) {
+                    continue;
+                }
+                $full_price -= $points_manager->get_refund_amount_ex_vat($refund, $order);
+            }
+        }
+
+        return max(0.0, $full_price);
     }
 
     // Process referral on order completion

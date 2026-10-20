@@ -25,22 +25,59 @@ class ReferrerPointsBasisTest extends TestCase {
         parent::tearDown();
     }
 
+    private function pointsManager(): InterSoccer_Points_Manager {
+        return new InterSoccer_Points_Manager();
+    }
+
+    private function paidExVat(WC_Order $order): float {
+        return $this->pointsManager()->get_order_net_rewardable_amount_ex_vat($order);
+    }
+
+    private function referrerPointsForPaidBasis(WC_Order $order): int {
+        $points_manager = $this->pointsManager();
+        $paid = $this->paidExVat($order);
+        $base = InterSoccer_Referral_Handler::get_referrer_points_base_amount($order, $paid);
+
+        return (int) $points_manager->calculate_points_from_order_total($base, 501, 'referral', false);
+    }
+
+    private function referrerPointsForFullPriceBasis(WC_Order $order): int {
+        update_option('intersoccer_referrer_points_basis', 'full_price');
+        $points_manager = $this->pointsManager();
+        $paid = $this->paidExVat($order);
+        $base = InterSoccer_Referral_Handler::get_referrer_points_base_amount($order, $paid);
+
+        return (int) $points_manager->calculate_points_from_order_total($base, 501, 'referral', false);
+    }
+
     private function campExampleOrder(): WC_Order {
         $order = new WC_Order(1001);
+        $line = new WC_Order_Item_Product();
+        $line->set_subtotal(525);
+        $line->set_total(525);
+        $order->add_item($line);
+        $order->add_item(new WC_Order_Item_Fee('Referral discount', -52.50));
         $order->set_total(472.50);
+        $order->set_tax_total(0);
         return $order;
     }
 
-    private function referrerRewardPoints(WC_Order $order, float $paid_amount, int $referrer_id = 501): int {
-        $base = InterSoccer_Referral_Handler::get_referrer_points_base_amount($order, $paid_amount);
-        $points_manager = new InterSoccer_Points_Manager();
+    private function siblingCouponOrder(): WC_Order {
+        $order = new WC_Order(1002);
+        $line_one = new WC_Order_Item_Product();
+        $line_one->set_subtotal(525);
+        $line_one->set_total(525);
+        $order->add_item($line_one);
 
-        return (int) $points_manager->calculate_points_from_order_total(
-            $base,
-            $referrer_id,
-            'referral',
-            false
-        );
+        $line_two = new WC_Order_Item_Product();
+        $line_two->set_subtotal(420);
+        $line_two->set_total(420);
+        $line_two->add_meta_data('_intersoccer_total_item_discount', 105);
+        $order->add_item($line_two);
+
+        $order->set_total(850.50);
+        $order->set_tax_total(0);
+        return $order;
     }
 
     public function testGetReferrerPointsBasisDefaultsToPaidWhenUnset() {
@@ -61,44 +98,59 @@ class ReferrerPointsBasisTest extends TestCase {
         $this->assertSame('paid', $settings->sanitize_referrer_points_basis_option(null));
     }
 
-    public function testPaidBasisCampExampleYields47Points() {
+    public function testCampExamplePaid47FullPrice52() {
         $order = $this->campExampleOrder();
-        $this->assertSame(47, $this->referrerRewardPoints($order, 472.50));
+
+        $this->assertSame(47, $this->referrerPointsForPaidBasis($order));
+        $this->assertSame(52, $this->referrerPointsForFullPriceBasis($order));
     }
 
-    public function testFullPriceBasisCampExampleViaFeeMetaYields52Points() {
-        $order = $this->campExampleOrder();
-        $fee = new WC_Order_Item_Fee('Referral discount', -52.50);
-        $fee->add_meta_data('_intersoccer_referral_discount_fee', '1');
-        $order->add_item($fee);
-        update_option('intersoccer_referrer_points_basis', 'full_price');
+    public function testSiblingCouponOrderPaid85FullPrice105() {
+        $order = $this->siblingCouponOrder();
 
-        $this->assertSame(52, $this->referrerRewardPoints($order, 472.50));
+        $this->assertSame(85, $this->referrerPointsForPaidBasis($order));
+        $this->assertSame(105, $this->referrerPointsForFullPriceBasis($order));
     }
 
-    public function testFullPriceBasisCampExampleViaOrderMetaYields52Points() {
-        $order = $this->campExampleOrder();
-        $order->update_meta_data('_intersoccer_first_order_discount_applied', 'yes');
-        $order->update_meta_data('_intersoccer_first_order_discount_amount', '52.50');
-        update_option('intersoccer_referrer_points_basis', 'full_price');
+    public function testSiblingCouponWithPointsRedemptionPaid83FullPriceStill105() {
+        $order = $this->siblingCouponOrder();
+        $order->add_item(new WC_Order_Item_Fee('Points redemption', -20));
+        $order->set_total(830.50);
+        $order->set_tax_total(0);
 
-        $this->assertSame(52, $this->referrerRewardPoints($order, 472.50));
+        $this->assertSame(83, $this->referrerPointsForPaidBasis($order));
+        $this->assertSame(105, $this->referrerPointsForFullPriceBasis($order));
+    }
+
+    public function testPaidModeReturnsPaidAmountUnchanged() {
+        $order = $this->siblingCouponOrder();
+        $paid = $this->paidExVat($order);
+
+        $this->assertSame($paid, InterSoccer_Referral_Handler::get_referrer_points_base_amount($order, $paid));
+
+        update_option('intersoccer_referrer_points_basis', 'paid');
+        $this->assertSame($paid, InterSoccer_Referral_Handler::get_referrer_points_base_amount($order, $paid));
+    }
+
+    public function testPreCompletionRefundReducesFullPriceBasis() {
+        $order = $this->siblingCouponOrder();
+        $refund = new WC_Order_Refund(1, 100);
+        $order->add_refund($refund);
+
+        $this->assertSame(95, $this->referrerPointsForFullPriceBasis($order));
     }
 
     public function testChangingBasisDoesNotAlterStoredReferrerRewardPoints() {
         $order = $this->campExampleOrder();
-        $fee = new WC_Order_Item_Fee('Referral discount', -52.50);
-        $fee->add_meta_data('_intersoccer_referral_discount_fee', '1');
-        $order->add_item($fee);
 
-        $awarded_points = $this->referrerRewardPoints($order, 472.50);
+        $awarded_points = $this->referrerPointsForPaidBasis($order);
         $this->assertSame(47, $awarded_points);
         $order->update_meta_data('_intersoccer_referrer_reward_points', $awarded_points);
 
         update_option('intersoccer_referrer_points_basis', 'full_price');
 
         $this->assertSame(47, (int) $order->get_meta('_intersoccer_referrer_reward_points'));
-        $this->assertSame(52, $this->referrerRewardPoints($order, 472.50));
+        $this->assertSame(52, $this->referrerPointsForFullPriceBasis($order));
     }
 
     public function testReferrerPointsBasisSettingRegisteredInGeneralSettings() {
@@ -123,6 +175,6 @@ class ReferrerPointsBasisTest extends TestCase {
         $this->assertStringContainsString('Referrer points basis', $source);
         $this->assertStringContainsString('Amount the friend paid after the discount', $source);
         $this->assertStringContainsString('value="full_price"', $source);
-        $this->assertStringContainsString('Full booking price before the friend', $source);
+        $this->assertStringContainsString('Full booking price before any discounts', $source);
     }
 }
