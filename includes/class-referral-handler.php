@@ -42,6 +42,23 @@ class InterSoccer_Referral_Handler {
     public const COACH_REFERRAL_CODE_META = 'referral_code';
 
     /**
+     * `_intersoccer_item_discounts` entry types that count as sibling / multi-booking line-price reductions.
+     */
+    private const REFERRER_FULL_PRICE_LINE_DISCOUNT_TYPES = [
+        'sibling',
+        'multi-child',
+        'camp_sibling',
+        'course_multi_child',
+        'camp_other',
+        'course_other',
+        'same_season',
+        'same-season',
+        'second_course',
+        'second-course',
+        'course_same_season',
+    ];
+
+    /**
      * Normalize coach referral code while preserving sequential formats (e.g. COACH000123).
      *
      * @param string $code
@@ -625,10 +642,10 @@ class InterSoccer_Referral_Handler {
     /**
      * CHF amount used to calculate referrer reward points for an order.
      *
-     * In full_price mode the base is list price from product line subtotals (ex-VAT, pre-coupon),
-     * plus PV per-line discounts added back, minus pre-completion refunds ex-VAT. Referral discounts,
-     * coupons (including campaign coupons), and redeemed points/credits are fees or coupons and are
-     * not in line subtotals, so they are excluded from this base. Tax and non-product fees are excluded.
+     * In full_price mode the base is product line subtotals (ex-VAT, pre-coupon) plus only sibling /
+     * multi-booking line-price reductions from `_intersoccer_item_discounts` (not proportional order-fee
+     * shares), minus pre-completion refunds ex-VAT. Referral discounts, coupons and redeemed points are
+     * excluded because RR stores them as proportional entries. Tax and non-product fees are excluded.
      *
      * @param WC_Order $order
      * @param float    $paid_amount Net rewardable amount after the friend's discount.
@@ -660,19 +677,7 @@ class InterSoccer_Referral_Handler {
             $subtotal = max(0.0, (float) $item->get_subtotal());
             $full_price += $subtotal;
 
-            $discount_per_unit = 0.0;
-            if (method_exists($item, 'get_meta')) {
-                $meta_discount = $item->get_meta('_intersoccer_total_item_discount', true);
-                if (is_numeric($meta_discount) && (float) $meta_discount > 0) {
-                    $discount_per_unit = (float) $meta_discount;
-                } else {
-                    $display_discount = $item->get_meta('Discount Amount', true);
-                    if (is_numeric($display_discount) && (float) $display_discount > 0) {
-                        $discount_per_unit = (float) $display_discount;
-                    }
-                }
-            }
-
+            $discount_per_unit = self::get_sibling_line_discount_add_back_per_unit($item);
             $quantity = method_exists($item, 'get_quantity') ? max(1, (int) $item->get_quantity()) : 1;
             $add_back = max(0.0, $discount_per_unit) * $quantity;
 
@@ -697,6 +702,64 @@ class InterSoccer_Referral_Handler {
         }
 
         return max(0.0, $full_price);
+    }
+
+    /**
+     * Per-unit sibling / multi-booking discount to add back for full_price (from item meta list).
+     *
+     * @param object $item Order line item.
+     * @return float
+     */
+    private static function get_sibling_line_discount_add_back_per_unit($item) {
+        $entries = self::get_item_discount_entries($item);
+        if ($entries === []) {
+            return 0.0;
+        }
+
+        $per_unit = 0.0;
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $type = isset($entry['type']) ? strtolower(trim((string) $entry['type'])) : '';
+            if (!in_array($type, self::REFERRER_FULL_PRICE_LINE_DISCOUNT_TYPES, true)) {
+                continue;
+            }
+
+            $allocation_method = isset($entry['allocation_method'])
+                ? strtolower(trim((string) $entry['allocation_method']))
+                : '';
+            $source = isset($entry['source']) ? strtolower(trim((string) $entry['source'])) : '';
+            if ($allocation_method === 'proportional' || $source === 'order_fee') {
+                continue;
+            }
+
+            if (!isset($entry['amount']) || !is_numeric($entry['amount'])) {
+                continue;
+            }
+
+            $per_unit += max(0.0, (float) $entry['amount']);
+        }
+
+        return $per_unit;
+    }
+
+    /**
+     * @param object $item Order line item.
+     * @return array<int, array<string, mixed>>
+     */
+    private static function get_item_discount_entries($item) {
+        if (!is_object($item) || !method_exists($item, 'get_meta')) {
+            return [];
+        }
+
+        $raw = $item->get_meta('_intersoccer_item_discounts', true);
+        if (function_exists('maybe_unserialize')) {
+            $raw = maybe_unserialize($raw);
+        }
+
+        return is_array($raw) ? $raw : [];
     }
 
     // Process referral on order completion
