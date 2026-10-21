@@ -422,9 +422,27 @@ if (!function_exists('update_option')) {
     }
 }
 
+if (!function_exists('register_setting')) {
+    function register_setting($option_group, $option_name, $args = []) {
+        global $mock_registered_settings;
+        if (!is_array($mock_registered_settings)) {
+            $mock_registered_settings = [];
+        }
+        if (!isset($mock_registered_settings[$option_group])) {
+            $mock_registered_settings[$option_group] = [];
+        }
+        $mock_registered_settings[$option_group][$option_name] = $args;
+        return true;
+    }
+}
+
 if (!function_exists('delete_option')) {
     function delete_option($key) {
-        global $mock_options;
+        global $mock_options, $mock_delete_option_calls;
+        if (!is_array($mock_delete_option_calls)) {
+            $mock_delete_option_calls = [];
+        }
+        $mock_delete_option_calls[] = $key;
         if (!array_key_exists($key, $mock_options)) {
             return false;
         }
@@ -829,6 +847,7 @@ if (!class_exists('WC_Order_Item')) {
         protected $name = '';
         protected $total = 0;
         protected $subtotal = 0;
+        protected $subtotal_tax = 0;
         protected $quantity = 1;
         protected $meta_data = [];
         protected $type = 'line_item';
@@ -863,6 +882,14 @@ if (!class_exists('WC_Order_Item')) {
 
         public function set_subtotal($subtotal) {
             $this->subtotal = (float) $subtotal;
+        }
+
+        public function get_subtotal_tax() {
+            return $this->subtotal_tax;
+        }
+
+        public function set_subtotal_tax($tax) {
+            $this->subtotal_tax = (float) $tax;
         }
 
         public function get_quantity() {
@@ -2441,6 +2468,10 @@ if (!function_exists('get_avatar_url')) {
 
 if (!function_exists('is_admin')) {
     function is_admin() {
+        global $mock_is_admin;
+        if (isset($mock_is_admin)) {
+            return (bool) $mock_is_admin;
+        }
         return false;
     }
 }
@@ -2969,7 +3000,11 @@ if (!function_exists('get_role')) {
 
 if (!function_exists('remove_role')) {
     function remove_role($role) {
-        global $mock_roles;
+        global $mock_roles, $mock_remove_role_calls;
+        if (!is_array($mock_remove_role_calls)) {
+            $mock_remove_role_calls = [];
+        }
+        $mock_remove_role_calls[] = $role;
         unset($mock_roles[$role]);
         return true;
     }

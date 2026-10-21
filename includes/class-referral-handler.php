@@ -42,6 +42,23 @@ class InterSoccer_Referral_Handler {
     public const COACH_REFERRAL_CODE_META = 'referral_code';
 
     /**
+     * `_intersoccer_item_discounts` entry types that count as sibling / multi-booking line-price reductions.
+     */
+    private const REFERRER_FULL_PRICE_LINE_DISCOUNT_TYPES = [
+        'sibling',
+        'multi-child',
+        'camp_sibling',
+        'course_multi_child',
+        'camp_other',
+        'course_other',
+        'same_season',
+        'same-season',
+        'second_course',
+        'second-course',
+        'course_same_season',
+    ];
+
+    /**
      * Normalize coach referral code while preserving sequential formats (e.g. COACH000123).
      *
      * @param string $code
@@ -612,6 +629,139 @@ class InterSoccer_Referral_Handler {
         }
     }
 
+    /**
+     * Referrer points basis for new referral awards ('paid' or 'full_price').
+     *
+     * @return string
+     */
+    public static function get_referrer_points_basis() {
+        $value = get_option('intersoccer_referrer_points_basis', 'paid');
+        return ($value === 'full_price') ? 'full_price' : 'paid';
+    }
+
+    /**
+     * CHF amount used to calculate referrer reward points for an order.
+     *
+     * In full_price mode the base is product line subtotals (ex-VAT, pre-coupon) plus only sibling /
+     * multi-booking line-price reductions from `_intersoccer_item_discounts` (not proportional order-fee
+     * shares), minus pre-completion refunds ex-VAT. Referral discounts, coupons and redeemed points are
+     * excluded because RR stores them as proportional entries. Tax and non-product fees are excluded.
+     *
+     * @param WC_Order $order
+     * @param float    $paid_amount Net rewardable amount after the friend's discount.
+     * @return float
+     */
+    public static function get_referrer_points_base_amount($order, $paid_amount) {
+        $paid_amount = max(0.0, (float) $paid_amount);
+        if (self::get_referrer_points_basis() !== 'full_price') {
+            return $paid_amount;
+        }
+
+        if (!is_object($order) || !method_exists($order, 'get_items') || !class_exists('InterSoccer_Points_Manager')) {
+            return $paid_amount;
+        }
+
+        $line_items = $order->get_items('line_item');
+        if (!is_array($line_items) || $line_items === []) {
+            return $paid_amount;
+        }
+
+        $full_price = 0.0;
+        $prices_include_tax = function_exists('wc_prices_include_tax') && wc_prices_include_tax();
+
+        foreach ($line_items as $item) {
+            if (!is_object($item) || !method_exists($item, 'get_subtotal')) {
+                continue;
+            }
+
+            $subtotal = max(0.0, (float) $item->get_subtotal());
+            $full_price += $subtotal;
+
+            $discount_per_unit = self::get_sibling_line_discount_add_back_per_unit($item);
+            $quantity = method_exists($item, 'get_quantity') ? max(1, (int) $item->get_quantity()) : 1;
+            $add_back = max(0.0, $discount_per_unit) * $quantity;
+
+            if ($add_back > 0 && $prices_include_tax && method_exists($item, 'get_subtotal_tax')) {
+                $subtotal_tax = max(0.0, (float) $item->get_subtotal_tax());
+                if ($subtotal_tax > 0 && $subtotal > 0) {
+                    $add_back *= $subtotal / ($subtotal + $subtotal_tax);
+                }
+            }
+
+            $full_price += $add_back;
+        }
+
+        $points_manager = InterSoccer_Points_Manager::get_instance();
+        if (method_exists($order, 'get_refunds')) {
+            foreach ((array) $order->get_refunds() as $refund) {
+                if (!$points_manager->is_refund_before_order_completion($order, $refund)) {
+                    continue;
+                }
+                $full_price -= $points_manager->get_refund_amount_ex_vat($refund, $order);
+            }
+        }
+
+        return max(0.0, $full_price);
+    }
+
+    /**
+     * Per-unit sibling / multi-booking discount to add back for full_price (from item meta list).
+     *
+     * @param object $item Order line item.
+     * @return float
+     */
+    private static function get_sibling_line_discount_add_back_per_unit($item) {
+        $entries = self::get_item_discount_entries($item);
+        if ($entries === []) {
+            return 0.0;
+        }
+
+        $per_unit = 0.0;
+        foreach ($entries as $entry) {
+            if (!is_array($entry)) {
+                continue;
+            }
+
+            $type = isset($entry['type']) ? strtolower(trim((string) $entry['type'])) : '';
+            if (!in_array($type, self::REFERRER_FULL_PRICE_LINE_DISCOUNT_TYPES, true)) {
+                continue;
+            }
+
+            $allocation_method = isset($entry['allocation_method'])
+                ? strtolower(trim((string) $entry['allocation_method']))
+                : '';
+            $source = isset($entry['source']) ? strtolower(trim((string) $entry['source'])) : '';
+            if ($allocation_method === 'proportional' || $source === 'order_fee') {
+                continue;
+            }
+
+            if (!isset($entry['amount']) || !is_numeric($entry['amount'])) {
+                continue;
+            }
+
+            $per_unit += max(0.0, (float) $entry['amount']);
+        }
+
+        return $per_unit;
+    }
+
+    /**
+     * @param object $item Order line item.
+     * @return array<int, array<string, mixed>>
+     */
+    private static function get_item_discount_entries($item) {
+        if (!is_object($item) || !method_exists($item, 'get_meta')) {
+            return [];
+        }
+
+        $raw = $item->get_meta('_intersoccer_item_discounts', true);
+        if (function_exists('maybe_unserialize')) {
+            $raw = maybe_unserialize($raw);
+        }
+
+        return is_array($raw) ? $raw : [];
+    }
+
     // Process referral on order completion
     public function process_referral_order($order_id) {
         $order = wc_get_order($order_id);
@@ -692,17 +842,18 @@ class InterSoccer_Referral_Handler {
         }
         $referrer_reward_points = 0;
         if ($is_customer_referrer && $eligibility['eligible']) {
+            $referrer_points_base = self::get_referrer_points_base_amount($order, $order_total);
             if (class_exists('InterSoccer_Points_Manager')) {
                 $points_manager = InterSoccer_Points_Manager::get_instance();
                 $referrer_reward_points = (int) $points_manager->calculate_points_from_order_total(
-                    $order_total,
+                    $referrer_points_base,
                     (int) $referrer['id'],
                     'referral',
                     false
                 );
             } else {
                 $rate = max(1, (int) get_option('intersoccer_points_rate_customer_referral', 10));
-                $referrer_reward_points = (int) floor($order_total / $rate);
+                $referrer_reward_points = (int) floor($referrer_points_base / $rate);
             }
         }
 

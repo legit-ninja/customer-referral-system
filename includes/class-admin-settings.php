@@ -225,11 +225,40 @@ class InterSoccer_Admin_Settings {
                             </td>
                         </tr>
                         <tr>
+                            <th scope="row"><?php esc_html_e('Referrer points basis', 'intersoccer-referral'); ?></th>
+                            <td>
+                                <?php
+                                $referrer_points_basis = InterSoccer_Referral_Handler::get_referrer_points_basis();
+                                ?>
+                                <label>
+                                    <input type="radio" name="intersoccer_referrer_points_basis" value="paid" <?php checked($referrer_points_basis, 'paid'); ?>>
+                                    <?php esc_html_e('Amount the friend paid after the discount', 'intersoccer-referral'); ?>
+                                </label>
+                                <br>
+                                <label>
+                                    <input type="radio" name="intersoccer_referrer_points_basis" value="full_price" <?php checked($referrer_points_basis, 'full_price'); ?>>
+                                    <?php esc_html_e('Full booking price before any discounts (referral, sibling, coupons, redeemed points)', 'intersoccer-referral'); ?>
+                                </label>
+                                <p class="description">
+                                    <?php esc_html_e('Choose what the referrer\'s points are calculated from. Changing this only affects referrals completed after you save; points already awarded are not changed.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
                             <th scope="row"><?php esc_html_e('Enable Debug Logging', 'intersoccer-referral'); ?></th>
                             <td>
                                 <input type="checkbox" name="intersoccer_debug_logging" value="1" <?php checked(get_option('intersoccer_debug_logging'), '1'); ?>>
                                 <p class="description">
                                     <?php esc_html_e('Turn this on only when troubleshooting. Detailed logs are written to the WordPress debug log.', 'intersoccer-referral'); ?>
+                                </p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <th scope="row"><?php esc_html_e('Delete plugin data on uninstall', 'intersoccer-referral'); ?></th>
+                            <td>
+                                <input type="checkbox" name="intersoccer_wipe_data_on_uninstall" value="1" <?php checked(get_option('intersoccer_wipe_data_on_uninstall'), '1'); ?>>
+                                <p class="description" style="color: #d63638; font-weight: 500;">
+                                    <?php esc_html_e('Off by default. When on, deleting this plugin removes its roles (coach, content creator, partner) and settings. It is skipped automatically while another copy of this plugin is still installed.', 'intersoccer-referral'); ?>
                                 </p>
                             </td>
                         </tr>
@@ -4107,6 +4136,18 @@ class InterSoccer_Admin_Settings {
             'sanitize_callback' => 'boolval'
         ]);
 
+        register_setting('intersoccer_settings', 'intersoccer_referrer_points_basis', [
+            'type' => 'string',
+            'default' => 'paid',
+            'sanitize_callback' => [$this, 'sanitize_referrer_points_basis_option'],
+        ]);
+
+        register_setting('intersoccer_settings', 'intersoccer_wipe_data_on_uninstall', [
+            'type' => 'string',
+            'default' => '0',
+            'sanitize_callback' => [$this, 'sanitize_wipe_data_on_uninstall_option']
+        ]);
+
         register_setting('intersoccer_settings', 'intersoccer_referral_eligibility_months', [
             'type' => 'number',
             'default' => 18,
@@ -4483,6 +4524,16 @@ class InterSoccer_Admin_Settings {
     }
 
     /**
+     * Persist wipe-on-uninstall checkbox as 1 or 0 (unchecked posts hidden 0).
+     *
+     * @param mixed $value
+     * @return string
+     */
+    public function sanitize_wipe_data_on_uninstall_option($value) {
+        return (!empty($value) && $value !== '0') ? '1' : '0';
+    }
+
+    /**
      * Save the beta updates setting via the InterSoccer Updates plugin API.
      *
      * Fires on admin_init. When the General Settings form is submitted
@@ -4530,6 +4581,16 @@ class InterSoccer_Admin_Settings {
         $value = is_string($value) ? strtolower($value) : 'ratio';
 
         return in_array($value, ['ratio', 'percentage'], true) ? $value : 'ratio';
+    }
+
+    /**
+     * Sanitize referrer points basis option.
+     *
+     * @param mixed $value
+     * @return string 'paid'|'full_price'
+     */
+    public function sanitize_referrer_points_basis_option($value) {
+        return ($value === 'full_price') ? 'full_price' : 'paid';
     }
 
     /**
