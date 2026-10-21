@@ -27,6 +27,9 @@ define('INTERSOCCER_REFERRAL_PATH', plugin_dir_path(__FILE__));
 define('INTERSOCCER_REFERRAL_URL', plugin_dir_url(__FILE__));
 define('INTERSOCCER_REFERRAL_BASENAME', plugin_basename(__FILE__));
 
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/admin-english-locale.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/recipient-email-locale.php';
+
 /**
  * Lightweight debug logger for this plugin.
  *
@@ -1768,11 +1771,11 @@ function intersoccer_send_weekly_report($coach_id) {
     $credits = intersoccer_get_coach_credits($coach_id);
     $tier = intersoccer_get_coach_tier($coach_id);
     
-    // Compose email
-    $subject = sprintf(__('Your Weekly InterSoccer Report - %s', 'intersoccer-referral'), date('M d, Y'));
-    
-    $message = sprintf(
-        __('Hi %s,
+    intersoccer_crs_mail_for_user((int) $coach_id, function () use ($coach, $weekly_stats, $credits, $tier) {
+        $subject = sprintf(__('Your Weekly InterSoccer Report - %s', 'intersoccer-referral'), date('M d, Y'));
+
+        $message = sprintf(
+            __('Hi %s,
 
         Here\'s your weekly performance summary:
 
@@ -1791,9 +1794,10 @@ function intersoccer_send_weekly_report($coach_id) {
             $credits,
             $tier
         );
-        
-        wp_mail($coach->user_email, $subject, $message);
-    }
+
+        return wp_mail($coach->user_email, $subject, $message);
+    });
+}
 
 if (defined('WP_CLI') && WP_CLI) {
     InterSoccer_CLI_Redeemed_Backfill::register_cli_commands();
