@@ -115,4 +115,21 @@ class CrsWpmlAjaxTest extends TestCase {
 
         $this->assertArrayNotHasKey('intersoccer_crs_wpml_switched', $GLOBALS);
     }
+
+    public function test_bootstrap_ignores_non_language_lang_value(): void {
+        $_REQUEST['lang'] = '../../evil';
+        global $mock_is_admin, $mock_wp_doing_ajax, $mock_http_referer;
+        $mock_is_admin = true;
+        $mock_wp_doing_ajax = true;
+        $mock_http_referer = 'https://example.test/fr/checkout/';
+        $GLOBALS['mock_do_action_callbacks']['wpml_switch_language'] = [
+            static function ($lang) {
+                $GLOBALS['intersoccer_crs_wpml_switched'] = $lang;
+            },
+        ];
+
+        intersoccer_crs_bootstrap_customer_ajax_language();
+
+        $this->assertArrayNotHasKey('intersoccer_crs_wpml_switched', $GLOBALS);
+    }
 }
