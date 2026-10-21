@@ -581,3 +581,95 @@ msgstr ""
 "\n"
 "Freundliche Grüsse\n"
 "Ihr InterSoccer-Team"
+
+# Checkout referral — customer-facing (follow-up 6)
+msgid "Please enter a referral code."
+msgstr "Bitte geben Sie einen Empfehlungscode ein."
+
+msgid "Please enter a referral code"
+msgstr "Bitte geben Sie einen Empfehlungscode ein"
+
+msgid "Applying..."
+msgstr "Wird angewendet…"
+
+msgid "Applied"
+msgstr "Angewendet"
+
+msgid "Error applying referral code"
+msgstr "Fehler beim Anwenden des Empfehlungscodes"
+
+msgid "Discount:"
+msgstr "Rabatt:"
+
+msgid "points discount"
+msgstr "Punkterabatt"
+
+msgid "Change Code"
+msgstr "Code ändern"
+
+msgid "Clearing..."
+msgstr "Wird entfernt…"
+
+msgid "Must be logged in to apply referral code"
+msgstr "Sie müssen angemeldet sein, um einen Empfehlungscode anzuwenden"
+
+msgid "Error clearing referral code."
+msgstr "Fehler beim Entfernen des Empfehlungscodes."
+
+msgid "Network error. Please try again."
+msgstr "Netzwerkfehler. Bitte versuchen Sie es erneut."
+
+msgid "Please log in before applying a referral code."
+msgstr "Bitte melden Sie sich an, bevor Sie einen Empfehlungscode anwenden."
+
+msgid "Unable to access your checkout session. Please refresh and try again."
+msgstr "Ihre Checkout-Sitzung ist nicht verfügbar. Bitte laden Sie die Seite neu und versuchen Sie es erneut."
+
+msgid "A different referral code is already applied to this order."
+msgstr "Für diese Bestellung ist bereits ein anderer Empfehlungscode angewendet."
+
+#, php-format
+msgid "Another referral code is already applied (%s). Please remove it before using a coach code."
+msgstr "Es ist bereits ein anderer Empfehlungscode angewendet (%s). Bitte entfernen Sie ihn, bevor Sie einen Trainercode verwenden."
+
+msgid "You cannot use your own referral code."
+msgstr "Sie können Ihren eigenen Empfehlungscode nicht verwenden."
+
+msgid "Invalid referral code."
+msgstr "Ungültiger Empfehlungscode."
+
+#, php-format
+msgid "Referral code saved! Coach %s will still receive credit on this order. First-time discount already used."
+msgstr "Empfehlungscode gespeichert! Trainer %s erhält für diese Bestellung weiterhin Guthaben. Der Erstkundenrabatt wurde bereits verwendet."
+
+#, php-format
+msgid "Referral code applied! You will receive a discount. Your friend %s will earn points on this order."
+msgstr "Empfehlungscode angewendet! Sie erhalten einen Rabatt. Ihr Freund %s verdient Punkte für diese Bestellung."
+
+#, php-format
+msgid "Referral code saved! %s will still earn points on this order. First-time discount already used."
+msgstr "Empfehlungscode gespeichert! %s verdient für diese Bestellung weiterhin Punkte. Der Erstkundenrabatt wurde bereits verwendet."
+
+msgid "Must be logged in."
+msgstr "Sie müssen angemeldet sein."
+
+msgid "Session not available. Please refresh the page."
+msgstr "Sitzung nicht verfügbar. Bitte laden Sie die Seite neu."
+
+msgid "Referral code removed."
+msgstr "Empfehlungscode entfernt."
+
+msgid "friend referral code"
+msgstr "Freundes-Empfehlungscode"
+
+msgid "partner referral code"
+msgstr "Partner-Empfehlungscode"
+
+msgid "influencer referral code"
+msgstr "Influencer-Empfehlungscode"
+
+msgid "affiliate referral code"
+msgstr "Affiliate-Empfehlungscode"
+
+msgid "a different coach referral code"
+msgstr "ein anderer Trainer-Empfehlungscode"

@@ -1279,6 +1279,8 @@ class InterSoccer_Referral_System {
                     'points_discount' => __('points discount', 'intersoccer-referral'),
                     'change_code' => __('Change Code', 'intersoccer-referral'),
                     'clearing' => __('Clearing...', 'intersoccer-referral'),
+                    'error_clearing_referral_code' => __('Error clearing referral code.', 'intersoccer-referral'),
+                    'network_error_please_try_again' => __('Network error. Please try again.', 'intersoccer-referral'),
                 ],
             ]);
         }

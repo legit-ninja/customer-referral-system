@@ -444,3 +444,95 @@ msgid ""
 "Best regards,\n"
 "The InterSoccer Team"
 msgstr ""
+
+# Checkout referral — customer-facing (follow-up 6)
+msgid "Please enter a referral code."
+msgstr ""
+
+msgid "Please enter a referral code"
+msgstr ""
+
+msgid "Applying..."
+msgstr ""
+
+msgid "Applied"
+msgstr ""
+
+msgid "Error applying referral code"
+msgstr ""
+
+msgid "Discount:"
+msgstr ""
+
+msgid "points discount"
+msgstr ""
+
+msgid "Change Code"
+msgstr ""
+
+msgid "Clearing..."
+msgstr ""
+
+msgid "Must be logged in to apply referral code"
+msgstr ""
+
+msgid "Error clearing referral code."
+msgstr ""
+
+msgid "Network error. Please try again."
+msgstr ""
+
+msgid "Please log in before applying a referral code."
+msgstr ""
+
+msgid "Unable to access your checkout session. Please refresh and try again."
+msgstr ""
+
+msgid "A different referral code is already applied to this order."
+msgstr ""
+
+#, php-format
+msgid "Another referral code is already applied (%s). Please remove it before using a coach code."
+msgstr ""
+
+msgid "You cannot use your own referral code."
+msgstr ""
+
+msgid "Invalid referral code."
+msgstr ""
+
+#, php-format
+msgid "Referral code saved! Coach %s will still receive credit on this order. First-time discount already used."
+msgstr ""
+
+#, php-format
+msgid "Referral code applied! You will receive a discount. Your friend %s will earn points on this order."
+msgstr ""
+
+#, php-format
+msgid "Referral code saved! %s will still earn points on this order. First-time discount already used."
+msgstr ""
+
+msgid "Must be logged in."
+msgstr ""
+
+msgid "Session not available. Please refresh the page."
+msgstr ""
+
+msgid "Referral code removed."
+msgstr ""
+
+msgid "friend referral code"
+msgstr ""
+
+msgid "partner referral code"
+msgstr ""
+
+msgid "influencer referral code"
+msgstr ""
+
+msgid "affiliate referral code"
+msgstr ""
+
+msgid "a different coach referral code"
+msgstr ""

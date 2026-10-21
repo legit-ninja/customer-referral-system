@@ -1480,7 +1480,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         check_ajax_referer('intersoccer_checkout_nonce', 'nonce');
 
         if (!is_user_logged_in()) {
-            wp_send_json_error(['message' => 'Must be logged in to apply referral code']);
+            wp_send_json_error(['message' => __('Must be logged in to apply referral code', 'intersoccer-referral')]);
         }
 
         $referral_code = sanitize_text_field($_POST['referral_code'] ?? '');

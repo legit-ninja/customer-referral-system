@@ -581,3 +581,95 @@ msgstr ""
 "\n"
 "Bien cordialement,\n"
 "L'équipe InterSoccer"
+
+# Checkout referral — customer-facing (follow-up 6)
+msgid "Please enter a referral code."
+msgstr "Veuillez entrer un code de parrainage."
+
+msgid "Please enter a referral code"
+msgstr "Veuillez entrer un code de parrainage"
+
+msgid "Applying..."
+msgstr "Application en cours…"
+
+msgid "Applied"
+msgstr "Appliqué"
+
+msgid "Error applying referral code"
+msgstr "Erreur lors de l'application du code de parrainage"
+
+msgid "Discount:"
+msgstr "Réduction :"
+
+msgid "points discount"
+msgstr "réduction en points"
+
+msgid "Change Code"
+msgstr "Changer de code"
+
+msgid "Clearing..."
+msgstr "Suppression en cours…"
+
+msgid "Must be logged in to apply referral code"
+msgstr "Vous devez être connecté pour appliquer un code de parrainage"
+
+msgid "Error clearing referral code."
+msgstr "Erreur lors de la suppression du code de parrainage."
+
+msgid "Network error. Please try again."
+msgstr "Erreur réseau. Veuillez réessayer."
+
+msgid "Please log in before applying a referral code."
+msgstr "Veuillez vous connecter avant d'appliquer un code de parrainage."
+
+msgid "Unable to access your checkout session. Please refresh and try again."
+msgstr "Impossible d'accéder à votre session de paiement. Veuillez actualiser la page et réessayer."
+
+msgid "A different referral code is already applied to this order."
+msgstr "Un autre code de parrainage est déjà appliqué à cette commande."
+
+#, php-format
+msgid "Another referral code is already applied (%s). Please remove it before using a coach code."
+msgstr "Un autre code de parrainage est déjà appliqué (%s). Veuillez le retirer avant d'utiliser un code d'entraîneur."
+
+msgid "You cannot use your own referral code."
+msgstr "Vous ne pouvez pas utiliser votre propre code de parrainage."
+
+msgid "Invalid referral code."
+msgstr "Code de parrainage invalide."
+
+#, php-format
+msgid "Referral code saved! Coach %s will still receive credit on this order. First-time discount already used."
+msgstr "Code de parrainage enregistré ! L'entraîneur %s recevra toujours un crédit pour cette commande. La réduction de première commande a déjà été utilisée."
+
+#, php-format
+msgid "Referral code applied! You will receive a discount. Your friend %s will earn points on this order."
+msgstr "Code de parrainage appliqué ! Vous recevrez une réduction. Votre ami %s gagnera des points sur cette commande."
+
+#, php-format
+msgid "Referral code saved! %s will still earn points on this order. First-time discount already used."
+msgstr "Code de parrainage enregistré ! %s gagnera toujours des points sur cette commande. La réduction de première commande a déjà été utilisée."
+
+msgid "Must be logged in."
+msgstr "Vous devez être connecté."
+
+msgid "Session not available. Please refresh the page."
+msgstr "Session indisponible. Veuillez actualiser la page."
+
+msgid "Referral code removed."
+msgstr "Code de parrainage supprimé."
+
+msgid "friend referral code"
+msgstr "code de parrainage ami"
+
+msgid "partner referral code"
+msgstr "code de parrainage partenaire"
+
+msgid "influencer referral code"
+msgstr "code de parrainage influenceur"
+
+msgid "affiliate referral code"
+msgstr "code de parrainage affilié"
+
+msgid "a different coach referral code"
+msgstr "un autre code de parrainage d'entraîneur"
