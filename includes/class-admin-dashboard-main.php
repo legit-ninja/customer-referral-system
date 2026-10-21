@@ -299,7 +299,13 @@ class InterSoccer_Admin_Dashboard_Main {
                             <?php endif; ?>
                         </div>
                         <div class="roi-card-metrics">
-                            <span><?php printf(esc_html__('Extra spend: +%s CHF/customer', 'intersoccer-referral'), number_format($loyalty_roi['extra_spend_per_customer'], 0)); ?></span>
+                            <span><?php
+                            if ($roi_widgets_pending || !empty($loyalty_roi['pending']) || !empty($loyalty_roi_range['pending'])) {
+                                echo esc_html($roi_pending_message);
+                            } else {
+                                printf(esc_html__('Extra spend: +%s CHF/customer', 'intersoccer-referral'), number_format($loyalty_roi['extra_spend_per_customer'], 0));
+                            }
+                            ?></span>
                         </div>
                         <?php if ($loyalty_roi_range['has_data']): ?>
                         <div class="roi-card-note roi-incrementality-note">
@@ -515,7 +521,12 @@ class InterSoccer_Admin_Dashboard_Main {
                     <h2><?php esc_html_e('Loyalty: Point Holder Performance', 'intersoccer-referral'); ?></h2>
                     <p class="widget-disclaimer"><?php esc_html_e('Comparison, not proof the program caused it.', 'intersoccer-referral'); ?></p>
                     <?php $comparison = $this->roi_calculator->get_holder_vs_nonholder_comparison(); ?>
-                    <?php if ($comparison['holder_count'] > 0): ?>
+                    <?php if (!empty($comparison['pending'])): ?>
+                    <div class="intersoccer-notice intersoccer-notice-empty">
+                        <span class="dashicons dashicons-info-outline"></span>
+                        <p><?php echo esc_html($this->roi_calculator->get_roi_pending_message()); ?></p>
+                    </div>
+                    <?php elseif ($comparison['holder_count'] > 0): ?>
                     <div class="loyalty-comparison">
                         <div class="comparison-section">
                             <h4><?php esc_html_e('Average Spend', 'intersoccer-referral'); ?></h4>

@@ -65,6 +65,31 @@ class InterSoccer_Test_Sqlite_WPDB {
         return $st ? $st->fetchAll(PDO::FETCH_COLUMN, 0) : [];
     }
 
+    public function get_row($query, $output = null) {
+        if ($output === null) {
+            $output = defined('OBJECT') ? OBJECT : 'OBJECT';
+        }
+        $rows = $this->get_results($query, $output);
+        return $rows[0] ?? null;
+    }
+
+    public function get_results($query, $output = null) {
+        if ($output === null) {
+            $output = defined('OBJECT') ? OBJECT : 'OBJECT';
+        }
+        $st = $this->run($query);
+        if (!$st) {
+            return [];
+        }
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+        if ($output === 'OBJECT' || (defined('OBJECT') && $output === OBJECT)) {
+            return array_map(function ($row) {
+                return (object) $row;
+            }, $rows);
+        }
+        return $rows;
+    }
+
     public function get_var($query) {
         if (preg_match("/^SHOW TABLES LIKE '([^']+)'$/", trim($query), $m)) {
             $query = "SELECT name FROM sqlite_master WHERE type = 'table' AND name = " . $this->pdo->quote($m[1]);
@@ -367,12 +392,12 @@ class ROIFirstOrderCandidateSqlTest extends TestCase {
      */
     public function testOrderChangeInvalidatesOrderDependentTransients() {
         $names = [
-            '_transient_intersoccer_roi_first_order_discount_abc',
-            '_transient_timeout_intersoccer_roi_first_order_discount_abc',
-            '_transient_intersoccer_roi_cost_breakdown_def',
-            '_transient_timeout_intersoccer_roi_cost_breakdown_def',
-            '_transient_intersoccer_roi_holder_comparison_ghi',
-            '_transient_intersoccer_roi_revenue_jkl',
+            '_transient_intersoccer_roi_first_order_discount_abc_hpos',
+            '_transient_timeout_intersoccer_roi_first_order_discount_abc_hpos',
+            '_transient_intersoccer_roi_cost_breakdown_def_posts',
+            '_transient_timeout_intersoccer_roi_cost_breakdown_def_posts',
+            '_transient_intersoccer_roi_holder_comparison_ghi_hpos',
+            '_transient_intersoccer_roi_revenue_jkl_posts',
         ];
         foreach ($names as $n) {
             $this->db->exec("INSERT INTO wp_options (option_name, option_value) VALUES ('{$n}', '1')");
@@ -380,8 +405,8 @@ class ROIFirstOrderCandidateSqlTest extends TestCase {
         InterSoccer_ROI_Calculator::invalidate_order_dependent_cache();
         $left = $this->db->pdo->query('SELECT option_name FROM wp_options ORDER BY option_name')->fetchAll(PDO::FETCH_COLUMN);
         $this->assertSame([
-            '_transient_intersoccer_roi_holder_comparison_ghi',
-            '_transient_intersoccer_roi_revenue_jkl',
+            '_transient_intersoccer_roi_holder_comparison_ghi_hpos',
+            '_transient_intersoccer_roi_revenue_jkl_posts',
         ], $left);
 
         $source = file_get_contents(__DIR__ . '/../includes/class-roi-calculator.php');
