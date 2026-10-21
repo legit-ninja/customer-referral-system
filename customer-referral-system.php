@@ -511,7 +511,7 @@ class InterSoccer_Referral_System {
             user_id bigint(20) unsigned NULL,
             data longtext NOT NULL,
             ip_address varchar(45) DEFAULT '',
-            user_agent text DEFAULT '',
+            user_agent text NULL,
             session_id varchar(255) DEFAULT '',
             created_at datetime NOT NULL,
             created_at_gmt datetime NOT NULL,
