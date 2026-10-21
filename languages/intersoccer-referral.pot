@@ -356,3 +356,91 @@ msgstr ""
 msgid "Customer Points Management"
 msgstr ""
 
+
+#: includes/class-referral-handler.php:515
+#, php-format
+msgid "You received %1$d CHF credit gift from %2$s"
+msgstr ""
+
+#: includes/class-referral-handler.php:520
+#, php-format
+msgid ""
+"Hi %1$s!\n"
+"\n"
+"%2$s has gifted you %3$d CHF in InterSoccer credits!\n"
+"\n"
+"Your new balance: %4$d CHF\n"
+"\n"
+"Log in to your account to use them: %5$s\n"
+"\n"
+"Best regards,\n"
+"The InterSoccer Team"
+msgstr ""
+
+#: includes/class-referral-handler.php:914
+msgid "Welcome to InterSoccer - Coach Connection Assigned!"
+msgstr ""
+
+#: includes/class-referral-handler.php:916
+#, php-format
+msgid ""
+"Hi %1$s,\n"
+"\n"
+"Welcome to InterSoccer! Since you joined through %2$s's referral, we've automatically connected you as partners.\n"
+"\n"
+"This means:\n"
+"- %3$s will earn a 5%% commission on your future purchases\n"
+"- You get personalized support and training tips\n"
+"- Access to exclusive content and community features\n"
+"\n"
+"You can change your Coach Connection anytime in your dashboard if you prefer someone else.\n"
+"\n"
+"Enjoy your training!\n"
+"\n"
+"Best regards,\n"
+"The InterSoccer Team"
+msgstr ""
+
+#: includes/class-referral-handler.php:977
+msgid "Welcome to InterSoccer!"
+msgstr ""
+
+#: includes/class-referral-handler.php:980
+#, php-format
+msgid "Thanks for joining! You have %d CHF credits and are connected with your coach partner."
+msgstr ""
+
+#: includes/class-referral-handler.php:1368
+#, php-format
+msgid ""
+"Great news %1$s!\n"
+"\n"
+"%2$s has chosen you as their Coach Connection partner.\n"
+"\n"
+"You will now earn a 5%% commission on all their future purchases. This is a great opportunity to build a lasting relationship and support their soccer journey.\n"
+"\n"
+"Customer Details:\n"
+"- Name: %3$s\n"
+"- Email: %4$s\n"
+"- Partnership started: %5$s\n"
+"\n"
+"Keep up the excellent coaching work!\n"
+"\n"
+"Best regards,\n"
+"The InterSoccer Team"
+msgstr ""
+
+#: includes/class-referral-handler.php:1401
+#, php-format
+msgid ""
+"Hi %1$s,\n"
+"\n"
+"%2$s has switched to a different Coach Connection partner.\n"
+"\n"
+"Don't worry - this is part of the process and doesn't reflect on your coaching abilities. Keep focusing on your other partnerships and referrals.\n"
+"\n"
+"You can always reconnect with customers through great service and engagement.\n"
+"\n"
+"Best regards,\n"
+"The InterSoccer Team"
+msgstr ""
