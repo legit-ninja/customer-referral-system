@@ -39,7 +39,20 @@ function intersoccer_crs_is_frontend_originated_ajax() {
 }
 
 /**
+ * Safe wrapper: core is_locale_switched() fatals before $wp_locale_switcher exists (plugins_loaded).
+ */
+function intersoccer_crs_is_locale_switched() {
+    if (!isset($GLOBALS['wp_locale_switcher']) || !is_object($GLOBALS['wp_locale_switcher'])) {
+        return false;
+    }
+
+    return function_exists('is_locale_switched') && is_locale_switched();
+}
+
+/**
  * True when CRS gettext should return the original English msgid (admin screens).
+ *
+ * Runs during plugins_loaded for stored role labels; do not defer until init — those names must stay English.
  */
 function intersoccer_crs_is_admin_english_context() {
     $filtered = apply_filters('intersoccer_crs_admin_force_english', null);
@@ -51,7 +64,7 @@ function intersoccer_crs_is_admin_english_context() {
         return false;
     }
 
-    if (function_exists('is_locale_switched') && is_locale_switched()) {
+    if (intersoccer_crs_is_locale_switched()) {
         return false;
     }
 

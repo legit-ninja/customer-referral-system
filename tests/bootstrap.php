@@ -660,8 +660,20 @@ if (!function_exists('apply_filters')) {
 
 if (!function_exists('is_locale_switched')) {
     function is_locale_switched() {
+        if (!isset($GLOBALS['wp_locale_switcher']) || !is_object($GLOBALS['wp_locale_switcher'])) {
+            return false;
+        }
+
         global $mock_locale_switched;
-        return !empty($mock_locale_switched);
+        if (!empty($mock_locale_switched)) {
+            return true;
+        }
+
+        if (method_exists($GLOBALS['wp_locale_switcher'], 'is_switched')) {
+            return (bool) $GLOBALS['wp_locale_switcher']->is_switched();
+        }
+
+        return false;
     }
 }
 
