@@ -251,13 +251,14 @@
                     $(document.body).trigger('update_checkout');
                 } else {
                     const msg = response && response.data && response.data.message
-                        ? response.data.message : 'Error clearing referral code.';
+                        ? response.data.message
+                        : (config.i18n.error_clearing_referral_code || 'Error clearing referral code.');
                     $changeBtn.prop('disabled', false).text(config.i18n.change_code || 'Change Code');
                     window.alert(msg);
                 }
             }).fail(function () {
                 $changeBtn.prop('disabled', false).text(config.i18n.change_code || 'Change Code');
-                window.alert('Network error. Please try again.');
+                window.alert(config.i18n.network_error_please_try_again || 'Network error. Please try again.');
             });
         });
 

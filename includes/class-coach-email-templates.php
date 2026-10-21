@@ -661,9 +661,11 @@ The InterSoccer Team";
         }
 
         $headers = ['Content-Type: text/html; charset=UTF-8'];
-        $body_html = $this->convert_to_html($body);
 
-        $sent = wp_mail($coach->user_email, $subject, $body_html, $headers);
+        $sent = intersoccer_crs_mail_for_user((int) $coach_id, function () use ($coach, $subject, $body, $headers) {
+            $body_html = $this->convert_to_html($body);
+            return wp_mail($coach->user_email, $subject, $body_html, $headers);
+        });
 
         if (!$sent) {
             return [

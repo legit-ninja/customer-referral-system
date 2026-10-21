@@ -27,6 +27,10 @@ define('INTERSOCCER_REFERRAL_PATH', plugin_dir_path(__FILE__));
 define('INTERSOCCER_REFERRAL_URL', plugin_dir_url(__FILE__));
 define('INTERSOCCER_REFERRAL_BASENAME', plugin_basename(__FILE__));
 
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/admin-english-locale.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/recipient-email-locale.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/crs-i18n-locale.php';
+
 /**
  * Lightweight debug logger for this plugin.
  *
@@ -1122,7 +1126,7 @@ class InterSoccer_Referral_System {
         wp_enqueue_style('intersoccer-dashboard-css', INTERSOCCER_REFERRAL_URL . 'assets/css/dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
         wp_enqueue_script('intersoccer-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/dashboard.js', ['jquery'], INTERSOCCER_REFERRAL_VERSION, true);
         wp_localize_script('intersoccer-dashboard-js', 'intersoccer_dashboard', [
-            'ajax_url' => admin_url('admin-ajax.php'),
+            'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
             'nonce' => wp_create_nonce('intersoccer_dashboard_nonce'),
         ]);
         
@@ -1263,7 +1267,7 @@ class InterSoccer_Referral_System {
             );
 
             wp_localize_script('intersoccer-checkout-js', 'intersoccer_checkout', [
-                'ajax_url' => admin_url('admin-ajax.php'),
+                'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
                 'nonce' => wp_create_nonce('intersoccer_checkout_nonce'),
                 'available_points' => $available_points,
                 'i18n' => [
@@ -1276,6 +1280,8 @@ class InterSoccer_Referral_System {
                     'points_discount' => __('points discount', 'intersoccer-referral'),
                     'change_code' => __('Change Code', 'intersoccer-referral'),
                     'clearing' => __('Clearing...', 'intersoccer-referral'),
+                    'error_clearing_referral_code' => __('Error clearing referral code.', 'intersoccer-referral'),
+                    'network_error_please_try_again' => __('Network error. Please try again.', 'intersoccer-referral'),
                 ],
             ]);
         }
@@ -1289,7 +1295,7 @@ class InterSoccer_Referral_System {
             wp_enqueue_script('modern-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/modern-dashboard.js', ['jquery', 'aos-js', 'chart-js'], INTERSOCCER_REFERRAL_VERSION, true);
 
             wp_localize_script('modern-dashboard-js', 'intersoccer_dashboard', [
-                'ajax_url' => admin_url('admin-ajax.php'),
+                'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
                 'nonce' => wp_create_nonce('dashboard_nonce'),
                 'coach_events_nonce' => wp_create_nonce('intersoccer_coach_events_nonce'),
                 'user_id' => get_current_user_id(),
@@ -1311,7 +1317,7 @@ class InterSoccer_Referral_System {
             wp_enqueue_style('intersoccer-dashboard-css', INTERSOCCER_REFERRAL_URL . 'assets/css/dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
             wp_enqueue_script('intersoccer-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/dashboard.js', ['jquery'], INTERSOCCER_REFERRAL_VERSION, true);
             wp_localize_script('intersoccer-dashboard-js', 'intersoccer_dashboard', [
-                'ajax_url' => admin_url('admin-ajax.php'),
+                'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
                 'nonce' => wp_create_nonce('intersoccer_dashboard_nonce'),
                 'copy_text' => __('Link copied!', 'intersoccer-referral'),
                 'error_text' => __('Error occurred', 'intersoccer-referral')
@@ -1331,7 +1337,7 @@ class InterSoccer_Referral_System {
                     wp_script_is('intersoccer-dashboard-js', 'enqueued') ? 'intersoccer-dashboard-js' : 'intersoccer-customer-dashboard-js',
                     'intersoccer_dashboard',
                     [
-                        'ajax_url' => admin_url('admin-ajax.php'),
+                        'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
                         'nonce' => wp_create_nonce('intersoccer_dashboard_nonce'),
                         'copy_text' => __('Link copied!', 'intersoccer-referral'),
                         'error_text' => __('Error occurred', 'intersoccer-referral')
@@ -1362,7 +1368,7 @@ class InterSoccer_Referral_System {
                 );
                 
                 wp_localize_script('intersoccer-elementor-dashboard-js', 'intersoccer_elementor', [
-                    'ajax_url' => admin_url('admin-ajax.php'),
+                    'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
                     'nonce' => wp_create_nonce('intersoccer_elementor_nonce'),
                     'strings' => [
                         'copy_success' => __('Link copied!', 'intersoccer-referral'),
@@ -1768,11 +1774,11 @@ function intersoccer_send_weekly_report($coach_id) {
     $credits = intersoccer_get_coach_credits($coach_id);
     $tier = intersoccer_get_coach_tier($coach_id);
     
-    // Compose email
-    $subject = sprintf(__('Your Weekly InterSoccer Report - %s', 'intersoccer-referral'), date('M d, Y'));
-    
-    $message = sprintf(
-        __('Hi %s,
+    intersoccer_crs_mail_for_user((int) $coach_id, function () use ($coach, $weekly_stats, $credits, $tier) {
+        $subject = sprintf(__('Your Weekly InterSoccer Report - %s', 'intersoccer-referral'), date('M d, Y'));
+
+        $message = sprintf(
+            __('Hi %s,
 
         Here\'s your weekly performance summary:
 
@@ -1791,9 +1797,10 @@ function intersoccer_send_weekly_report($coach_id) {
             $credits,
             $tier
         );
-        
-        wp_mail($coach->user_email, $subject, $message);
-    }
+
+        return wp_mail($coach->user_email, $subject, $message);
+    });
+}
 
 if (defined('WP_CLI') && WP_CLI) {
     InterSoccer_CLI_Redeemed_Backfill::register_cli_commands();

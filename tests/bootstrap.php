@@ -644,15 +644,93 @@ if (!function_exists('intersoccer_mock_sum_commission_reversal_credits')) {
 
 if (!function_exists('do_action')) {
     function do_action($hook, ...$args) {
+        global $mock_do_action_callbacks;
+        if (!empty($mock_do_action_callbacks[$hook]) && is_array($mock_do_action_callbacks[$hook])) {
+            foreach ($mock_do_action_callbacks[$hook] as $callback) {
+                if (is_callable($callback)) {
+                    call_user_func_array($callback, $args);
+                }
+            }
+        }
         return null;
     }
 }
 
 if (!function_exists('apply_filters')) {
     function apply_filters($hook, $value, ...$args) {
+        global $mock_apply_filters;
+        if (!empty($mock_apply_filters[$hook]) && is_callable($mock_apply_filters[$hook])) {
+            return $mock_apply_filters[$hook]($value, ...$args);
+        }
         return $value;
     }
 }
+
+if (!function_exists('is_locale_switched')) {
+    function is_locale_switched() {
+        if (!isset($GLOBALS['wp_locale_switcher']) || !is_object($GLOBALS['wp_locale_switcher'])) {
+            return false;
+        }
+
+        global $mock_locale_switched;
+        if (!empty($mock_locale_switched)) {
+            return true;
+        }
+
+        if (method_exists($GLOBALS['wp_locale_switcher'], 'is_switched')) {
+            return (bool) $GLOBALS['wp_locale_switcher']->is_switched();
+        }
+
+        return false;
+    }
+}
+
+if (!function_exists('wp_get_raw_referer')) {
+    function wp_get_raw_referer() {
+        global $mock_http_referer;
+        return isset($mock_http_referer) ? (string) $mock_http_referer : '';
+    }
+}
+
+if (!function_exists('get_user_locale')) {
+    function get_user_locale($user_id = 0) {
+        global $mock_user_locale;
+        if (isset($mock_user_locale)) {
+            return (string) $mock_user_locale;
+        }
+        return 'en_US';
+    }
+}
+
+if (!function_exists('switch_to_locale')) {
+    function switch_to_locale($locale) {
+        global $mock_active_locale;
+        $mock_active_locale = (string) $locale;
+        return true;
+    }
+}
+
+if (!function_exists('restore_previous_locale')) {
+    function restore_previous_locale() {
+        global $mock_active_locale;
+        unset($mock_active_locale);
+    }
+}
+
+if (!function_exists('add_filter')) {
+    function add_filter($hook, $callback, $priority = 10, $accepted_args = 1) {
+        return true;
+    }
+}
+
+require_once dirname(__DIR__) . '/includes/admin-english-locale.php';
+require_once dirname(__DIR__) . '/includes/recipient-email-locale.php';
+
+if (!defined('INTERSOCCER_REFERRAL_PATH')) {
+    define('INTERSOCCER_REFERRAL_PATH', dirname(__DIR__) . '/');
+}
+
+require_once dirname(__DIR__) . '/includes/crs-i18n-locale.php';
 
 // Mock post meta storage
 global $mock_post_meta;
