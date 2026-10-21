@@ -284,7 +284,10 @@ class InterSoccer_Coach_Admin_Dashboard {
             'event_stats' => $event_stats,
             'coach_events' => InterSoccer_Coach_Events_Manager::get_coach_events($user_id),
             'coach_events_nonce' => wp_create_nonce('intersoccer_coach_events_nonce'),
-            'ajax_url' => admin_url('admin-ajax.php'),
+            'ajax_url' => (function_exists('is_admin') && is_admin()
+                && !(function_exists('intersoccer_crs_is_frontend_originated_ajax') && intersoccer_crs_is_frontend_originated_ajax()))
+                ? admin_url('admin-ajax.php')
+                : intersoccer_crs_frontend_admin_ajax_url(),
             'is_admin_context' => current_user_can('manage_options')
         ];
 

@@ -402,7 +402,7 @@ class InterSoccer_Referral_Handler {
             true
         );
         wp_localize_script('intersoccer-coach-selection-js', 'intersoccer_coach_selection', [
-            'ajax_url' => admin_url('admin-ajax.php'),
+            'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
             // This matches check_ajax_referer('intersoccer_dashboard_nonce', 'nonce') in get_available_coaches_ajax()
             'nonce' => wp_create_nonce('intersoccer_dashboard_nonce'),
             'i18n' => [

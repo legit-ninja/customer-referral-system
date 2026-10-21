@@ -29,6 +29,7 @@ define('INTERSOCCER_REFERRAL_BASENAME', plugin_basename(__FILE__));
 
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/admin-english-locale.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/recipient-email-locale.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/crs-i18n-locale.php';
 
 /**
  * Lightweight debug logger for this plugin.
@@ -1125,7 +1126,7 @@ class InterSoccer_Referral_System {
         wp_enqueue_style('intersoccer-dashboard-css', INTERSOCCER_REFERRAL_URL . 'assets/css/dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
         wp_enqueue_script('intersoccer-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/dashboard.js', ['jquery'], INTERSOCCER_REFERRAL_VERSION, true);
         wp_localize_script('intersoccer-dashboard-js', 'intersoccer_dashboard', [
-            'ajax_url' => admin_url('admin-ajax.php'),
+            'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
             'nonce' => wp_create_nonce('intersoccer_dashboard_nonce'),
         ]);
         
@@ -1266,7 +1267,7 @@ class InterSoccer_Referral_System {
             );
 
             wp_localize_script('intersoccer-checkout-js', 'intersoccer_checkout', [
-                'ajax_url' => admin_url('admin-ajax.php'),
+                'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
                 'nonce' => wp_create_nonce('intersoccer_checkout_nonce'),
                 'available_points' => $available_points,
                 'i18n' => [
@@ -1294,7 +1295,7 @@ class InterSoccer_Referral_System {
             wp_enqueue_script('modern-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/modern-dashboard.js', ['jquery', 'aos-js', 'chart-js'], INTERSOCCER_REFERRAL_VERSION, true);
 
             wp_localize_script('modern-dashboard-js', 'intersoccer_dashboard', [
-                'ajax_url' => admin_url('admin-ajax.php'),
+                'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
                 'nonce' => wp_create_nonce('dashboard_nonce'),
                 'coach_events_nonce' => wp_create_nonce('intersoccer_coach_events_nonce'),
                 'user_id' => get_current_user_id(),
@@ -1316,7 +1317,7 @@ class InterSoccer_Referral_System {
             wp_enqueue_style('intersoccer-dashboard-css', INTERSOCCER_REFERRAL_URL . 'assets/css/dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
             wp_enqueue_script('intersoccer-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/dashboard.js', ['jquery'], INTERSOCCER_REFERRAL_VERSION, true);
             wp_localize_script('intersoccer-dashboard-js', 'intersoccer_dashboard', [
-                'ajax_url' => admin_url('admin-ajax.php'),
+                'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
                 'nonce' => wp_create_nonce('intersoccer_dashboard_nonce'),
                 'copy_text' => __('Link copied!', 'intersoccer-referral'),
                 'error_text' => __('Error occurred', 'intersoccer-referral')
@@ -1336,7 +1337,7 @@ class InterSoccer_Referral_System {
                     wp_script_is('intersoccer-dashboard-js', 'enqueued') ? 'intersoccer-dashboard-js' : 'intersoccer-customer-dashboard-js',
                     'intersoccer_dashboard',
                     [
-                        'ajax_url' => admin_url('admin-ajax.php'),
+                        'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
                         'nonce' => wp_create_nonce('intersoccer_dashboard_nonce'),
                         'copy_text' => __('Link copied!', 'intersoccer-referral'),
                         'error_text' => __('Error occurred', 'intersoccer-referral')
@@ -1367,7 +1368,7 @@ class InterSoccer_Referral_System {
                 );
                 
                 wp_localize_script('intersoccer-elementor-dashboard-js', 'intersoccer_elementor', [
-                    'ajax_url' => admin_url('admin-ajax.php'),
+                    'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
                     'nonce' => wp_create_nonce('intersoccer_elementor_nonce'),
                     'strings' => [
                         'copy_success' => __('Link copied!', 'intersoccer-referral'),

@@ -94,6 +94,31 @@ class CheckoutCustomerI18nTest extends TestCase {
     /**
      * @dataProvider locale_po_mo_provider
      */
+    public function test_no_duplicate_msgids_in_po(string $locale): void {
+        $path = dirname(__DIR__) . '/languages/intersoccer-referral-' . $locale . '.po';
+        $raw = (string) file_get_contents($path);
+        $msgids = [];
+        if (preg_match_all('/^msgid\s+"(.*)"\s*$/m', $raw, $matches)) {
+            foreach ($matches[1] as $msgid) {
+                $msgid = stripcslashes($msgid);
+                if ($msgid === '') {
+                    continue;
+                }
+                $msgids[] = $msgid;
+            }
+        }
+
+        $counts = array_count_values($msgids);
+        $dupes = array_keys(array_filter($counts, static function ($count) {
+            return $count > 1;
+        }));
+
+        $this->assertSame([], $dupes, 'Duplicate msgids in ' . $locale . ' .po: ' . implode(', ', $dupes));
+    }
+
+    /**
+     * @dataProvider locale_po_mo_provider
+     */
     public function test_checkout_customer_strings_present_in_po(string $locale): void {
         $base = dirname(__DIR__) . '/languages/intersoccer-referral-' . $locale . '.po';
         $map = $this->parse_po_translations($base);

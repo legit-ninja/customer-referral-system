@@ -644,6 +644,14 @@ if (!function_exists('intersoccer_mock_sum_commission_reversal_credits')) {
 
 if (!function_exists('do_action')) {
     function do_action($hook, ...$args) {
+        global $mock_do_action_callbacks;
+        if (!empty($mock_do_action_callbacks[$hook]) && is_array($mock_do_action_callbacks[$hook])) {
+            foreach ($mock_do_action_callbacks[$hook] as $callback) {
+                if (is_callable($callback)) {
+                    call_user_func_array($callback, $args);
+                }
+            }
+        }
         return null;
     }
 }
@@ -717,6 +725,12 @@ if (!function_exists('add_filter')) {
 
 require_once dirname(__DIR__) . '/includes/admin-english-locale.php';
 require_once dirname(__DIR__) . '/includes/recipient-email-locale.php';
+
+if (!defined('INTERSOCCER_REFERRAL_PATH')) {
+    define('INTERSOCCER_REFERRAL_PATH', dirname(__DIR__) . '/');
+}
+
+require_once dirname(__DIR__) . '/includes/crs-i18n-locale.php';
 
 // Mock post meta storage
 global $mock_post_meta;

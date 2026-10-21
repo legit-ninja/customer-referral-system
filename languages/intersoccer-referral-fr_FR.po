@@ -659,9 +659,6 @@ msgstr "Vous devez être connecté pour appliquer un code de parrainage"
 msgid "Error clearing referral code."
 msgstr "Erreur lors de la suppression du code de parrainage."
 
-msgid "Network error. Please try again."
-msgstr "Erreur réseau. Veuillez réessayer."
-
 msgid "Please log in before applying a referral code."
 msgstr "Veuillez vous connecter avant d'appliquer un code de parrainage."
 

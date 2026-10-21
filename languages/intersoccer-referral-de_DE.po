@@ -659,9 +659,6 @@ msgstr "Sie müssen angemeldet sein, um einen Empfehlungscode anzuwenden"
 msgid "Error clearing referral code."
 msgstr "Fehler beim Entfernen des Empfehlungscodes."
 
-msgid "Network error. Please try again."
-msgstr "Netzwerkfehler. Bitte versuchen Sie es erneut."
-
 msgid "Please log in before applying a referral code."
 msgstr "Bitte melden Sie sich an, bevor Sie einen Empfehlungscode anwenden."
 

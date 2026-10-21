@@ -479,9 +479,6 @@ msgstr ""
 msgid "Error clearing referral code."
 msgstr ""
 
-msgid "Network error. Please try again."
-msgstr ""
-
 msgid "Please log in before applying a referral code."
 msgstr ""
 
