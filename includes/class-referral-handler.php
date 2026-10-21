@@ -275,31 +275,33 @@ class InterSoccer_Referral_Handler {
         $dashboard_url = admin_url('admin.php?page=intersoccer-coach-dashboard');
         $site_name = get_bloginfo('name');
 
-        $subject = sprintf(
-            /* translators: 1: site name */
-            __('Your Coach Connection Referral Code - %s', 'intersoccer-referral'),
-            $site_name
-        );
+        $sent = intersoccer_crs_mail_for_user((int) $coach_id, function () use ($coach, $code, $referral_link, $dashboard_url, $site_name) {
+            $subject = sprintf(
+                /* translators: 1: site name */
+                __('Your Coach Connection Referral Code - %s', 'intersoccer-referral'),
+                $site_name
+            );
 
-        $message = sprintf(
-            __(
-                "Hi %s,\n\n" .
-                "Here is your Coach Connection referral code and link:\n\n" .
-                "Referral Code: %s\n" .
-                "Referral Link: %s\n\n" .
-                "Share this link with your players and families. When they use it during checkout, you'll receive credit for their purchase.\n\n" .
-                "You can view your referral stats and dashboard here:\n%s\n\n" .
-                "Best regards,\nThe %s Team",
-                'intersoccer-referral'
-            ),
-            $coach->display_name,
-            $code,
-            $referral_link,
-            $dashboard_url,
-            $site_name
-        );
+            $message = sprintf(
+                __(
+                    "Hi %s,\n\n" .
+                    "Here is your Coach Connection referral code and link:\n\n" .
+                    "Referral Code: %s\n" .
+                    "Referral Link: %s\n\n" .
+                    "Share this link with your players and families. When they use it during checkout, you'll receive credit for their purchase.\n\n" .
+                    "You can view your referral stats and dashboard here:\n%s\n\n" .
+                    "Best regards,\nThe %s Team",
+                    'intersoccer-referral'
+                ),
+                $coach->display_name,
+                $code,
+                $referral_link,
+                $dashboard_url,
+                $site_name
+            );
 
-        $sent = wp_mail($coach->user_email, $subject, $message);
+            return wp_mail($coach->user_email, $subject, $message);
+        });
         if (!$sent) {
             return ['success' => false, 'sent' => false, 'message' => sprintf(__('Failed to send email to %s.', 'intersoccer-referral'), $coach->user_email)];
         }
@@ -507,16 +509,27 @@ class InterSoccer_Referral_Handler {
         }
 
         $user = wp_get_current_user();
-        $subject = sprintf('You received %d CHF credit gift from %s', $gift_amount, $user->display_name);
-        $message = sprintf(
-            "Hi %s!\n\n%s has gifted you %d CHF in InterSoccer credits!\n\nYour new balance: %d CHF\n\nLog in to your account to use them: %s\n\nBest regards,\nThe InterSoccer Team",
-            $recipient->display_name,
-            $user->display_name,
-            $gift_amount,
-            $recipient_new,
-            home_url('/my-account/')
-        );
-        wp_mail($recipient_email, $subject, $message);
+        intersoccer_crs_mail_for_user((int) $recipient->ID, function () use ($recipient, $recipient_email, $user, $gift_amount, $recipient_new) {
+            $subject = sprintf(
+                /* translators: 1: gift amount, 2: sender display name */
+                __('You received %1$d CHF credit gift from %2$s', 'intersoccer-referral'),
+                $gift_amount,
+                $user->display_name
+            );
+            $message = sprintf(
+                __(
+                    'Hi %1$s!' . "\n\n" . '%2$s has gifted you %3$d CHF in InterSoccer credits!' . "\n\n" . 'Your new balance: %4$d CHF' . "\n\n" . 'Log in to your account to use them: %5$s' . "\n\n" . 'Best regards,' . "\n" . 'The InterSoccer Team',
+                    'intersoccer-referral'
+                ),
+                $recipient->display_name,
+                $user->display_name,
+                $gift_amount,
+                $recipient_new,
+                home_url('/my-account/')
+            );
+
+            return wp_mail($recipient_email, $subject, $message);
+        });
 
         wp_send_json_success([
             'message' => 'Gift sent successfully!',
@@ -896,30 +909,21 @@ class InterSoccer_Referral_Handler {
                 $coach = get_user_by('ID', $referrer['id']);
                 if ($coach) {
                     $customer = get_user_by('ID', $customer_id);
-                    $subject = 'Welcome to InterSoccer - Coach Connection Assigned!';
-                    $message = sprintf(
-                        'Hi %s,
+                    if ($customer && get_option('intersoccer_enable_email_notifications', 1)) {
+                        intersoccer_crs_mail_for_order($order, function () use ($customer, $coach) {
+                            $subject = __('Welcome to InterSoccer - Coach Connection Assigned!', 'intersoccer-referral');
+                            $message = sprintf(
+                                __(
+                                    "Hi %1\$s,\n\nWelcome to InterSoccer! Since you joined through %2\$s's referral, we've automatically connected you as partners.\n\nThis means:\n- %3\$s will earn a 5%% commission on your future purchases\n- You get personalized support and training tips\n- Access to exclusive content and community features\n\nYou can change your Coach Connection anytime in your dashboard if you prefer someone else.\n\nEnjoy your training!\n\nBest regards,\nThe InterSoccer Team",
+                                    'intersoccer-referral'
+                                ),
+                                $customer->display_name,
+                                $coach->display_name,
+                                $coach->display_name
+                            );
 
-    Welcome to InterSoccer! Since you joined through %s\'s referral, we\'ve automatically connected you as partners.
-
-    This means:
-    - %s will earn a 5%% commission on your future purchases
-    - You get personalized support and training tips
-    - Access to exclusive content and community features
-
-    You can change your Coach Connection anytime in your dashboard if you prefer someone else.
-
-    Enjoy your training!
-
-    Best regards,
-    The InterSoccer Team',
-                        $customer->display_name,
-                        $coach->display_name,
-                        $coach->display_name
-                    );
-                    
-                    if (get_option('intersoccer_enable_email_notifications', 1)) {
-                        wp_mail($customer->user_email, $subject, $message);
+                            return wp_mail($customer->user_email, $subject, $message);
+                        });
                     }
                 }
             }
@@ -967,14 +971,17 @@ class InterSoccer_Referral_Handler {
 
         // Apply first-time customer benefits (email notification)
         if ($is_first_purchase && $customer_bonus_points > 0 && get_option('intersoccer_enable_email_notifications', 1)) {
-            wp_mail(
-                $order->get_billing_email(),
-                'Welcome to InterSoccer!',
-                sprintf(
-                    'Thanks for joining! You have %d CHF credits and are connected with your coach partner.',
-                    $customer_bonus_points
-                )
-            );
+            intersoccer_crs_mail_for_order($order, function () use ($order, $customer_bonus_points) {
+                return wp_mail(
+                    $order->get_billing_email(),
+                    __('Welcome to InterSoccer!', 'intersoccer-referral'),
+                    sprintf(
+                        /* translators: %d: bonus points amount */
+                        __('Thanks for joining! You have %d CHF credits and are connected with your coach partner.', 'intersoccer-referral'),
+                        $customer_bonus_points
+                    )
+                );
+            });
         }
 
         if (defined('WP_DEBUG') && WP_DEBUG) {
@@ -1355,54 +1362,58 @@ class InterSoccer_Referral_Handler {
         
         // Notify new coach
         if ($new_coach) {
-            $subject = __('New Partnership Connection!', 'intersoccer-referral');
-            $message = sprintf(
-                __('Great news %s!
+            intersoccer_crs_mail_for_user((int) $new_coach_id, function () use ($new_coach, $customer) {
+                $subject = __('New Partnership Connection!', 'intersoccer-referral');
+                $message = sprintf(
+                    __('Great news %1$s!
 
-    %s has chosen you as their Coach Connection partner.
+%2$s has chosen you as their Coach Connection partner.
 
-    You will now earn a 5%% commission on all their future purchases. This is a great opportunity to build a lasting relationship and support their soccer journey.
+You will now earn a 5%% commission on all their future purchases. This is a great opportunity to build a lasting relationship and support their soccer journey.
 
-    Customer Details:
-    - Name: %s
-    - Email: %s
-    - Partnership started: %s
+Customer Details:
+- Name: %3$s
+- Email: %4$s
+- Partnership started: %5$s
 
-    Keep up the excellent coaching work!
+Keep up the excellent coaching work!
 
-    Best regards,
-    The InterSoccer Team', 'intersoccer-referral'),
-                $new_coach->display_name,
-                $customer->display_name,
-                $customer->display_name,
-                $customer->user_email,
-                current_time('F j, Y')
-            );
-            
-            wp_mail($new_coach->user_email, $subject, $message);
+Best regards,
+The InterSoccer Team', 'intersoccer-referral'),
+                    $new_coach->display_name,
+                    $customer->display_name,
+                    $customer->display_name,
+                    $customer->user_email,
+                    current_time('F j, Y')
+                );
+
+                return wp_mail($new_coach->user_email, $subject, $message);
+            });
         }
         
         // Notify old coach if switching
         if ($old_coach_id && $old_coach_id != $new_coach_id) {
             $old_coach = get_user_by('ID', $old_coach_id);
             if ($old_coach) {
-                $subject = __('Partnership Update', 'intersoccer-referral');
-                $message = sprintf(
-                    __('Hi %s,
+                intersoccer_crs_mail_for_user((int) $old_coach_id, function () use ($old_coach, $customer) {
+                    $subject = __('Partnership Update', 'intersoccer-referral');
+                    $message = sprintf(
+                        __('Hi %1$s,
 
-    %s has switched to a different Coach Connection partner.
+%2$s has switched to a different Coach Connection partner.
 
-    Don\'t worry - this is part of the process and doesn\'t reflect on your coaching abilities. Keep focusing on your other partnerships and referrals.
+Don\'t worry - this is part of the process and doesn\'t reflect on your coaching abilities. Keep focusing on your other partnerships and referrals.
 
-    You can always reconnect with customers through great service and engagement.
+You can always reconnect with customers through great service and engagement.
 
-    Best regards,
-    The InterSoccer Team', 'intersoccer-referral'),
-                    $old_coach->display_name,
-                    $customer->display_name
-                );
-                
-                wp_mail($old_coach->user_email, $subject, $message);
+Best regards,
+The InterSoccer Team', 'intersoccer-referral'),
+                        $old_coach->display_name,
+                        $customer->display_name
+                    );
+
+                    return wp_mail($old_coach->user_email, $subject, $message);
+                });
             }
         }
     }
