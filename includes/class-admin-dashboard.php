@@ -257,9 +257,9 @@ class InterSoccer_Referral_Admin_Dashboard {
         // Debug: log the current hook
         intersoccer_referral_log('Enqueue hook: ' . $hook);
 
-        if (strpos($hook, 'intersoccer') !== false) {
-            // Enqueue Chart.js first
-            wp_enqueue_script('chart-js', 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js', [], '3.9.1');
+        if (intersoccer_crs_is_referral_admin_screen($hook)) {
+            intersoccer_crs_enqueue_chart_js_vendor_asset();
+            $chart_handle = intersoccer_crs_chart_js_asset_handle();
 
             // Enqueue our admin assets
             wp_enqueue_style('intersoccer-admin-css', INTERSOCCER_REFERRAL_URL . 'assets/css/admin-dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
@@ -325,7 +325,7 @@ class InterSoccer_Referral_Admin_Dashboard {
                     ],
                 ]);
             }
-            wp_enqueue_script('intersoccer-admin-js', INTERSOCCER_REFERRAL_URL . 'assets/js/admin-dashboard.js', ['jquery', 'chart-js'], INTERSOCCER_REFERRAL_VERSION, true);
+            wp_enqueue_script('intersoccer-admin-js', INTERSOCCER_REFERRAL_URL . 'assets/js/admin-dashboard.js', ['jquery', $chart_handle], INTERSOCCER_REFERRAL_VERSION, true);
 
             $localize = [
                 'ajax_url' => admin_url('admin-ajax.php'),
@@ -381,7 +381,7 @@ class InterSoccer_Referral_Admin_Dashboard {
                 intersoccer_referral_log('Enqueueing settings/tools page assets for hook: ' . $hook);
                 wp_enqueue_style('intersoccer-admin-settings-css', INTERSOCCER_REFERRAL_URL . 'assets/css/admin-settings.css', [], INTERSOCCER_REFERRAL_VERSION);
                 wp_enqueue_script('intersoccer-admin-settings-js', INTERSOCCER_REFERRAL_URL . 'assets/js/admin-settings.js', ['jquery'], INTERSOCCER_REFERRAL_VERSION, true);
-                wp_enqueue_script('intersoccer-admin-simulator-js', INTERSOCCER_REFERRAL_URL . 'assets/js/admin-simulator.js', ['jquery', 'chart-js'], INTERSOCCER_REFERRAL_VERSION, true);
+                wp_enqueue_script('intersoccer-admin-simulator-js', INTERSOCCER_REFERRAL_URL . 'assets/js/admin-simulator.js', ['jquery', $chart_handle], INTERSOCCER_REFERRAL_VERSION, true);
 
                 wp_localize_script('intersoccer-admin-settings-js', 'intersoccer_admin', [
                     'ajax_url' => admin_url('admin-ajax.php'),

@@ -107,6 +107,7 @@ require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-user-roles.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-utils.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-coach-email-templates.php';
 require_once INTERSOCCER_REFERRAL_PATH . 'includes/class-admin-coach-email-templates.php';
+require_once INTERSOCCER_REFERRAL_PATH . 'includes/chart-js-assets.php';
 intersoccer_referral_log('All plugin files loaded, Referral Handler exists: ' . class_exists('InterSoccer_Referral_Handler'));
 
 // Main plugin class
@@ -1291,8 +1292,9 @@ class InterSoccer_Referral_System {
             wp_enqueue_style('modern-dashboard-css', INTERSOCCER_REFERRAL_URL . 'assets/css/modern-dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
             wp_enqueue_style('aos-css', 'https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css', [], '2.3.4');
             wp_enqueue_script('aos-js', 'https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js', [], '2.3.4', true);
-            wp_enqueue_script('chart-js', 'https://cdn.jsdelivr.net/npm/chart.js', [], '4.4.0', true);
-            wp_enqueue_script('modern-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/modern-dashboard.js', ['jquery', 'aos-js', 'chart-js'], INTERSOCCER_REFERRAL_VERSION, true);
+            intersoccer_crs_enqueue_chart_js_vendor_asset();
+            $chart_handle = intersoccer_crs_chart_js_asset_handle();
+            wp_enqueue_script('modern-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/modern-dashboard.js', ['jquery', 'aos-js', $chart_handle], INTERSOCCER_REFERRAL_VERSION, true);
 
             wp_localize_script('modern-dashboard-js', 'intersoccer_dashboard', [
                 'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
@@ -1381,8 +1383,7 @@ class InterSoccer_Referral_System {
     }
     
     public function enqueue_admin_assets($hook) {
-        // Only load on our admin pages
-        if (strpos($hook, 'intersoccer') === false) {
+        if (!intersoccer_crs_is_referral_admin_screen($hook)) {
             return;
         }
         
@@ -1393,17 +1394,13 @@ class InterSoccer_Referral_System {
             INTERSOCCER_REFERRAL_VERSION
         );
         
-        wp_enqueue_script(
-            'chart-js',
-            'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js',
-            [],
-            '3.9.1'
-        );
+        intersoccer_crs_enqueue_chart_js_vendor_asset();
+        $chart_handle = intersoccer_crs_chart_js_asset_handle();
         
         wp_enqueue_script(
             'intersoccer-admin-js',
             INTERSOCCER_REFERRAL_URL . 'assets/js/admin-dashboard.js',
-            ['jquery', 'chart-js'],
+            ['jquery', $chart_handle],
             INTERSOCCER_REFERRAL_VERSION,
             true
         );
