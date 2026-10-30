@@ -445,6 +445,10 @@ msgid ""
 "The InterSoccer Team"
 msgstr ""
 
+#: includes/class-admin-dashboard.php:802
+msgid "Enter referral code"
+msgstr ""
+
 # Checkout referral — customer-facing (follow-up 6)
 msgid "Please enter a referral code."
 msgstr ""

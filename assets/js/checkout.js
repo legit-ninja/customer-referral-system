@@ -233,7 +233,7 @@
         $(document).off('click', '#change_referral_code').on('click', '#change_referral_code', function (event) {
             event.preventDefault();
             const $changeBtn = $(this);
-            $changeBtn.prop('disabled', true).text(config.i18n.clearing || 'Clearing\u2026');
+            $changeBtn.prop('disabled', true).text(config.i18n.clearing);
 
             $.ajax({
                 url: config.ajax_url,
@@ -252,13 +252,13 @@
                 } else {
                     const msg = response && response.data && response.data.message
                         ? response.data.message
-                        : (config.i18n.error_clearing_referral_code || 'Error clearing referral code.');
-                    $changeBtn.prop('disabled', false).text(config.i18n.change_code || 'Change Code');
+                        : config.i18n.error_clearing_referral_code;
+                    $changeBtn.prop('disabled', false).text(config.i18n.change_code);
                     window.alert(msg);
                 }
             }).fail(function () {
-                $changeBtn.prop('disabled', false).text(config.i18n.change_code || 'Change Code');
-                window.alert(config.i18n.network_error_please_try_again || 'Network error. Please try again.');
+                $changeBtn.prop('disabled', false).text(config.i18n.change_code);
+                window.alert(config.i18n.network_error_please_try_again);
             });
         });
 
