@@ -19,6 +19,7 @@ class MyAccountOrdersTotalColumnTest extends TestCase {
         require_once __DIR__ . '/../includes/class-admin-coaches.php';
         require_once __DIR__ . '/../includes/class-admin-referrals.php';
         require_once __DIR__ . '/../includes/class-admin-financial.php';
+        require_once __DIR__ . '/../includes/class-simulator.php';
         require_once __DIR__ . '/../includes/class-admin-settings.php';
         require_once __DIR__ . '/../includes/class-admin-points.php';
         require_once __DIR__ . '/../includes/class-admin-coach-assignments.php';
