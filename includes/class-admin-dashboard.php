@@ -799,7 +799,7 @@ class InterSoccer_Referral_Admin_Dashboard {
         echo '<div class="intersoccer-referral-code">';
         echo '<div class="intersoccer-referral-code-inner">';
         echo '<label for="intersoccer_referral_code">' . __('Referral Code (Optional)', 'intersoccer-referral') . '</label>';
-        echo '<input type="text" name="intersoccer_referral_code" id="intersoccer_referral_code" placeholder="Enter referral code"' . $input_attributes . $input_disabled . ' />';
+        echo '<input type="text" name="intersoccer_referral_code" id="intersoccer_referral_code" placeholder="' . esc_attr__('Enter referral code', 'intersoccer-referral') . '"' . $input_attributes . $input_disabled . ' />';
         echo '<button type="button" id="apply_referral_code" class="button button-secondary" data-auto-apply="' . esc_attr($auto_apply) . '"' . $button_disabled . '>' . esc_html($button_label) . '</button>';
         if ($is_code_applied) {
             echo '<button type="button" id="change_referral_code" class="button button-link" style="margin-left:8px;">' . esc_html__('Change Code', 'intersoccer-referral') . '</button>';
