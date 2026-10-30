@@ -94,7 +94,6 @@ class InterSoccer_Referral_Admin_Dashboard {
             add_action('woocommerce_order_status_changed', [$this, 'deduct_points_on_order_completion'], 10, 4);
             // Consume the first-order discount only when the order reaches a successful state.
             add_action('woocommerce_order_status_changed', [$this, 'maybe_consume_first_order_discount'], 20, 4);
-            add_action('woocommerce_my_account_my_orders_column_order-total', [$this, 'display_points_used_in_orders']);
             add_action('woocommerce_cart_calculate_fees', [$this, 'apply_points_discount_as_fee'], 10, 1);
             add_action('wp_ajax_update_points_session', [$this, 'update_points_session']);
             add_action('wp_ajax_apply_referral_code', [$this, 'apply_referral_code_ajax']);
@@ -1999,14 +1998,6 @@ class InterSoccer_Referral_Admin_Dashboard {
         update_user_meta($customer_id, 'intersoccer_first_order_discount_consumed', 1);
         update_user_meta($customer_id, 'intersoccer_first_order_discount_consumed_order_id', (int) $order_id);
         update_user_meta($customer_id, 'intersoccer_first_order_discount_consumed_at', current_time('mysql'));
-    }
-
-    /**
-     * Display points used in order history
-     */
-    public function display_points_used_in_orders($order) {
-        // This would modify the order total column to show points used
-        // Implementation depends on WooCommerce hooks
     }
 
     private function get_checkout_referral_context() {
