@@ -375,7 +375,7 @@ class InterSoccer_Audit_Logger {
             user_id bigint(20) unsigned NULL,
             data longtext NOT NULL,
             ip_address varchar(45) DEFAULT '',
-            user_agent text DEFAULT '',
+            user_agent text NULL,
             session_id varchar(255) DEFAULT '',
             created_at datetime NOT NULL,
             created_at_gmt datetime NOT NULL,
@@ -592,7 +592,7 @@ class InterSoccer_Audit_Logger {
 
         foreach ($logs as $log) {
             $data = str_replace('"', '""', wp_json_encode($log->data)); // Escape quotes for CSV
-            $user_agent = str_replace('"', '""', $log->user_agent);
+            $user_agent = str_replace('"', '""', (string) $log->user_agent);
 
             $csv .= sprintf(
                 '"%s","%s","%s","%s","%s","%s","%s","%s","%s"' . "\n",
