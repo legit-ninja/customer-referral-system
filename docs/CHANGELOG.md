@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.11.1 — 2026-11-01
+
+### Fixed
+- Checkout no longer shows a stale referral message after Change Code succeeds (#140, issue #139).
+
+---
+
 ## 1.9.22 — 2026-09-22
 
 ### Changed
