@@ -216,7 +216,10 @@
                     }
                 }
             } else {
-                const statusMessagePrefill = $referralMessage.data('statusMessage');
+                // Read the attribute, not jQuery's data cache. Change Code
+                // removes the attribute; a cached value must not bring the
+                // message back on the next updated_checkout.
+                const statusMessagePrefill = $referralMessage.attr('data-status-message');
                 if (statusMessagePrefill) {
                     $referralMessage.removeClass('error').addClass('success').html(statusMessagePrefill).show();
                 }
@@ -246,7 +249,14 @@
                 if (response && response.success) {
                     $referralInput.val('').prop('disabled', false).data('code-applied', 'no');
                     $referralButton.prop('disabled', false).text(config.i18n.apply_code);
-                    $referralMessage.removeClass('success error').hide().removeAttr('data-applied');
+                    $referralMessage
+                        .removeClass('success error')
+                        .empty()
+                        .hide()
+                        .removeAttr('data-status-message')
+                        .removeAttr('data-applied')
+                        .removeData('statusMessage')
+                        .removeData('applied');
                     $changeBtn.remove();
                     $(document.body).trigger('update_checkout');
                 } else {
