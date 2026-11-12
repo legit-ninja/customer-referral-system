@@ -12,6 +12,9 @@ vendor/
 # Deployment
 deploy.local.sh
 
+# Ephemeral one-off maintenance scripts (deploy.sh may write these on the server only)
+*-temp.php
+
 # Development
 node_modules/
 .phpunit.result.cache
