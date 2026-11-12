@@ -148,3 +148,49 @@ add_filter('gettext_intersoccer-referral', 'intersoccer_crs_filter_gettext', 10,
 add_filter('ngettext_intersoccer-referral', 'intersoccer_crs_filter_ngettext', 10, 5);
 add_filter('gettext_with_context_intersoccer-referral', 'intersoccer_crs_filter_gettext_with_context', 10, 4);
 add_filter('ngettext_with_context_intersoccer-referral', 'intersoccer_crs_filter_ngettext_with_context', 10, 6);
+
+/**
+ * Elapsed time for Recent Activity. Admin screens keep the core phrase in English
+ * so it matches the rest of the office UI; the "ago" wrapper stays translatable.
+ *
+ * @param string|int $datetime MySQL datetime or Unix timestamp.
+ * @return string
+ */
+function intersoccer_referral_time_ago($datetime) {
+    $from = is_numeric($datetime) ? (int) $datetime : strtotime((string) $datetime);
+    if (!$from) {
+        return '';
+    }
+
+    $to = function_exists('current_time') ? (int) current_time('timestamp') : time();
+    $diff = intersoccer_referral_human_time_diff($from, $to);
+
+    return sprintf(
+        /* translators: %s: elapsed time, for example "2 weeks" */
+        __('%s ago', 'intersoccer-referral'),
+        $diff
+    );
+}
+
+/**
+ * @param int $from Unix timestamp.
+ * @param int $to   Unix timestamp.
+ * @return string
+ */
+function intersoccer_referral_human_time_diff($from, $to) {
+    $switched = false;
+    if (function_exists('intersoccer_crs_is_admin_english_context')
+        && intersoccer_crs_is_admin_english_context()
+        && function_exists('switch_to_locale')
+    ) {
+        $switched = (bool) switch_to_locale('en_US');
+    }
+
+    $diff = function_exists('human_time_diff') ? human_time_diff($from, $to) : '';
+
+    if ($switched && function_exists('restore_previous_locale')) {
+        restore_previous_locale();
+    }
+
+    return $diff;
+}

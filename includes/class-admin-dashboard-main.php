@@ -806,7 +806,7 @@ class InterSoccer_Admin_Dashboard_Main {
                             </div>
                             <div class="activity-content">
                                 <p><?php echo $activity->message; ?></p>
-                                <span class="activity-time"><?php echo human_time_diff(strtotime($activity->created_at), current_time('timestamp')); ?> ago</span>
+                                <span class="activity-time"><?php echo esc_html(intersoccer_referral_time_ago($activity->created_at)); ?></span>
                             </div>
                             <?php if ($activity->amount > 0): ?>
                             <div class="activity-amount">

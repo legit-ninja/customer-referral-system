@@ -783,7 +783,8 @@ class InterSoccer_Referral_Admin_Dashboard {
 
         if ($is_code_applied) {
             $message_text = sprintf(
-                __('Referral code %s is applied. Your discount appears in the order summary.', 'intersoccer-referral'),
+                /* translators: %s: referral code */
+                __('Referral code %s is applied. Your discount appears in the order summary. Points are earned on what you pay, after discounts and credits.', 'intersoccer-referral'),
                 esc_html($prefill_code)
             );
             $message_classes .= ' success';
@@ -2260,12 +2261,14 @@ class InterSoccer_Referral_Admin_Dashboard {
 
             if ($eligible_for_discount) {
                 $status_message = sprintf(
-                    __('Referral code applied! You will receive a discount. Your friend %s will earn points on this order.', 'intersoccer-referral'),
+                    /* translators: %s: referring friend's name */
+                    __('Referral code applied! You will receive a discount. Your friend %s will earn points on what you pay, after discounts and credits.', 'intersoccer-referral'),
                     $referrer_name
                 );
             } else {
                 $status_message = sprintf(
-                    __('Referral code saved! %s will still earn points on this order. First-time discount already used.', 'intersoccer-referral'),
+                    /* translators: %s: referring friend's name */
+                    __('Referral code saved! %s will still earn points on what you pay, after discounts and credits. First-time discount already used.', 'intersoccer-referral'),
                     $referrer_name
                 );
             }

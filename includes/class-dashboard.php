@@ -353,8 +353,13 @@ class InterSoccer_Referral_Dashboard {
             ? number_format_i18n($points_balance)
             : number_format($points_balance);
         
-        // Points earning explainer (product truth: CHF 10 = 1 pt)
-        $points_explainer = __('Earn 1 point for every CHF 10 spent. Points can be redeemed at checkout.', 'intersoccer-referral');
+        // 1 point per CHF paid. Option default is 10 (intersoccer_points_rate_customer_purchase).
+        $points_rate = max(1, (int) get_option('intersoccer_points_rate_customer_purchase', 10));
+        $points_explainer = sprintf(
+            /* translators: %d: Swiss francs the customer pays for one point */
+            __('Earn 1 point for every CHF %d you pay, after discounts and credits. Redeem your points at checkout.', 'intersoccer-referral'),
+            $points_rate
+        );
         $share_cta_label = __('Share Your Link', 'intersoccer-referral');
         
         ob_start();

@@ -640,12 +640,12 @@ msgid "Referral code saved! Coach %s will still receive credit on this order. Fi
 msgstr "Empfehlungscode gespeichert! Trainer %s erhält für diese Bestellung weiterhin Guthaben. Der Erstkundenrabatt wurde bereits verwendet."
 
 #, php-format
-msgid "Referral code applied! You will receive a discount. Your friend %s will earn points on this order."
-msgstr "Empfehlungscode angewendet! Sie erhalten einen Rabatt. Ihr Freund %s verdient Punkte für diese Bestellung."
+msgid "Referral code applied! You will receive a discount. Your friend %s will earn points on what you pay, after discounts and credits."
+msgstr "Empfehlungscode angewendet! Sie erhalten einen Rabatt. Die Person, die Sie empfohlen hat (%s), verdient Punkte auf den Betrag, den Sie nach Rabatten und Gutschriften bezahlen."
 
 #, php-format
-msgid "Referral code saved! %s will still earn points on this order. First-time discount already used."
-msgstr "Empfehlungscode gespeichert! %s verdient für diese Bestellung weiterhin Punkte. Der Erstkundenrabatt wurde bereits verwendet."
+msgid "Referral code saved! %s will still earn points on what you pay, after discounts and credits. First-time discount already used."
+msgstr "Empfehlungscode gespeichert! Die Person, die Sie empfohlen hat (%s), verdient weiterhin Punkte auf den Betrag, den Sie nach Rabatten und Gutschriften bezahlen. Der Erstkundenrabatt wurde bereits verwendet."
 
 msgid "Must be logged in."
 msgstr "Sie müssen angemeldet sein."
@@ -657,7 +657,7 @@ msgid "Referral code removed."
 msgstr "Empfehlungscode entfernt."
 
 msgid "friend referral code"
-msgstr "Freundes-Empfehlungscode"
+msgstr "Empfehlungscode der Person, die Sie empfohlen hat"
 
 msgid "partner referral code"
 msgstr "Partner-Empfehlungscode"
@@ -670,3 +670,18 @@ msgstr "Affiliate-Empfehlungscode"
 
 msgid "a different coach referral code"
 msgstr "ein anderer Trainer-Empfehlungscode"
+
+#, php-format
+msgid "%s ago"
+msgstr "vor %s"
+
+#, php-format
+msgid "Earn 1 point for every CHF %d you pay, after discounts and credits. Redeem your points at checkout."
+msgstr "Sie erhalten 1 Punkt für je CHF %d, die Sie nach Rabatten und Gutschriften bezahlen. Lösen Sie Ihre Punkte an der Kasse ein."
+
+msgid "Share Your Link"
+msgstr "Teilen Sie Ihren Link"
+
+#, php-format
+msgid "Referral code %s is applied. Your discount appears in the order summary. Points are earned on what you pay, after discounts and credits."
+msgstr "Der Empfehlungscode %s ist angewendet. Ihr Rabatt erscheint in der Bestellübersicht. Punkte werden auf den Betrag berechnet, den Sie nach Rabatten und Gutschriften bezahlen."
