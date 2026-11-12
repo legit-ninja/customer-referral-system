@@ -533,3 +533,7 @@ msgstr ""
 
 msgid "a different coach referral code"
 msgstr ""
+
+#, php-format
+msgid "%s ago"
+msgstr ""

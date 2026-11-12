@@ -450,7 +450,7 @@ class InterSoccer_Admin_Coaches {
                             </span>
                             <span class="activity-text">
                                 Referred <?php echo esc_html($referral->customer_name); ?>
-                                <span class="activity-date"><?php echo human_time_diff(strtotime($referral->created_at), current_time('timestamp')); ?> ago</span>
+                                <span class="activity-date"><?php echo esc_html(intersoccer_referral_time_ago($referral->created_at)); ?></span>
                             </span>
                         </li>
                         <?php endforeach; ?>

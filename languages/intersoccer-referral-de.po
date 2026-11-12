@@ -670,3 +670,7 @@ msgstr "Affiliate-Empfehlungscode"
 
 msgid "a different coach referral code"
 msgstr "ein anderer Trainer-Empfehlungscode"
+
+#, php-format
+msgid "%s ago"
+msgstr "vor %s"

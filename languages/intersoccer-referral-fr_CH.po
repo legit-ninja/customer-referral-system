@@ -670,3 +670,7 @@ msgstr "code de parrainage affilié"
 
 msgid "a different coach referral code"
 msgstr "un autre code de parrainage d'entraîneur"
+
+#, php-format
+msgid "%s ago"
+msgstr "il y a %s"
