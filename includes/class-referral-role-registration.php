@@ -13,14 +13,16 @@ class InterSoccer_Referral_Role_Registration {
      * Register referral roles or merge capabilities into existing roles.
      */
     public static function register_custom_roles() {
-        self::register_or_merge_role('coach', __('Coach', 'intersoccer-referral'), [
+        // Role labels are stored untranslated; this runs on plugins_loaded (before init),
+        // and display translation is handled later via translate_user_role().
+        self::register_or_merge_role('coach', 'Coach', [
             'read' => true,
             'view_referral_dashboard' => true,
             'manage_referrals' => true,
             'view_coach_reports' => true,
         ]);
 
-        self::register_or_merge_role('content_creator', __('Content Creator', 'intersoccer-referral'), [
+        self::register_or_merge_role('content_creator', 'Content Creator', [
             'read' => true,
             'view_referral_dashboard' => true,
             'create_content' => true,
@@ -28,7 +30,7 @@ class InterSoccer_Referral_Role_Registration {
             'manage_content_referrals' => true,
         ]);
 
-        self::register_or_merge_role('partner', __('Partner', 'intersoccer-referral'), [
+        self::register_or_merge_role('partner', 'Partner', [
             'read' => true,
             'view_referral_dashboard' => true,
             'manage_partnerships' => true,

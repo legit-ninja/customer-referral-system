@@ -21,7 +21,9 @@ if (isset($coach_data) && is_array($coach_data)) {
     $chart_credits = $coach_data['chart_credits'];
     $coach_events = $coach_data['coach_events'] ?? [];
     $coach_events_nonce = $coach_data['coach_events_nonce'] ?? wp_create_nonce('intersoccer_coach_events_nonce');
-    $coach_events_ajax_url = $coach_data['ajax_url'] ?? admin_url('admin-ajax.php');
+    $coach_events_ajax_url = $coach_data['ajax_url'] ?? (function_exists('intersoccer_crs_frontend_admin_ajax_url')
+        ? intersoccer_crs_frontend_admin_ajax_url()
+        : admin_url('admin-ajax.php'));
     $is_admin = $coach_data['is_admin_context'] ?? false;
     $monthly_stats = $coach_data['monthly_stats'] ?? [
         'new_referrals' => 0,
@@ -58,7 +60,9 @@ if (isset($coach_data) && is_array($coach_data)) {
     $chart_credits = $this->get_chart_data($user_id, 30, 'credits');
     $coach_events = class_exists('InterSoccer_Coach_Events_Manager') ? InterSoccer_Coach_Events_Manager::get_coach_events($user_id) : [];
     $coach_events_nonce = wp_create_nonce('intersoccer_coach_events_nonce');
-    $coach_events_ajax_url = admin_url('admin-ajax.php');
+    $coach_events_ajax_url = function_exists('intersoccer_crs_frontend_admin_ajax_url')
+        ? intersoccer_crs_frontend_admin_ajax_url()
+        : admin_url('admin-ajax.php');
     $is_admin = false;
 }
 

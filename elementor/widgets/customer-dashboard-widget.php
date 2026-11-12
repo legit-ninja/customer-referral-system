@@ -190,7 +190,7 @@ class InterSoccer_Customer_Dashboard_Widget extends \Elementor\Widget_Base {
         wp_enqueue_style( 'intersoccer-dashboard-css', INTERSOCCER_REFERRAL_URL . 'assets/css/dashboard.css', [], INTERSOCCER_REFERRAL_VERSION );
         wp_enqueue_script( 'intersoccer-dashboard-js', INTERSOCCER_REFERRAL_URL . 'assets/js/dashboard.js', [ 'jquery' ], INTERSOCCER_REFERRAL_VERSION, true );
         wp_localize_script( 'intersoccer-dashboard-js', 'intersoccer_dashboard', [
-            'ajax_url' => admin_url( 'admin-ajax.php' ),
+            'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
             'nonce' => wp_create_nonce( 'intersoccer_dashboard_nonce' ),
         ] );
 

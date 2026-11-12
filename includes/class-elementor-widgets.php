@@ -554,7 +554,7 @@ class InterSoccer_Customer_Dashboard_Widget extends \Elementor\Widget_Base {
         wp_enqueue_style('intersoccer-elementor-dashboard', INTERSOCCER_REFERRAL_URL . 'assets/css/elementor-dashboard.css', [], INTERSOCCER_REFERRAL_VERSION);
         wp_enqueue_script('intersoccer-elementor-dashboard', INTERSOCCER_REFERRAL_URL . 'assets/js/elementor-dashboard.js', ['jquery'], INTERSOCCER_REFERRAL_VERSION, true);
         wp_localize_script('intersoccer-elementor-dashboard', 'intersoccer_elementor', [
-            'ajax_url' => admin_url('admin-ajax.php'),
+            'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
             'nonce' => wp_create_nonce('intersoccer_dashboard_nonce'),
             'strings' => [
                 'copy_success' => __('Link copied to clipboard!', 'intersoccer-referral'),
@@ -891,7 +891,7 @@ class InterSoccer_Customer_Dashboard_Widget extends \Elementor\Widget_Base {
         );
         
         wp_localize_script('intersoccer-elementor-dashboard', 'intersoccer_elementor', [
-            'ajax_url' => admin_url('admin-ajax.php'),
+            'ajax_url' => intersoccer_crs_frontend_admin_ajax_url(),
             'nonce' => wp_create_nonce('intersoccer_elementor_nonce'),
             'strings' => [
                 'copy_success' => __('Link copied!', 'intersoccer-referral'),

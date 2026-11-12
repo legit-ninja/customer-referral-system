@@ -216,7 +216,10 @@
                     }
                 }
             } else {
-                const statusMessagePrefill = $referralMessage.data('statusMessage');
+                // Read the attribute, not jQuery's data cache. Change Code
+                // removes the attribute; a cached value must not bring the
+                // message back on the next updated_checkout.
+                const statusMessagePrefill = $referralMessage.attr('data-status-message');
                 if (statusMessagePrefill) {
                     $referralMessage.removeClass('error').addClass('success').html(statusMessagePrefill).show();
                 }
@@ -246,18 +249,26 @@
                 if (response && response.success) {
                     $referralInput.val('').prop('disabled', false).data('code-applied', 'no');
                     $referralButton.prop('disabled', false).text(config.i18n.apply_code);
-                    $referralMessage.removeClass('success error').hide().removeAttr('data-applied');
+                    $referralMessage
+                        .removeClass('success error')
+                        .empty()
+                        .hide()
+                        .removeAttr('data-status-message')
+                        .removeAttr('data-applied')
+                        .removeData('statusMessage')
+                        .removeData('applied');
                     $changeBtn.remove();
                     $(document.body).trigger('update_checkout');
                 } else {
                     const msg = response && response.data && response.data.message
-                        ? response.data.message : 'Error clearing referral code.';
+                        ? response.data.message
+                        : (config.i18n.error_clearing_referral_code || 'Error clearing referral code.');
                     $changeBtn.prop('disabled', false).text(config.i18n.change_code || 'Change Code');
                     window.alert(msg);
                 }
             }).fail(function () {
                 $changeBtn.prop('disabled', false).text(config.i18n.change_code || 'Change Code');
-                window.alert('Network error. Please try again.');
+                window.alert(config.i18n.network_error_please_try_again || 'Network error. Please try again.');
             });
         });
 

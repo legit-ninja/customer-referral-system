@@ -68,6 +68,9 @@ class InterSoccer_ROI_Calculator {
     /** @var bool Force transient bypass for this request (manual refresh semantics) */
     private $request_force_refresh = false;
     
+    /** @var string|null Memoized HPOS vs posts suffix for ROI transient keys */
+    private $storage_mode_cache_suffix = null;
+    
     /**
      * Incrementality range bounds for ROI calculation (Finance assumption).
      * 
@@ -138,6 +141,19 @@ class InterSoccer_ROI_Calculator {
     }
     
     /**
+     * ROI data transient key including storage mode so HPOS and posts caches do not collide.
+     *
+     * @param string $suffix Key body after CACHE_PREFIX (e.g. revenue_{hash}, cost_breakdown_{hash})
+     * @return string Full transient name
+     */
+    private function storage_mode_cache_key($suffix) {
+        if ($this->storage_mode_cache_suffix === null) {
+            $this->storage_mode_cache_suffix = $this->is_hpos_active() ? 'hpos' : 'posts';
+        }
+        return self::CACHE_PREFIX . $suffix . '_' . $this->storage_mode_cache_suffix;
+    }
+    
+    /**
      * Get cached value or compute and cache it
      * 
      * @param string $key Cache key suffix
@@ -146,7 +162,7 @@ class InterSoccer_ROI_Calculator {
      * @return mixed Cached or computed value
      */
     private function get_cached($key, $compute, $force_refresh = false) {
-        $cache_key = self::CACHE_PREFIX . $key;
+        $cache_key = $this->storage_mode_cache_key($key);
         
         if (!$force_refresh) {
             $cached = get_transient($cache_key);
@@ -243,7 +259,7 @@ class InterSoccer_ROI_Calculator {
         if ($effective_force_refresh) {
             return false;
         }
-        $cached = get_transient(self::CACHE_PREFIX . $cache_key_suffix);
+        $cached = get_transient($this->storage_mode_cache_key($cache_key_suffix));
         if ($cached === false || $this->is_aborted_cache_value($cached) || (is_array($cached) && !empty($cached['pending']))) {
             return false;
         }
@@ -339,7 +355,7 @@ class InterSoccer_ROI_Calculator {
         $range = $this->get_period_range();
         $settings = $this->get_roi_settings();
         $memo_key = $this->get_cost_breakdown_memo_key($range, $settings);
-        $cache_key = '_transient_timeout_' . self::CACHE_PREFIX . 'cost_breakdown_' . $memo_key;
+        $cache_key = '_transient_timeout_' . $this->storage_mode_cache_key('cost_breakdown_' . $memo_key);
         
         $timeout = get_option($cache_key);
         if ($timeout === false) {
@@ -2211,6 +2227,21 @@ class InterSoccer_ROI_Calculator {
                   AND o.id NOT IN ({$excluded_ids_sql})
             ", $start_gmt, $end_gmt));
             
+            $holder_refunds_without_lines = (float) $this->wpdb->get_var($this->wpdb->prepare("
+                SELECT COALESCE(SUM(r.total_amount), 0)
+                FROM {$orders_table} o
+                INNER JOIN {$orders_table} r ON r.parent_order_id = o.id AND r.type = 'shop_order_refund'
+                LEFT JOIN {$items_table} oi ON r.id = oi.order_id AND oi.order_item_type = 'line_item'
+                WHERE o.type = 'shop_order'
+                  AND o.status IN ('wc-completed', 'wc-processing')
+                  AND o.date_created_gmt >= %s
+                  AND o.date_created_gmt <= %s
+                  AND o.customer_id IN ({$holder_ids_sql})
+                  AND o.customer_id > 0
+                  AND o.id NOT IN ({$excluded_ids_sql})
+                  AND oi.order_item_id IS NULL
+            ", $start_gmt, $end_gmt));
+            
             // Non-holders - uses _line_total (after discounts)
             $non_holder_stats = $this->wpdb->get_row($this->wpdb->prepare("
                 SELECT 
@@ -2243,6 +2274,20 @@ class InterSoccer_ROI_Calculator {
                   AND o.customer_id > 0
             ", $start_gmt, $end_gmt));
             
+            $non_holder_refunds_without_lines = (float) $this->wpdb->get_var($this->wpdb->prepare("
+                SELECT COALESCE(SUM(r.total_amount), 0)
+                FROM {$orders_table} o
+                INNER JOIN {$orders_table} r ON r.parent_order_id = o.id AND r.type = 'shop_order_refund'
+                LEFT JOIN {$items_table} oi ON r.id = oi.order_id AND oi.order_item_type = 'line_item'
+                WHERE o.type = 'shop_order'
+                  AND o.status IN ('wc-completed', 'wc-processing')
+                  AND o.date_created_gmt >= %s
+                  AND o.date_created_gmt <= %s
+                  AND o.customer_id NOT IN ({$holder_ids_sql})
+                  AND o.customer_id > 0
+                  AND oi.order_item_id IS NULL
+            ", $start_gmt, $end_gmt));
+            
             // Calculate repeat rates using aggregate query
             // Finance dedupe: exclude first referred orders from holder repeat rate
             $holder_repeat = $this->calculate_repeat_rate_sql($holder_ids_sql, $range, true, $excluded_ids_sql);
@@ -2266,9 +2311,9 @@ class InterSoccer_ROI_Calculator {
             $holder_count = (int) $active_holders;
             $non_holder_count = (int) ($non_holder_stats->customer_count ?? 0);
             
-            // Revenue = line totals + refunds (refunds are negative)
-            $holder_total_revenue = (float) ($holder_stats->total_revenue ?? 0) + $holder_refunds;
-            $non_holder_total_revenue = (float) ($non_holder_stats->total_revenue ?? 0) + $non_holder_refunds;
+            // Revenue = line totals + refunds (refunds are negative), including refunds without line items
+            $holder_total_revenue = (float) ($holder_stats->total_revenue ?? 0) + $holder_refunds + $holder_refunds_without_lines;
+            $non_holder_total_revenue = (float) ($non_holder_stats->total_revenue ?? 0) + $non_holder_refunds + $non_holder_refunds_without_lines;
             
             return [
                 'holder_count' => $holder_count,
