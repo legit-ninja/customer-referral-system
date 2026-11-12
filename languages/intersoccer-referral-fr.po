@@ -74,6 +74,9 @@ msgstr "Mise à jour du partenariat"
 msgid "Referral Code (Optional)"
 msgstr "Code de parrainage (Facultatif)"
 
+msgid "Enter referral code"
+msgstr "Saisissez le code de parrainage"
+
 msgid "Support your favorite coach! Enter their referral code to give them credit for this purchase."
 msgstr "Soutenez votre entraîneur préféré ! Entrez son code de parrainage pour lui accorder un crédit pour cet achat."
 

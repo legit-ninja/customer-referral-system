@@ -5,6 +5,23 @@
 
 use PHPUnit\Framework\TestCase;
 
+if (!function_exists('esc_html__')) {
+    function esc_html__($text, $domain = 'default') {
+        return esc_html(__($text, $domain));
+    }
+}
+
+if (!function_exists('esc_attr__')) {
+    function esc_attr__($text, $domain = 'default') {
+        global $mock_esc_attr_i18n_calls;
+        if (!is_array($mock_esc_attr_i18n_calls)) {
+            $mock_esc_attr_i18n_calls = [];
+        }
+        $mock_esc_attr_i18n_calls[] = [$text, $domain];
+        return esc_attr(__($text, $domain));
+    }
+}
+
 class CheckoutCustomerI18nTest extends TestCase {
     /**
      * Msgids required for checkout referral UX (follow-up 6).
@@ -13,6 +30,7 @@ class CheckoutCustomerI18nTest extends TestCase {
      */
     public static function checkout_customer_msgids(): array {
         return [
+            'Enter referral code',
             'Please enter a referral code.',
             'Please enter a referral code',
             'Applying...',
@@ -148,5 +166,69 @@ class CheckoutCustomerI18nTest extends TestCase {
             'fr_FR' => ['fr_FR'],
             'de_DE' => ['de_DE'],
         ];
+    }
+
+    public function test_checkout_referral_field_placeholder_uses_intersoccer_referral_domain(): void {
+        require_once dirname(__DIR__) . '/includes/class-admin-dashboard.php';
+
+        global $mock_esc_attr_i18n_calls, $mock_current_user_id;
+        $mock_esc_attr_i18n_calls = [];
+        $mock_current_user_id = 501;
+
+        $reflection = new ReflectionClass(InterSoccer_Referral_Admin_Dashboard::class);
+        $dashboard = $reflection->newInstanceWithoutConstructor();
+
+        ob_start();
+        $dashboard->add_referral_code_field();
+        $html = (string) ob_get_clean();
+
+        $expected_placeholder = esc_attr__('Enter referral code', 'intersoccer-referral');
+        $this->assertStringContainsString(
+            'placeholder="' . $expected_placeholder . '"',
+            $html,
+            'Checkout referral input should output a translated placeholder attribute'
+        );
+        $this->assertContains(
+            ['Enter referral code', 'intersoccer-referral'],
+            $mock_esc_attr_i18n_calls,
+            'Placeholder should be wrapped with esc_attr__ and the intersoccer-referral text domain'
+        );
+    }
+
+    public function test_checkout_localize_array_includes_change_code_flow_i18n_keys(): void {
+        $plugin_file = dirname(__DIR__) . '/customer-referral-system.php';
+        $source = (string) file_get_contents($plugin_file);
+
+        $required_keys = [
+            'change_code',
+            'clearing',
+            'error_clearing_referral_code',
+            'network_error_please_try_again',
+        ];
+
+        foreach ($required_keys as $key) {
+            $this->assertMatchesRegularExpression(
+                "/['\"]{$key}['\"]\s*=>\s*__\(/",
+                $source,
+                "Missing checkout i18n localize entry for {$key}"
+            );
+        }
+
+        $this->assertStringContainsString(
+            "'change_code' => __('Change Code', 'intersoccer-referral')",
+            $source
+        );
+        $this->assertStringContainsString(
+            "'clearing' => __('Clearing...', 'intersoccer-referral')",
+            $source
+        );
+        $this->assertStringContainsString(
+            "'error_clearing_referral_code' => __('Error clearing referral code.', 'intersoccer-referral')",
+            $source
+        );
+        $this->assertStringContainsString(
+            "'network_error_please_try_again' => __('Network error. Please try again.', 'intersoccer-referral')",
+            $source
+        );
     }
 }
