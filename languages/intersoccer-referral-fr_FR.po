@@ -700,7 +700,7 @@ msgid "Referral code removed."
 msgstr "Code de parrainage supprimé."
 
 msgid "friend referral code"
-msgstr "code de parrainage de la personne qui vous a parrainé·e"
+msgstr "code de votre parrain·e"
 
 msgid "partner referral code"
 msgstr "code de parrainage partenaire"
