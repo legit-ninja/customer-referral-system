@@ -8,6 +8,12 @@
  */
 class InterSoccer_Admin_Audit {
 
+    /**
+     * Hook suffix returned by add_submenu_page().
+     * Empty until the menu is registered.
+     */
+    private $page_hook = '';
+
     public function __construct() {
         add_action('admin_menu', [$this, 'add_audit_menu']);
         add_action('admin_enqueue_scripts', [$this, 'enqueue_scripts']);
@@ -17,8 +23,8 @@ class InterSoccer_Admin_Audit {
      * Add audit logs menu to admin
      */
     public function add_audit_menu() {
-        add_submenu_page(
-            'intersoccer-admin',
+        $this->page_hook = add_submenu_page(
+            'intersoccer-referrals',
             __('Audit Logs', 'intersoccer-referral'),
             __('Audit Logs', 'intersoccer-referral'),
             'manage_options',
@@ -31,7 +37,7 @@ class InterSoccer_Admin_Audit {
      * Enqueue admin scripts and styles
      */
     public function enqueue_scripts($hook) {
-        if ($hook !== 'intersoccer_page_intersoccer-audit') {
+        if (!is_string($this->page_hook) || $this->page_hook === '' || $hook !== $this->page_hook) {
             return;
         }
 
@@ -369,8 +375,7 @@ class InterSoccer_Admin_Audit {
      */
     private function get_total_log_count($filters) {
         global $wpdb;
-        $instance = InterSoccer_Audit_Logger::get_instance();
-        $table_name = $instance->table_name;
+        $table_name = $wpdb->prefix . 'intersoccer_audit_log';
 
         $where = [];
         $params = [];
