@@ -684,11 +684,11 @@ msgstr "Code de parrainage enregistré ! L'entraîneur %s recevra toujours un cr
 
 #, php-format
 msgid "Referral code applied! You will receive a discount. Your friend %s will earn points on what you pay, after discounts and credits."
-msgstr "Code de parrainage appliqué ! Vous recevrez une réduction. Votre ami %s gagnera des points sur ce que vous payez, après les réductions et les crédits."
+msgstr "Code de parrainage appliqué ! Vous recevrez une réduction. La personne qui vous a parrainé·e (%s) gagnera des points sur ce que vous payez, après les réductions et les crédits."
 
 #, php-format
 msgid "Referral code saved! %s will still earn points on what you pay, after discounts and credits. First-time discount already used."
-msgstr "Code de parrainage enregistré ! %s gagnera toujours des points sur ce que vous payez, après les réductions et les crédits. La réduction de première commande a déjà été utilisée."
+msgstr "Code de parrainage enregistré ! La personne qui vous a parrainé·e (%s) gagnera toujours des points sur ce que vous payez, après les réductions et les crédits. La réduction de première commande a déjà été utilisée."
 
 msgid "Must be logged in."
 msgstr "Vous devez être connecté."
@@ -700,7 +700,7 @@ msgid "Referral code removed."
 msgstr "Code de parrainage supprimé."
 
 msgid "friend referral code"
-msgstr "code de parrainage ami"
+msgstr "code de parrainage de la personne qui vous a parrainé·e"
 
 msgid "partner referral code"
 msgstr "code de parrainage partenaire"

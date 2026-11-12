@@ -641,11 +641,11 @@ msgstr "Empfehlungscode gespeichert! Trainer %s erhält für diese Bestellung we
 
 #, php-format
 msgid "Referral code applied! You will receive a discount. Your friend %s will earn points on what you pay, after discounts and credits."
-msgstr "Empfehlungscode angewendet! Sie erhalten einen Rabatt. Ihr Freund %s verdient Punkte auf den Betrag, den Sie nach Rabatten und Gutschriften bezahlen."
+msgstr "Empfehlungscode angewendet! Sie erhalten einen Rabatt. Die Person, die Sie empfohlen hat (%s), verdient Punkte auf den Betrag, den Sie nach Rabatten und Gutschriften bezahlen."
 
 #, php-format
 msgid "Referral code saved! %s will still earn points on what you pay, after discounts and credits. First-time discount already used."
-msgstr "Empfehlungscode gespeichert! %s verdient weiterhin Punkte auf den Betrag, den Sie nach Rabatten und Gutschriften bezahlen. Der Erstkundenrabatt wurde bereits verwendet."
+msgstr "Empfehlungscode gespeichert! Die Person, die Sie empfohlen hat (%s), verdient weiterhin Punkte auf den Betrag, den Sie nach Rabatten und Gutschriften bezahlen. Der Erstkundenrabatt wurde bereits verwendet."
 
 msgid "Must be logged in."
 msgstr "Sie müssen angemeldet sein."
@@ -657,7 +657,7 @@ msgid "Referral code removed."
 msgstr "Empfehlungscode entfernt."
 
 msgid "friend referral code"
-msgstr "Freundes-Empfehlungscode"
+msgstr "Empfehlungscode der Person, die Sie empfohlen hat"
 
 msgid "partner referral code"
 msgstr "Partner-Empfehlungscode"
