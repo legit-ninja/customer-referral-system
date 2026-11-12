@@ -104,6 +104,24 @@ class ROIFollowupsTest extends TestCase {
     }
 
     /**
+     * Referral ROI metrics must not print 0 CHF while the card is pending.
+     * Reuses the existing pending message, same gate as the loyalty card.
+     */
+    public function testDashboardPending_ReferralRoiMetricsUsePendingMessageNotZeroChf() {
+        $source = file_get_contents(__DIR__ . '/../includes/class-admin-dashboard-main.php');
+        $this->assertStringContainsString(
+            "<div class=\"roi-card-metrics\">\n"
+            . "                            <?php if (\$roi_widgets_pending || !empty(\$referral_roi['pending']) || !empty(\$referral_roi_range['pending'])): ?>\n"
+            . "                            <span><?php echo esc_html(\$roi_pending_message); ?></span>\n"
+            . "                            <?php else: ?>\n"
+            . "                            <span><?php printf(esc_html__('Gross profit (at margin): %s CHF', 'intersoccer-referral'), number_format(\$displayed_profit, 0)); ?></span>\n"
+            . "                            <span><?php printf(esc_html__('Cost: %s CHF', 'intersoccer-referral'), number_format(\$displayed_cost, 0)); ?></span>\n"
+            . "                            <?php endif; ?>\n",
+            $source
+        );
+    }
+
+    /**
      * (c) Transient keys include storage mode; caches do not cross modes; prefix invalidation still works.
      */
     public function testRoiCacheKey_IncludesStorageModeAndInvalidatesWithSuffix() {
