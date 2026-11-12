@@ -11,6 +11,7 @@ vendor/
 
 # Deployment
 deploy.local.sh
+.deploy-dryrun/
 
 # Development
 node_modules/
