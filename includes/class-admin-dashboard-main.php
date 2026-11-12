@@ -256,8 +256,12 @@ class InterSoccer_Admin_Dashboard_Main {
                             <?php endif; ?>
                         </div>
                         <div class="roi-card-metrics">
+                            <?php if ($roi_widgets_pending || !empty($referral_roi['pending']) || !empty($referral_roi_range['pending'])): ?>
+                            <span><?php echo esc_html($roi_pending_message); ?></span>
+                            <?php else: ?>
                             <span><?php printf(esc_html__('Gross profit (at margin): %s CHF', 'intersoccer-referral'), number_format($displayed_profit, 0)); ?></span>
                             <span><?php printf(esc_html__('Cost: %s CHF', 'intersoccer-referral'), number_format($displayed_cost, 0)); ?></span>
+                            <?php endif; ?>
                         </div>
                         <?php if ($referral_roi_range['has_data']): ?>
                         <div class="roi-card-note roi-incrementality-note">
