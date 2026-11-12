@@ -503,11 +503,11 @@ msgid "Referral code saved! Coach %s will still receive credit on this order. Fi
 msgstr ""
 
 #, php-format
-msgid "Referral code applied! You will receive a discount. Your friend %s will earn points on this order."
+msgid "Referral code applied! You will receive a discount. Your friend %s will earn points on what you pay, after discounts and credits."
 msgstr ""
 
 #, php-format
-msgid "Referral code saved! %s will still earn points on this order. First-time discount already used."
+msgid "Referral code saved! %s will still earn points on what you pay, after discounts and credits. First-time discount already used."
 msgstr ""
 
 msgid "Must be logged in."
@@ -536,4 +536,15 @@ msgstr ""
 
 #, php-format
 msgid "%s ago"
+msgstr ""
+
+#, php-format
+msgid "Earn 1 point for every CHF %d you pay, after discounts and credits. Redeem your points at checkout."
+msgstr ""
+
+msgid "Share Your Link"
+msgstr ""
+
+#, php-format
+msgid "Referral code %s is applied. Your discount appears in the order summary. Points are earned on what you pay, after discounts and credits."
 msgstr ""
