@@ -388,7 +388,8 @@ class ROIFirstOrderCandidateSqlTest extends TestCase {
     }
 
     /**
-     * Order status change / refund drops first-order and cost-breakdown transients only.
+     * Order status change / refund drops order-dependent ROI transients, including holder and revenue.
+     * Keys outside those prefixes stay (order count is not part of this invalidation).
      */
     public function testOrderChangeInvalidatesOrderDependentTransients() {
         $names = [
@@ -397,7 +398,10 @@ class ROIFirstOrderCandidateSqlTest extends TestCase {
             '_transient_intersoccer_roi_cost_breakdown_def_posts',
             '_transient_timeout_intersoccer_roi_cost_breakdown_def_posts',
             '_transient_intersoccer_roi_holder_comparison_ghi_hpos',
+            '_transient_timeout_intersoccer_roi_holder_comparison_ghi_hpos',
             '_transient_intersoccer_roi_revenue_jkl_posts',
+            '_transient_timeout_intersoccer_roi_revenue_jkl_posts',
+            '_transient_intersoccer_roi_order_count_keep_posts',
         ];
         foreach ($names as $n) {
             $this->db->exec("INSERT INTO wp_options (option_name, option_value) VALUES ('{$n}', '1')");
@@ -405,8 +409,7 @@ class ROIFirstOrderCandidateSqlTest extends TestCase {
         InterSoccer_ROI_Calculator::invalidate_order_dependent_cache();
         $left = $this->db->pdo->query('SELECT option_name FROM wp_options ORDER BY option_name')->fetchAll(PDO::FETCH_COLUMN);
         $this->assertSame([
-            '_transient_intersoccer_roi_holder_comparison_ghi_hpos',
-            '_transient_intersoccer_roi_revenue_jkl_posts',
+            '_transient_intersoccer_roi_order_count_keep_posts',
         ], $left);
 
         $source = file_get_contents(__DIR__ . '/../includes/class-roi-calculator.php');

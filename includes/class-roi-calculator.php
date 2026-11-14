@@ -107,15 +107,21 @@ class InterSoccer_ROI_Calculator {
      * Background cache warm callback (registered at file load so cron / Action Scheduler requests have it).
      */
     /**
-     * Order status change / refund: drop cached first-order discount and cost breakdown so the next
-     * dashboard view recomputes them. Cheap (prefix DELETEs on option_name); nothing is recomputed inline.
+     * Order status change or refund: drop cached ROI figures that depend on orders so the next
+     * dashboard view recomputes them. Holder comparison and revenue keys are shared by date range
+     * (not per holder). Cheap prefix DELETEs on option_name; nothing is recomputed inline and the
+     * order is not loaded or written.
+     *
+     * Partial refunds are included: WooCommerce wc_create_refund() fires woocommerce_order_refunded
+     * for partial and full refunds. woocommerce_create_refund runs before the refund is saved, so
+     * it is not used here.
      */
     public static function invalidate_order_dependent_cache() {
         global $wpdb;
-        if (!$wpdb) {
+        if (!$wpdb || !is_object($wpdb) || !method_exists($wpdb, 'prepare') || !method_exists($wpdb, 'query')) {
             return;
         }
-        foreach (['first_order_discount_', 'cost_breakdown_'] as $suffix) {
+        foreach (['first_order_discount_', 'cost_breakdown_', 'holder_comparison_', 'revenue_'] as $suffix) {
             foreach (['_transient_', '_transient_timeout_'] as $option_prefix) {
                 $wpdb->query($wpdb->prepare(
                     "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s",
@@ -3218,6 +3224,7 @@ class InterSoccer_ROI_Calculator {
 
 if (function_exists('add_action')) {
     add_action(InterSoccer_ROI_Calculator::WARM_HOOK, ['InterSoccer_ROI_Calculator', 'run_scheduled_cache_warm']);
+    // accepted_args 0: do not receive the order. Partial refunds also hit woocommerce_order_refunded.
     add_action('woocommerce_order_status_changed', ['InterSoccer_ROI_Calculator', 'invalidate_order_dependent_cache'], 20, 0);
     add_action('woocommerce_order_refunded', ['InterSoccer_ROI_Calculator', 'invalidate_order_dependent_cache'], 20, 0);
 }
