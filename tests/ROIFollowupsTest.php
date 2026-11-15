@@ -159,12 +159,13 @@ class ROIFollowupsTest extends TestCase {
             '_transient_intersoccer_roi_first_order_discount_x_hpos',
             '_transient_timeout_intersoccer_roi_cost_breakdown_y_posts',
             '_transient_intersoccer_roi_holder_comparison_z_hpos',
+            '_transient_intersoccer_roi_order_count_keep_posts',
         ] as $name) {
             $this->db->exec("INSERT INTO wp_options (option_name, option_value) VALUES ('{$name}', '1')");
         }
         InterSoccer_ROI_Calculator::invalidate_order_dependent_cache();
         $left = $this->db->pdo->query('SELECT option_name FROM wp_options ORDER BY option_name')->fetchAll(PDO::FETCH_COLUMN);
-        $this->assertSame(['_transient_intersoccer_roi_holder_comparison_z_hpos'], $left);
+        $this->assertSame(['_transient_intersoccer_roi_order_count_keep_posts'], $left);
 
         foreach (['_transient_intersoccer_roi_revenue_rm_posts', '_transient_timeout_intersoccer_roi_revenue_rm_posts'] as $name) {
             $this->db->exec("INSERT INTO wp_options (option_name, option_value) VALUES ('{$name}', '1')");
