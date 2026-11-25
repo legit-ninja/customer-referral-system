@@ -61,10 +61,7 @@ class InterSoccer_Points_Manager {
         add_action('wp_ajax_get_points_balance', [$this, 'get_points_balance_ajax']);
         add_action('wp_ajax_get_points_history', [$this, 'get_points_history_ajax']);
 
-        // Add redemption hooks - disabled to prevent conflicts with admin dashboard system
-        // add_action('woocommerce_cart_calculate_fees', [$this, 'apply_points_discount']);
-        // add_action('woocommerce_checkout_process', [$this, 'validate_points_redemption']);
-        // add_action('woocommerce_checkout_create_order', [$this, 'process_points_redemption'], 10, 2);
+        // Points redemption checkout hooks stay unregistered to avoid conflicts with the admin dashboard system.
         
         // Schedule weekly deferred allocation if not already scheduled
         if ($allocation_method === 'deferred' && !wp_next_scheduled('intersoccer_deferred_points_allocation')) {
