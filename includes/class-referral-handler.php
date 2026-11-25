@@ -9,13 +9,9 @@ class InterSoccer_Referral_Handler {
         add_action('woocommerce_order_status_completed', [$this, 'process_referral_order']);
         add_action('woocommerce_order_status_cancelled', [$this, 'reverse_paid_rewards_on_cancel_or_full_refund']);
         add_action('woocommerce_order_status_refunded', [$this, 'reverse_paid_rewards_on_cancel_or_full_refund']);
-        // Disabled old credit discount system - replaced with points system in admin dashboard
-        // add_action('woocommerce_cart_calculate_fees', [$this, 'apply_credit_discount']);
-        // Disabled old slider interface - replaced with Amazon Prime style in admin dashboard
-        // add_action('woocommerce_review_order_before_payment', [$this, 'add_credit_field']);
-        // The cart fee and checkout slider are turned off above. Leave this hook off too,
-        // or a posted credit amount can take points when no discount was applied (issue #80).
-        // add_action('woocommerce_checkout_update_order_meta', [$this, 'update_order_with_credits']);
+        // Old cart-fee and checkout-slider credit hooks stay unregistered; they were
+        // replaced by the admin dashboard points system. Leaving them off also prevents
+        // a posted credit amount from taking points when no discount was applied.
         add_action('wp_ajax_gift_credits', [$this, 'handle_gift_credits']);
         // New partnership handlers
         add_action('wp_ajax_select_coach_partner', [$this, 'handle_coach_partnership_selection']);
